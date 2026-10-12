@@ -1,0 +1,14 @@
+[package]
+name = "monocode-companion-host"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+monocode-companion-core = { path = "../core" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+iroh.workspace = true
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+png = "0.18"

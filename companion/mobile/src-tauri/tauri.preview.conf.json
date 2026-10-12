@@ -1,0 +1,9 @@
+{
+  "productName": "MonoCode Phone Preview",
+  "identifier": "dev.monocode.companion.preview",
+  "build": { "devUrl": null },
+  "app": {
+    "windows": [{ "label": "main", "title": "MonoCode Phone Preview", "url": "index.html?demo=1", "width": 390, "height": 844, "resizable": true }]
+  },
+  "bundle": { "targets": ["app"], "macOS": { "signingIdentity": "-" } }
+}

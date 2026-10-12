@@ -1,0 +1,8 @@
+{
+  "name": "monocode-companion-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "node ../../node_modules/@tauri-apps/cli/tauri.js"
+  }
+}

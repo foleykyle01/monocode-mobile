@@ -1,0 +1,324 @@
+import type { Block, Session } from "../../sessions/model/session";
+import { isPreparingHandoff } from "../../sessions/model/handoff";
+import { MAX_PREVIEW_LINES } from "../../../integrations/harness/core/preview";
+import type { CompanionNavigation } from "./companionNavigation";
+import type { CompanionChatBackground } from "./companionChatBackground";
+import type { CompanionMonoReadInput, CompanionMonoReadSection } from "./companionMono";
+import type { createCompanionInbox } from "./companionInbox";
+import type { createCompanionChanges } from "./companionChanges";
+
+export type CompanionConfiguration = {
+  models: { harness: string; id: string; label: string }[];
+  accessModes: { id: string; label: string; description?: string }[];
+};
+
+/** A narrow view of the existing desktop owner, not another session runtime. */
+export type CompanionOwner = {
+  flush(): void;
+  sessions(): readonly Session[];
+  eligible(session: Session): boolean;
+  turn(sessionId: string): number;
+  send(sessionId: string, text: string, requestId: string): Promise<boolean>;
+  approve(sessionId: string, requestId: number, decision: "allow" | "deny"): void;
+  stop(sessionId: string): Promise<void>;
+  appearance?(): unknown;
+  chatBackground?(session: Session): CompanionChatBackground | null;
+  navigation?(): CompanionNavigation;
+  projectId?(session: Session, navigation: CompanionNavigation): string | undefined;
+  listable?(session: Session): boolean;
+  configuration?(session: Session): CompanionConfiguration;
+  configure?(sessionId: string, input: {
+    harness?: string;
+    model?: string;
+    runtimeMode?: string;
+  }): void;
+  createSession?(projectId: string, sessionId: string): void;
+  inbox?: ReturnType<typeof createCompanionInbox>;
+  changes?: ReturnType<typeof createCompanionChanges>;
+  monoRead?(input: CompanionMonoReadInput): Promise<import("./companionMono").CompanionMonoRead>;
+};
+
+const READ_LIMIT = 100;
+const TEXT_LIMIT = 8_192;
+const RECEIPT_LIMIT = 512;
+const MUTATIONS = new Set([
+  "sessions.send",
+  "sessions.approve",
+  "sessions.stop",
+  "sessions.configure",
+  "sessions.create",
+]);
+
+function snapshotBlock(block: Block) {
+  const preview = block.tool?.preview;
+  const parts = [block.text, block.tool?.detail];
+  if (preview) {
+    parts.push(preview.path || preview.fileName, preview.query);
+    if (preview.lines?.length) parts.push(preview.lines.map(line =>
+      `${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "}${line.text}`).join("\n"));
+    parts.push(preview.output);
+  }
+  const fullText = [...new Set(parts.filter((part): part is string => !!part))].join("\n\n");
+  // Desktop previews can already be shortened before this snapshot is built.
+  const previewIncomplete = !!preview && ((preview.lines?.length ?? 0) >= MAX_PREVIEW_LINES
+    || !!preview.lines?.some(line => line.text.endsWith("…")));
+  return {
+    id: block.id, role: block.role, text: fullText.slice(0, TEXT_LIMIT),
+    truncated: fullText.length > TEXT_LIMIT || previewIncomplete,
+    approval: block.approval,
+  };
+}
+
+export class CompanionCommandUncertain extends Error {
+  readonly outcomeUnknown = true;
+  constructor(reason: unknown) {
+    super(`${reason instanceof Error ? reason.message : String(reason)}. Command outcome unknown; retry the same request ID or review the session.`);
+    this.name = "CompanionCommandUncertain";
+  }
+}
+
+function text(input: Record<string, unknown>, key: string, limit = 256): string {
+  const value = input[key];
+  if (typeof value !== "string" || !value.trim() || value.length > limit)
+    throw new Error(`Invalid ${key}`);
+  return value;
+}
+
+function fields(input: Record<string, unknown>, allowed: readonly string[]) {
+  if (Object.keys(input).some((key) => !allowed.includes(key)))
+    throw new Error("Unsupported input field");
+}
+
+function pageOffset(value: unknown): number {
+  if (value === undefined) return 0;
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 100_000)
+    throw new Error("Invalid page offset");
+  return value as number;
+}
+
+/** Receipts live for this renderer epoch. A reload changes the epoch, making
+ * old commands invalid rather than guessing whether they executed. */
+export function createCompanionBridge(owner: CompanionOwner, epoch: string = crypto.randomUUID()) {
+  const receipts = new Map<string, { signature: string; result: Promise<unknown> }>();
+  const answered = new Set<string>();
+  let queue = Promise.resolve();
+
+  function current(id: string) {
+    const session = owner.sessions().find((entry) => entry.id === id);
+    if (!session || !owner.eligible(session))
+      throw new Error("Session is not available to this companion");
+    return session;
+  }
+
+  function summary(session: Session, navigation?: CompanionNavigation) {
+    const projectId = navigation && owner.projectId?.(session, navigation);
+    return {
+      id: session.id,
+      ...(projectId ? { projectId } : {}),
+      title: session.title.slice(0, 300),
+      cwd: session.cwd,
+      harness: session.harness,
+      model: session.model,
+      modelSettings: session.modelSettings,
+      runtimeMode: session.runtimeMode,
+      busy: !!session.busy,
+      turn: owner.turn(session.id),
+      needsApproval: session.blocks.some((block) => block.approval && !block.approval.decided),
+    };
+  }
+
+  function read(action: string, input: Record<string, unknown>) {
+    owner.flush();
+    if (action === "inbox.list" || action === "inbox.read") {
+      const inbox = owner.inbox;
+      if (!inbox) throw new Error("Inbox is unavailable; update the Mac companion");
+      fields(input, action === "inbox.list" ? [] : ["key", "offset"]);
+      const result = action === "inbox.list"
+        ? inbox.list()
+        : input.offset === undefined
+          ? inbox.read(text(input, "key", 512))
+          : inbox.read(text(input, "key", 512), pageOffset(input.offset));
+      return result.then(value => ({ ...value, epoch }));
+    }
+    if (action === "monos.read") {
+      if (!owner.monoRead) throw new Error("Mono details are unavailable; update the Mac companion");
+      fields(input, ["monoId", "section", "offset"]);
+      const section = input.section;
+      if (section !== undefined && section !== "soul" && section !== "memory" && section !== "habits")
+        throw new Error("Invalid Mono detail section");
+      const request: CompanionMonoReadInput = {
+        monoId: text(input, "monoId", 128),
+        ...(section === undefined ? {} : { section: section as CompanionMonoReadSection }),
+        ...(input.offset === undefined ? {} : { offset: pageOffset(input.offset) }),
+      };
+      return owner.monoRead(request).then(value => ({ ...value, epoch }));
+    }
+    if (action === "changes.list" || action === "changes.read") {
+      if (!owner.changes) throw new Error("Changes are unavailable; update the Mac companion");
+      fields(input, ["projectId", "sessionId", ...(action === "changes.read" ? ["relative", "kind"] : [])]);
+      const target = { projectId: text(input, "projectId"), ...(input.sessionId === undefined ? {} : { sessionId: text(input, "sessionId") }) };
+      if (action === "changes.read" && input.kind !== "staged" && input.kind !== "unstaged") throw new Error("Invalid changes section");
+      const result = action === "changes.list" ? owner.changes.list(target) : owner.changes.read(target, text(input, "relative", 1024), input.kind as "staged" | "unstaged");
+      return result.then(value => ({ ...value, epoch }));
+    }
+    if (action === "sessions.list") {
+      fields(input, []);
+      const sessions = owner.sessions().filter(
+        (session) => owner.eligible(session) && (owner.listable?.(session) ?? true),
+      );
+      const navigation = owner.navigation?.();
+      return {
+        epoch,
+        sessions: sessions.slice(0, 200).map((session) => summary(session, navigation)),
+        truncated: sessions.length > 200,
+        appearance: owner.appearance?.(),
+        capabilities: { createSession: !!owner.createSession, inbox: !!owner.inbox, changes: !!owner.changes },
+        ...(navigation ? { navigation } : {}),
+      };
+    }
+    if (action !== "sessions.read") throw new Error("Unsupported companion action");
+    fields(input, ["sessionId", "before"]);
+    const session = current(text(input, "sessionId"));
+    const before = input.before ?? session.blocks.length;
+    if (!Number.isSafeInteger(before) || (before as number) < 0 || (before as number) > session.blocks.length)
+      throw new Error("Invalid transcript cursor; refresh the session");
+    const end = before as number;
+    const start = Math.max(0, end - READ_LIMIT);
+    let chatBackground: CompanionChatBackground | null = null;
+    try {
+      chatBackground = owner.chatBackground?.(session) ?? null;
+    } catch {
+      // Missing artwork is cosmetic; retain the live transcript.
+    }
+    return {
+      epoch,
+      session: {
+        ...summary(session, owner.navigation?.()),
+      },
+      ...(owner.configuration ? { configuration: owner.configuration(session) } : {}),
+      // Deliberately bounded text-only snapshots for the feasibility client.
+      blocks: session.blocks.slice(start, end).map(snapshotBlock),
+      nextBefore: start || null,
+      totalBlocks: session.blocks.length,
+      chatBackground,
+    };
+  }
+
+  async function mutate(action: string, input: Record<string, unknown>, requestId: string) {
+    owner.flush();
+    if (action === "sessions.create") {
+      fields(input, ["epoch", "projectId", "sessionId"]);
+      const projectId = text(input, "projectId");
+      const sessionId = text(input, "sessionId");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId))
+        throw new Error("Invalid session ID");
+      if (owner.sessions().some((session) => session.id === sessionId))
+        throw new Error("Session ID already exists");
+      const project = owner.navigation?.().projects.find((entry) => entry.id === projectId);
+      if (!project || !owner.createSession)
+        throw new Error("Project session creation is unavailable to this companion");
+      try { owner.createSession(project.id, sessionId); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+      return { epoch, sessionId, accepted: true, turn: 0 };
+    }
+    const id = text(input, "sessionId");
+    const session = current(id);
+    if (!Number.isSafeInteger(input.turn) || input.turn !== owner.turn(id))
+      throw new Error("The session turn changed; refresh before acting");
+    if (isPreparingHandoff(session) || session.worktreePreparing || session.worktreeRemoved)
+      throw new Error("Session is changing its provider or workspace");
+
+    if (action === "sessions.send") {
+      fields(input, ["epoch", "sessionId", "turn", "text"]);
+      const prompt = text(input, "text", 32_768);
+      if (session.busy) throw new Error("Session is busy; wait before sending a follow-up");
+      if (session.blocks.some((block) => block.draft) || session.queuedMessages?.length)
+        throw new Error("Resolve this session's existing draft or queued messages first");
+      let accepted: boolean;
+      try { accepted = await owner.send(id, prompt, `companion:${epoch}:${requestId}`); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+      if (!accepted)
+        throw new Error("Desktop did not accept the follow-up");
+    } else if (action === "sessions.approve") {
+      fields(input, ["epoch", "sessionId", "turn", "blockId", "decision"]);
+      const blockId = text(input, "blockId");
+      if (input.decision !== "allow" && input.decision !== "deny")
+        throw new Error("Invalid approval decision");
+      const block = session.blocks.find((entry) => entry.id === blockId);
+      const key = JSON.stringify([id, input.turn, blockId]);
+      if (!session.busy || !block?.approval || block.approval.decided || answered.has(key))
+        throw new Error("Approval is no longer pending");
+      if (block.monoHabit)
+        throw new Error("Review habit approvals on your Mac");
+      if (input.decision === "allow" && snapshotBlock(block).truncated)
+        throw new Error("Review the full action on your Mac before allowing it");
+      // Claim before dispatch. An uncertain failure must not send another
+      // decision. Refresh state instead of retrying under a new command ID.
+      answered.add(key);
+      try { owner.approve(id, block.approval.requestId, input.decision); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+    } else if (action === "sessions.stop") {
+      fields(input, ["epoch", "sessionId", "turn"]);
+      if (!session.busy) throw new Error("Session is not running");
+      try { await owner.stop(id); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+    } else {
+      fields(input, ["epoch", "sessionId", "turn", "harness", "model", "runtimeMode"]);
+      const harness = input.harness;
+      const model = input.model;
+      const runtimeMode = input.runtimeMode;
+      if (harness !== undefined && (typeof harness !== "string" || !harness))
+        throw new Error("Invalid harness");
+      if (model !== undefined && (typeof model !== "string" || !model))
+        throw new Error("Invalid model");
+      if (runtimeMode !== undefined && (typeof runtimeMode !== "string" || !runtimeMode))
+        throw new Error("Invalid access mode");
+      if (harness === undefined && model === undefined && runtimeMode === undefined)
+        throw new Error("Choose a model or access mode");
+      if (session.busy || session.blocks.some((block) => block.draft) || session.queuedMessages?.length)
+        throw new Error("Session must be idle with no draft or queued messages before changing settings");
+      const configuration = owner.configuration?.(session);
+      if (!configuration || !owner.configure)
+        throw new Error("Session settings are unavailable to this companion");
+      const selectedHarness = harness ?? session.harness;
+      const selectedModel = model ?? session.model;
+      if (harness && harness !== session.harness && !model)
+        throw new Error("Choose a model for the selected provider");
+      if ((harness || model) && !configuration.models.some((entry) => entry.harness === selectedHarness && entry.id === selectedModel))
+        throw new Error("Selected model is unavailable on this Mac");
+      if (runtimeMode && !configuration.accessModes.some((mode) => mode.id === runtimeMode))
+        throw new Error("Selected access mode is unavailable");
+      try { owner.configure(id, { harness, model, runtimeMode }); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+    }
+    return { epoch, sessionId: id, accepted: true, turn: owner.turn(id) };
+  }
+
+  return {
+    epoch,
+    handle(requestId: string, action: string, input: Record<string, unknown>): Promise<unknown> {
+      try {
+        if (!input || Array.isArray(input) || typeof input !== "object")
+          throw new Error("Invalid input");
+        if (!MUTATIONS.has(action)) return Promise.resolve(read(action, input));
+        if (input.epoch !== epoch) throw new Error("Desktop connection changed; refresh before acting");
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) throw new Error("Invalid request ID");
+        const signature = JSON.stringify([action, Object.entries(input).sort(([a], [b]) => a.localeCompare(b))]);
+        const previous = receipts.get(requestId);
+        if (previous) {
+          if (previous.signature !== signature) throw new Error("Request ID already used with different input");
+          return previous.result;
+        }
+        // Fail closed rather than evicting a receipt and possibly replaying an
+        // old mutation. Restarting this development bridge creates a new epoch.
+        if (receipts.size >= RECEIPT_LIMIT) throw new Error("Development command limit reached; restart the isolated app");
+        const result = queue.then(() => mutate(action, input, requestId));
+        receipts.set(requestId, { signature, result });
+        queue = result.then(() => undefined, () => undefined);
+        return result;
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+  };
+}

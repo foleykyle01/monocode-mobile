@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a problem in MonoCode
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        MonoCode supports macOS, Linux, and Windows.
+
+  - type: input
+    id: version
+    attributes:
+      label: MonoCode version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "Windows 11, Ubuntu 24.04, macOS 15.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider CLI
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Grok Build
+        - OpenCode
+        - Pi
+        - omp
+        - fx
+        - Multiple / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true

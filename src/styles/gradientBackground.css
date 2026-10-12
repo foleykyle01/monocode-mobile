@@ -1,0 +1,79 @@
+/* Each masked copy samples the same artwork; only the image is blurred. */
+.gradient-blur-background {
+  --gradient-blur-soft: 7px;
+  --gradient-blur-strong: 18px;
+  --gradient-blur-soft-mask: linear-gradient(
+    to bottom,
+    transparent 18%,
+    #000 60%
+  );
+  --gradient-blur-strong-mask: linear-gradient(
+    to bottom,
+    transparent 28%,
+    #000 76%
+  );
+  --gradient-blur-overlay: linear-gradient(
+    to bottom,
+    transparent 16%,
+    color-mix(in srgb, var(--color-background-base) 26%, transparent) 38%,
+    color-mix(in srgb, var(--color-background-base) 55%, transparent) 55%,
+    color-mix(in srgb, var(--color-background-base) 78%, transparent) 75%
+  );
+  --gradient-blur-mask: linear-gradient(
+    to bottom,
+    #000 0 19%,
+    rgb(0 0 0 / 94%) 30%,
+    rgb(0 0 0 / 72%) 42%,
+    rgb(0 0 0 / 42%) 54%,
+    rgb(0 0 0 / 16%) 66%,
+    rgb(0 0 0 / 4%) 78%,
+    transparent 90%
+  );
+  overflow: hidden;
+  pointer-events: none;
+  background-image: var(--chat-background-image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  -webkit-mask-image: var(--gradient-blur-mask);
+  mask-image: var(--gradient-blur-mask);
+}
+
+.gradient-blur-preview {
+  --gradient-blur-soft: 2px;
+  --gradient-blur-strong: 5px;
+}
+
+.gradient-blur-background > span {
+  position: absolute;
+  inset: 0;
+  background-image: var(--chat-background-image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.gradient-blur-background-soft {
+  filter: blur(var(--gradient-blur-soft));
+  -webkit-mask-image: var(--gradient-blur-soft-mask);
+  mask-image: var(--gradient-blur-soft-mask);
+}
+
+.gradient-blur-background-strong {
+  filter: blur(var(--gradient-blur-strong));
+  -webkit-mask-image: var(--gradient-blur-strong-mask);
+  mask-image: var(--gradient-blur-strong-mask);
+}
+
+.gradient-blur-background::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-background-base) 36%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    var(--gradient-blur-overlay);
+}

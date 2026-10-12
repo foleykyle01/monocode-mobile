@@ -1,0 +1,65 @@
+/* Transcript-only polish. Kept separate so the phone shell can own its layout. */
+.history-control {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0 auto 16px;
+}
+
+.history-control__button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--companion-muted);
+  font: calc(11px * var(--companion-ui-scale))/1.3 var(--companion-mono);
+  cursor: pointer;
+}
+
+.history-control__button:hover,
+.history-control__button:focus-visible {
+  background: var(--companion-raised);
+  color: var(--companion-content);
+}
+
+.history-control__button:disabled { cursor: default; opacity: .55; }
+.history-control__error { margin: 0; color: var(--companion-danger); font-size: calc(11px * var(--companion-ui-scale)); }
+
+.empty-transcript { flex-direction: column; text-align: center; }
+.empty-transcript p { margin: 0; }
+
+.action-details__summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Streamdown can emit either native tables or its wrapper depending on version. */
+.companion-markdown [data-streamdown="table-wrapper"],
+.companion-markdown table { max-width: 100%; overflow-x: hidden; }
+.companion-markdown table { display: table; width: 100%; table-layout: fixed; }
+.companion-markdown :is(th, td) { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+
+.companion-markdown [data-streamdown="code-block"],
+.companion-markdown pre { min-width: 0; max-width: 100%; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.companion-markdown pre code { display: block; width: auto; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.companion-markdown [data-streamdown="code-block-header"] { padding: 7px 10px; border: 1px solid var(--companion-stroke); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--companion-panel); color: var(--companion-muted); font: calc(11px * var(--companion-ui-scale))/1.4 var(--companion-mono); }
+.companion-markdown [data-streamdown="code-block"] { margin: 12px 0; }
+.companion-markdown [data-streamdown="code-block"] pre { margin-top: 0; border-radius: 0 0 6px 6px; }
+
+/* Desktop's live-turn shimmer, placed in the transcript instead of a run bar. */
+.transcript-working { display: flex; align-items: center; min-height: 36px; margin: 6px 0 2px; padding: 0 4px; }
+.transcript-working__shimmer {
+  --spread: 28px;
+  --shimmer-duration: 2s;
+  background-image: linear-gradient(90deg, transparent calc(50% - var(--spread)), var(--companion-content) 50%, transparent calc(50% + var(--spread))), linear-gradient(var(--companion-muted), var(--companion-muted));
+  background-size: 250% 100%, auto;
+  background-repeat: no-repeat, padding-box;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  font: calc(12px * var(--companion-ui-scale))/1.4 var(--companion-sans);
+  animation: transcript-shimmer var(--shimmer-duration) linear infinite;
+}
+@keyframes transcript-shimmer { from { background-position: 100% center; } to { background-position: 0% center; } }
+@media (prefers-reduced-motion: reduce) {
+  .transcript-working__shimmer { background-image: none; color: var(--companion-muted); animation: none; }
+}

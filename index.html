@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/monocode.png" />
+    <title>MonoCode</title>
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var hue = localStorage.getItem("monocode.themeHue");
+          var sat = localStorage.getItem("monocode.themeSaturation");
+          var darkLightness = localStorage.getItem(
+            "monocode.themeDarkLightness",
+          );
+          var opacity = localStorage.getItem("monocode.sidebarOpacity");
+          if (hue != null) {
+            var h = Math.max(0, Math.min(360, Number(hue) || 0));
+            root.style.setProperty("--theme-hue", String(h));
+          }
+          if (sat != null) {
+            var s = Math.max(0, Math.min(100, Number(sat) || 0));
+            root.style.setProperty("--theme-saturation", s + "%");
+          }
+          if (darkLightness != null) {
+            var l = Math.max(0, Math.min(30, Number(darkLightness) || 0));
+            root.style.setProperty("--theme-dark-lightness", l + "%");
+          }
+          if (opacity != null) {
+            var o = Math.max(0.15, Math.min(1, Number(opacity) || 0.85));
+            root.style.setProperty("--sidebar-opacity", String(o));
+          }
+          var scheme = localStorage.getItem("monocode.colorScheme");
+          if (scheme === "system") {
+            scheme = window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+          }
+          if (scheme === "light") {
+            root.classList.add("theme-light");
+          }
+          var bodyGlass = localStorage.getItem("monocode.bodyGlass");
+          if (bodyGlass == null || bodyGlass === "1" || bodyGlass === "true") {
+            root.classList.add("glass-body");
+          }
+          var isMac =
+            typeof navigator !== "undefined" &&
+            /Mac|iPhone|iPad/.test(navigator.platform);
+          if (isMac) {
+            root.classList.add("is-mac");
+          }
+        } catch (_) {}
+      })();
+    </script>
+    <style>
+      :root {
+        --theme-hue: 240;
+        --theme-saturation: 0%;
+        --theme-dark-lightness: 9%;
+        --sidebar-opacity: 0.85;
+        --background-lightness: var(--theme-dark-lightness);
+        --color-background-base: hsl(
+          var(--theme-hue) var(--theme-saturation) var(--background-lightness)
+        );
+      }
+
+      html.theme-light {
+        --background-lightness: 97%;
+      }
+
+      html,
+      body,
+      #boot-splash {
+        margin: 0;
+        background: var(--color-background-base);
+      }
+
+      /* Opaque cover until React paints. The logo is in HTML so it is
+         visible during the Dock bounce, before the bundle runs. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        transition: opacity 0.16s ease;
+      }
+
+      #boot-splash.boot-splash-out {
+        opacity: 0;
+      }
+
+      #boot-splash img {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-splash" aria-hidden="true">
+      <img src="/monocode.png" alt="" />
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

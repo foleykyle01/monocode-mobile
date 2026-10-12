@@ -1,0 +1,72 @@
+/* Translucent controls keep the desktop palette, with a solid fallback. */
+.companion-shell {
+  --glass-fill: color-mix(in srgb, var(--companion-panel) 68%, transparent);
+  --glass-edge: color-mix(in srgb, var(--companion-content) 8%, transparent);
+  --glass-shadow: 0 1px 3px rgb(0 0 0 / .04);
+}
+.companion-shell :is(.search-toggle, .settings-toggle, .back-button, .inbox-back, .inbox-refresh, .mono-details-button, .button--quiet, .inbox-navigation-button) {
+  border: .5px solid var(--glass-edge);
+  border-radius: 22px;
+  background: var(--glass-fill);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  backdrop-filter: blur(24px) saturate(1.1);
+  color: var(--companion-content);
+}
+.companion-shell :is(.search-toggle, .settings-toggle, .back-button, .inbox-back, .inbox-refresh, .mono-details-button):not(:disabled):hover {
+  background-color: var(--companion-raised);
+}
+.companion-shell :is(.detail-heading, .inbox-header, .mono-details-header) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 4px 8px;
+  border-bottom: 0;
+}
+.companion-shell :is(.detail-heading, .inbox-header, .mono-details-header) > h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.3;
+}
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-button) > svg { flex-shrink: 0; width: 20px; height: 20px; }
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-refresh),
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-refresh):not(:disabled):hover { position: relative; border: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-refresh)::before { content: ""; position: absolute; inset: 6px; border: .5px solid var(--glass-edge); border-radius: 50%; background: var(--glass-fill); box-shadow: var(--glass-shadow); }
+.companion-shell :is(.back-button, .inbox-back, .inbox-refresh, .mono-details-refresh) > svg { position: relative; width: 17px; height: 17px; }
+.mono-section { border: 0; margin: 0; padding: 0 0 14px; }
+.mono-roster { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 10px; }
+.mono-card {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border: .5px solid var(--glass-edge);
+  border-radius: 18px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mono-color, var(--companion-accent)) 4%, transparent), transparent 70%), var(--glass-fill);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  backdrop-filter: blur(24px) saturate(1.1);
+}
+.mono-card .mono-row { flex: 1; align-self: stretch; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.mono-card .mono-details-button { flex: 0 0 36px; width: 36px; height: 44px; margin-right: 5px; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.mono-card:focus-within { border-color: var(--companion-accent); }
+.companion-shell .inbox-navigation-button { margin: 0 0 18px; padding: 10px 14px; min-height: 48px; border-radius: 14px; }
+.companion-shell .inbox-navigation-button strong { font-weight: 500; }
+@media (prefers-reduced-transparency: reduce) {
+  .companion-shell { --glass-fill: var(--companion-panel); }
+  .companion-shell :is(.mono-card, .search-toggle, .settings-toggle, .back-button, .inbox-back, .inbox-refresh, .mono-details-button, .button--quiet, .inbox-navigation-button) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

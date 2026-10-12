@@ -1,0 +1,79 @@
+name: Companion CI
+
+on:
+  push:
+    branches:
+      - companion/desktop-bridge-spike
+      - "companion/**"
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  companion:
+    name: Companion focused checks
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            companion -> target
+            companion/mobile/src-tauri -> target
+
+      # npm ci honors the committed package-lock.json so the UI check is reproducible.
+      - run: npm ci
+
+      - name: Test desktop companion model suite
+        run: npx vitest run src/features/companion/model
+
+      - name: Test companion UI suite
+        run: npx vitest run --config companion/ui/vitest.config.ts
+
+      - name: Test project activity badges
+        run: >-
+          npx vitest run --maxWorkers=1 --no-file-parallelism
+          src/features/projects/model/projectActivity.test.ts
+          src/features/projects/ui/ProjectGroups.test.ts
+          src/features/projects/ui/SearchableProjectPickerMonos.test.ts
+          src/features/sessions/model/sessionDone.test.ts
+          src/app/shell/SidebarRename.test.ts
+
+      - name: Type-check desktop application
+        run: npx tsc --noEmit
+
+      - name: Type-check and build companion UI
+        run: npm run companion:build
+
+      - name: Check desktop Rust with companion feature
+        run: |
+          cargo fmt --check
+          cargo fmt --manifest-path companion/Cargo.toml --all -- --check
+          cargo fmt --manifest-path companion/mobile/src-tauri/Cargo.toml --all -- --check
+          cargo clippy --workspace --all-targets --features companion-spike --locked -- -D warnings
+          cargo test --workspace --features companion-spike --locked -- --test-threads=1
+
+      - name: Test mobile native shell
+        run: cargo test --manifest-path companion/mobile/src-tauri/Cargo.toml --locked

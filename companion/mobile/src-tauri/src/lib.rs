@@ -1,0 +1,322 @@
+mod pending;
+
+use anyhow::{ensure, Context, Result};
+use iroh::{Endpoint, EndpointAddr, SecretKey};
+use monocode_companion_core::{
+    client_endpoint, exchange, require_ok, storage::random_hex, validate_command, Request, Ticket,
+    VERSION,
+};
+use pending::{definitive_response, is_mutation, PendingCommand};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tauri::State;
+use tokio::sync::Mutex;
+
+const SERVICE: &str = "dev.monocode.companion";
+const ACCOUNT: &str = "device-identity-v1";
+const PENDING_ACCOUNT: &str = "pending-command-v1";
+
+#[derive(Serialize, Deserialize)]
+struct Credentials {
+    secret: String,
+    host: Option<EndpointAddr>,
+}
+
+#[derive(Default)]
+struct ClientState {
+    endpoint: Option<Endpoint>,
+    mutation_in_flight: bool,
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn load_private<T: serde::de::DeserializeOwned>(account: &str) -> Result<Option<T>> {
+    match security_framework::passwords::get_generic_password(SERVICE, account) {
+        Ok(bytes) => Ok(Some(
+            serde_json::from_slice(&bytes).context("Invalid saved companion state")?,
+        )),
+        Err(error) if error.code() == -25300 => Ok(None),
+        Err(error) => Err(error).context("Unlock this device to access its pairing identity"),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn save_private<T: Serialize>(account: &str, value: &T) -> Result<()> {
+    use security_framework::{
+        access_control::{ProtectionMode, SecAccessControl},
+        passwords::{set_generic_password_options, PasswordOptions},
+    };
+    let mut options = PasswordOptions::new_generic_password(SERVICE, account);
+    options.set_access_synchronized(Some(false));
+    options.set_access_control(SecAccessControl::create_with_protection(
+        Some(ProtectionMode::AccessibleWhenUnlockedThisDeviceOnly),
+        0,
+    )?);
+    set_generic_password_options(&serde_json::to_vec(value)?, options)?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn load_private<T: serde::de::DeserializeOwned>(_: &str) -> Result<Option<T>> {
+    anyhow::bail!("Secure device storage is implemented for Apple platforms only")
+}
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn save_private<T: Serialize>(_: &str, _: &T) -> Result<()> {
+    anyhow::bail!("Secure device storage is unavailable")
+}
+
+fn load_credentials() -> Result<Option<Credentials>> {
+    load_private(ACCOUNT)
+}
+fn save_credentials(credentials: &Credentials) -> Result<()> {
+    save_private(ACCOUNT, credentials)
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn delete_private(account: &str) -> Result<()> {
+    if let Err(error) = security_framework::passwords::delete_generic_password(SERVICE, account) {
+        if error.code() != -25300 {
+            return Err(error.into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn delete_private(_: &str) -> Result<()> {
+    anyhow::bail!("Secure device storage is unavailable")
+}
+
+fn status(credentials: Option<&Credentials>) -> Value {
+    match credentials.and_then(|credentials| credentials.host.as_ref()) {
+        Some(host) => json!({"paired":true,"hostId":host.id.to_string()}),
+        None => json!({"paired":false}),
+    }
+}
+
+async fn endpoint(state: &mut ClientState, credentials: &Credentials) -> Result<Endpoint> {
+    if state.endpoint.is_none() {
+        let key: SecretKey = credentials.secret.parse()?;
+        state.endpoint = Some(client_endpoint(key).await?);
+    }
+    Ok(state
+        .endpoint
+        .as_ref()
+        .context("Connection unavailable")?
+        .clone())
+}
+
+#[tauri::command]
+async fn companion_status() -> Result<Value, String> {
+    load_credentials()
+        .map(|credentials| status(credentials.as_ref()))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn companion_pair(
+    ticket: String,
+    state: State<'_, Mutex<ClientState>>,
+) -> Result<Value, String> {
+    let result = async {
+        let ticket = Ticket::decode(&ticket)?;
+        let mut state = state.lock().await;
+        ensure!(
+            load_private::<PendingCommand>(PENDING_ACCOUNT)?.is_none(),
+            "Review the pending command before pairing again"
+        );
+        let mut credentials = load_credentials()?.unwrap_or(Credentials {
+            secret: random_hex(),
+            host: None,
+        });
+        // Save identity before enrollment so a lost response can be retried by
+        // this same device, rather than enrolling under a new key.
+        save_credentials(&credentials)?;
+        let endpoint = endpoint(&mut state, &credentials).await?;
+        let response = exchange(
+            &endpoint,
+            &ticket.host,
+            &Request::Pair {
+                version: VERSION,
+                invitation: ticket.invitation,
+            },
+        )
+        .await?;
+        require_ok(&response)?;
+        credentials.host = Some(ticket.host);
+        save_credentials(&credentials)?;
+        Ok::<Value, anyhow::Error>(status(Some(&credentials)))
+    }
+    .await;
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn companion_request(
+    request_id: String,
+    action: String,
+    input: Value,
+    state: State<'_, Mutex<ClientState>>,
+) -> Result<Value, String> {
+    let mutation = is_mutation(&action);
+    let mut dispatch_started = false;
+    let result = async {
+        validate_command(&request_id, &action, &input)?;
+        let mut client_state = state.lock().await;
+        let credentials = load_credentials()?.context("Pair with the Mac first")?;
+        let host = credentials
+            .host
+            .clone()
+            .context("Pair with the Mac first")?;
+        let endpoint = endpoint(&mut client_state, &credentials).await?;
+        // A suspended request must not hold the state lock and prevent recovery.
+        let mut is_retry = false;
+        if mutation {
+            let next = PendingCommand { version: 1, host_id: host.id.to_string(), request_id: request_id.clone(), action: action.clone(), input: input.clone() };
+            next.validate(&host.id.to_string())?;
+            if client_state.mutation_in_flight {
+                return Ok(json!({"ok":false,"error":"A command is still in progress"}));
+            }
+            if let Some(saved) = load_private::<PendingCommand>(PENDING_ACCOUNT)? {
+                is_retry = true;
+                saved.validate(&host.id.to_string())?;
+                if !saved.matches_retry(&next) {
+                    return Ok(json!({"ok":false,"error":"Review the pending command before sending another"}));
+                }
+            }
+            // Persist before any network dispatch; a killed app can recover the same ID.
+            save_private(PENDING_ACCOUNT, &next)?;
+            client_state.mutation_in_flight = true;
+        }
+        drop(client_state);
+        // From this point a mutation may have reached the Mac. Every earlier
+        // failure is a definitive local rejection, so the phone must not
+        // invent a recovery command for it.
+        dispatch_started = true;
+        let response = exchange(
+            &endpoint,
+            &host,
+            &Request::Command {
+                version: VERSION,
+                request_id,
+                action,
+                input,
+            },
+        )
+        .await;
+        if mutation {
+            let mut state = state.lock().await;
+            state.mutation_in_flight = false;
+            if let Ok(ref value) = response {
+                if definitive_response(value, is_retry) { delete_private(PENDING_ACCOUNT)?; }
+            }
+        }
+        response
+    }
+    .await;
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => Ok(json!({
+            "ok": false,
+            "error": error.to_string(),
+            "outcomeUnknown": mutation && dispatch_started,
+        })),
+    }
+}
+
+#[tauri::command]
+async fn companion_pending(state: State<'_, Mutex<ClientState>>) -> Result<Value, String> {
+    let _state = state.lock().await;
+    let result = (|| -> Result<Value> {
+        let Some(saved) = load_private::<PendingCommand>(PENDING_ACCOUNT)? else {
+            return Ok(json!([]));
+        };
+        let credentials = load_credentials()?.context("Saved command needs its paired Mac")?;
+        let host = credentials
+            .host
+            .context("Saved command needs its paired Mac")?;
+        saved.validate(&host.id.to_string())?;
+        Ok(
+            json!([{"requestId": saved.request_id, "action": saved.action, "input": saved.input, "error":"The previous command has not been confirmed. Review the conversation or retry the same command."}]),
+        )
+    })();
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn companion_dismiss_pending(
+    request_id: String,
+    state: State<'_, Mutex<ClientState>>,
+) -> Result<(), String> {
+    let state = state.lock().await;
+    let result = (|| -> Result<()> {
+        ensure!(
+            !state.mutation_in_flight,
+            "Wait for the current command before clearing it"
+        );
+        if let Some(saved) = load_private::<PendingCommand>(PENDING_ACCOUNT)? {
+            ensure!(
+                saved.request_id == request_id,
+                "The pending command changed; reopen the app to review it"
+            );
+            delete_private(PENDING_ACCOUNT)?;
+        }
+        Ok(())
+    })();
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn companion_reconnect(state: State<'_, Mutex<ClientState>>) -> Result<(), String> {
+    let result = async {
+        let mut state = state.lock().await;
+        let credentials = load_credentials()?.context("Pair with the Mac first")?;
+        // Rebuild network sockets after iOS suspension, retaining the saved identity.
+        // Interrupted mutations remain uncertain; the UI never replays them here.
+        if let Some(previous) = state.endpoint.take() {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(3), previous.close()).await;
+        }
+        endpoint(&mut state, &credentials).await?;
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn companion_forget(state: State<'_, Mutex<ClientState>>) -> Result<(), String> {
+    let mut state = state.lock().await;
+    if state.mutation_in_flight
+        || load_private::<PendingCommand>(PENDING_ACCOUNT)
+            .map_err(|e| e.to_string())?
+            .is_some()
+    {
+        return Err("Review the pending command before forgetting this Mac".into());
+    }
+    delete_private(ACCOUNT).map_err(|error| error.to_string())?;
+    if let Some(endpoint) = state.endpoint.take() {
+        endpoint.close().await;
+    }
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|_app| {
+            #[cfg(target_os = "ios")]
+            _app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
+            Ok(())
+        })
+        .manage(Mutex::new(ClientState::default()))
+        .invoke_handler(tauri::generate_handler![
+            companion_status,
+            companion_pair,
+            companion_request,
+            companion_pending,
+            companion_dismiss_pending,
+            companion_reconnect,
+            companion_forget
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
