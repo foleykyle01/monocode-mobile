@@ -1,4 +1,44 @@
 /* Transcript-only polish. Kept separate so the phone shell can own its layout. */
+.activity-tree { margin: 8px 0 18px; color: var(--companion-muted); font-size: 12px; }
+.activity-tree__heading { display: flex; align-items: center; gap: 7px; min-height: 40px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.activity-tree__heading > span:last-child { opacity: .65; }
+.activity-tree__heading > span:first-child { display: inline-flex; transition: transform .16s ease; }
+.activity-tree__chevron--open { transform: rotate(90deg); }
+.activity-tree ol { list-style: none; margin: 0 0 0 7px; padding: 0 0 0 20px; }
+.activity-tree li { position: relative; display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 7px 0; }
+.activity-tree li::before { content: ""; position: absolute; left: -20px; top: -7px; bottom: 0; width: 12px; border-left: 1px solid var(--companion-stroke); }
+.activity-tree li::after { content: ""; position: absolute; left: -20px; top: 15px; width: 12px; border-top: 1px solid var(--companion-stroke); }
+.activity-tree li:last-child::before { bottom: calc(100% - 16px); }
+.activity-tree li > svg { flex: 0 0 auto; margin-top: 3px; }
+.activity-tree li > span { min-width: 0; overflow-wrap: anywhere; }
+.activity-tree .action-details { flex: 1; min-width: 0; }
+.activity-tree .action-details summary { display: flex; align-items: center; gap: 8px; min-height: 24px; cursor: pointer; }
+.activity-tree .action-details summary > :last-child { flex-shrink: 0; }
+.activity-tree .action-details__summary { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.activity-tree .action-details p { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 var(--companion-mono); }
+.activity-tree li[data-state="rejected"] > svg { color: var(--companion-danger); }
+.phone-question { min-width: 0; padding: 0; margin: 18px 0; border: 0; font: 13px/1.5 var(--companion-sans); }
+.phone-question form { padding: 14px; border: 1px solid var(--companion-stroke); border-radius: 12px; background: var(--companion-panel); }
+.phone-question form > div:first-child, .phone-question form > div:last-child { display: flex; align-items: center; gap: 8px; color: var(--companion-muted); font-size: 12px; }
+.phone-question form > div:first-child > span:first-of-type { flex: 1; min-width: 0; }
+.phone-question form > div:first-child > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.phone-question form > div:last-child { margin-top: 12px; justify-content: flex-end; flex-wrap: wrap; }
+.phone-question form > div:last-child > span { margin-right: auto; }
+.phone-question fieldset { min-width: 0; padding: 0; border: 0; margin: 8px 0 0; }
+.phone-question p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.phone-question [role="group"] { display: grid; gap: 6px; }
+.phone-question button { min-height: 38px; border: 0; border-radius: 7px; padding: 6px 10px; background: transparent; color: inherit; font: inherit; }
+.phone-question button[aria-pressed] { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; padding: 10px; border: 1px solid var(--companion-stroke); }
+.phone-question button[aria-pressed="true"] { background: var(--companion-raised); border-color: var(--companion-muted); }
+.phone-question button[aria-pressed] > span:first-child { display: grid; place-items: center; flex: 0 0 16px; height: 16px; border: 1px solid var(--companion-muted); border-radius: 50%; margin-top: 2px; }
+.phone-question button[aria-pressed] svg { width: 12px; height: 12px; }
+.phone-question button[aria-pressed] > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.phone-question button[aria-pressed] > span:last-child > span { display: block; }
+.phone-question button[aria-pressed] > span:last-child > span + span { color: var(--companion-muted); font-size: 12px; margin-top: 3px; }
+.phone-question button[type="submit"] { background: var(--companion-content); color: var(--companion-bg); }
+.phone-question button:disabled, .phone-question:disabled { opacity: .5; }
+.phone-question input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--companion-stroke); border-radius: 7px; background: transparent; color: inherit; margin-top: 6px; padding: 8px; font: 16px var(--companion-sans); }
+.phone-question :focus-visible { outline: 2px solid var(--companion-accent); outline-offset: 2px; }
 .history-control {
   display: grid;
   justify-items: center;
@@ -61,5 +101,6 @@
 }
 @keyframes transcript-shimmer { from { background-position: 100% center; } to { background-position: 0% center; } }
 @media (prefers-reduced-motion: reduce) {
+  .activity-tree__heading > span:first-child { transition: none; }
   .transcript-working__shimmer { background-image: none; color: var(--companion-muted); animation: none; }
 }

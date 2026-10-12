@@ -27,3 +27,23 @@
 .changes-diff details { padding: 6px 10px; color: var(--companion-muted); font-size: calc(11px * var(--companion-ui-scale)); }
 .changes-diff summary { min-height: 32px; align-content: center; cursor: pointer; }
 .changes-page { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.session-changes { border: 1px solid var(--companion-stroke); border-radius: 12px; background: var(--companion-panel); margin: 18px 0; overflow: hidden; font-size: 12px; }
+.session-changes header { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: 1px solid var(--companion-stroke); }
+.session-changes header > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.session-changes header > svg { color: var(--companion-muted); flex-shrink: 0; }
+.session-changes button { font: inherit; color: inherit; cursor: pointer; }
+.session-changes header button, .session-changes__notice button { border: 1px solid var(--companion-stroke); border-radius: 7px; background: var(--companion-raised); padding: 7px 10px; min-height: 36px; }
+.session-changes__counts { font-family: var(--companion-mono); }
+.session-changes__counts > :first-child { color: var(--companion-link); }
+.session-changes__counts > :last-child { color: var(--companion-muted); }
+.session-changes__file { display: flex; align-items: center; width: 100%; min-width: 0; gap: 8px; border: 0; background: transparent; text-align: left; padding: 10px 12px; min-height: 42px; }
+.session-changes__file > svg { flex-shrink: 0; }
+.session-changes__file > span:not([aria-hidden]) { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--companion-mono); }
+.session-changes__file > span[aria-hidden] { display: inline-block; flex: 0 0 16px; }
+.session-changes__file > span[aria-hidden] svg { display: block; width: 100%; height: 100%; }
+.session-changes__file > small { flex-shrink: 0; max-width: 32%; color: var(--companion-muted); font-size: 11px; }
+.session-changes__file:hover:not(:disabled) { background: var(--companion-raised); }
+.session-changes__file:disabled { cursor: default; }
+.session-changes__more { display: flex; align-items: center; gap: 7px; width: 100%; padding: 12px; border: 0; border-top: 1px solid var(--companion-stroke); background: transparent; color: var(--companion-muted) !important; text-align: left; }
+.session-changes__notice { padding: 0 12px; margin: 10px 0; color: var(--companion-muted); font-size: 12px; }
+.session-changes .changes-diff { border-left: 0; border-right: 0; border-radius: 0; }

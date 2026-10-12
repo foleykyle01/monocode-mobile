@@ -62,6 +62,7 @@ it("attaches to an existing Codex owner, reads output, answers approval, follows
     flush() {}, sessions: () => [session], eligible: () => true, turn: () => turn,
     send: async (_id, prompt) => { start(prompt); return true; },
     approve: (id, requestId, decision) => codexAdapter.respondApproval(id, requestId, decision),
+    answer: (id, requestId, reply) => codexAdapter.respondQuestion!(id, requestId, reply),
     stop: async (id) => { await codexAdapter.cancelTurn(id); turn++; },
   }, "integration-epoch");
   const input = () => ({ epoch: bridge.epoch, sessionId: session.id, turn });
@@ -75,6 +76,17 @@ it("attaches to an existing Codex owner, reads output, answers approval, follows
   const approval = session.blocks.find(b => b.approval)!;
   await bridge.handle("approve", "sessions.approve", { ...input(), blockId: approval.id, decision: "allow" });
   await vi.waitFor(() => expect(sent.find(m => m.id === 91)?.result).toEqual({ decision: "accept" }));
+
+  onLine(JSON.stringify({ id: 92, method: "item/tool/requestUserInput", params: {
+    threadId: "existing-thread", turnId: "turn-1", itemId: "question",
+    questions: [{ id: "section", header: "Section type", question: "Which section?", isOther: true, options: [{ label: "Tasks" }, { label: "Docs" }] }],
+  } }));
+  await vi.waitFor(() => expect(session.pendingQuestion).toBeDefined());
+  const prompt = session.pendingQuestion!;
+  await bridge.handle("answer", "sessions.answer", { ...input(), questionId: prompt.requestId, reply: { kind: "answered", answers: { section: [prompt.questions[0].options[1].id] } } });
+  await bridge.handle("answer", "sessions.answer", { ...input(), questionId: prompt.requestId, reply: { kind: "answered", answers: { section: [prompt.questions[0].options[1].id] } } });
+  await vi.waitFor(() => expect(sent.find(m => m.id === 92)?.result).toEqual({ answers: { section: { answers: ["Docs"] } } }));
+  expect(sent.filter(m => m.id === 92)).toHaveLength(1);
 
   onLine(JSON.stringify({ method: "turn/completed", params: { turn: { id: "turn-1", status: "completed" } } }));
   await completion!;

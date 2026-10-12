@@ -1,6 +1,9 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Streamdown, type Components } from "streamdown";
-import type { CompanionBlock } from "./types";
+import type { CompanionBlock, SessionRead } from "./types";
+import type { UserQuestionReply } from "../../src/features/sessions/model/userQuestion";
+import { QuestionCard } from "./QuestionCard";
+import { Check, ChevronRight, Terminal, File, Search, Wrench } from "../../src/shared/ui/icons";
 import "./transcript.css";
 
 // The desktop uses Streamdown too. File/media actions stay on the Mac until
@@ -29,10 +32,10 @@ function actionStatus(block: CompanionBlock) {
 }
 
 function actionSummary(text: string) {
-  return text.trim().split("\n")[0] || "Action";
+  return text.trim().split("\n")[0].slice(0, 300) || "Action";
 }
 
-export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false }: {
+export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes }: {
   blocks: CompanionBlock[];
   loading: boolean;
   onApprove: (block: CompanionBlock, decision: "allow" | "deny") => void;
@@ -46,6 +49,12 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   /** Mirrors the desktop live-turn state; approval remains on its card. */
   busy?: boolean;
   needsApproval?: boolean;
+  pendingQuestion?: SessionRead["pendingQuestion"];
+  questionUnavailable?: boolean;
+  questionKey?: string;
+  onAnswer?: (requestId: number, reply: UserQuestionReply) => void;
+  onQuestionInteraction?: (requestId: number) => Promise<unknown>;
+  changes?: ReactNode;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -53,7 +62,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   const snapshot = useRef<ScrollSnapshot | undefined>(undefined);
   const [below, setBelow] = useState(false);
   const approval = blocks.find(block => block.approval && !block.approval.decided);
-  const showWorking = busy && !needsApproval;
+  const showWorking = busy && !needsApproval && !pendingQuestion && !questionUnavailable;
 
   function measure() {
     const element = viewport.current;
@@ -114,7 +123,9 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
         </div> : null}
         {loading && blocks.length === 0 ? <p className="empty-transcript" role="status">Loading conversation…</p> : null}
         {!loading && !busy && blocks.length === 0 ? <div className="empty-transcript"><span className="empty-line" aria-hidden="true" /><p>No messages yet. Send a message to begin.</p></div> : null}
-        {blocks.map(block => {
+        {transcriptRows(blocks).map(row => {
+          if (Array.isArray(row)) return <ActivityTree key={row[0].id} blocks={row} />;
+          const block = row;
           const tool = block.role === "tool" || block.role === "approval";
           const pending = !!block.approval && !block.approval.decided;
           const shortened = block.truncated ? <span className="truncated-note">Preview shortened · review the full message on your Mac</span> : null;
@@ -132,6 +143,9 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
             </>}
           </article>;
         })}
+        {pendingQuestion && onAnswer && onQuestionInteraction ? <QuestionCard key={`${questionKey}:${pendingQuestion.requestId}`} prompt={pendingQuestion} disabled={mutationsDisabled || approvalBusy} onAnswer={onAnswer} onInteraction={onQuestionInteraction} /> : null}
+        {questionUnavailable ? <p className="truncated-note" role="status">The agent has a question. Open this session on your Mac to answer it.</p> : null}
+        {changes}
         {showWorking ? <p className="transcript-working" role="status" data-transcript-working>
           <span className="transcript-working__shimmer">Working…</span>
         </p> : null}
@@ -139,4 +153,39 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     </div>
     {below ? <button className={`jump-latest ${approval ? "jump-latest--approval" : ""}`} type="button" onClick={jump}>{approval ? "Review pending action" : "Latest messages"}<span aria-hidden="true">↓</span></button> : null}
   </div>;
+}
+
+function transcriptRows(blocks: CompanionBlock[]): (CompanionBlock | CompanionBlock[])[] {
+  const rows: (CompanionBlock | CompanionBlock[])[] = [];
+  for (const block of blocks) {
+    const activity = (block.role === "tool" || block.role === "approval" || block.role === "reasoning") && !(block.approval && !block.approval.decided);
+    const last = rows[rows.length - 1];
+    if (activity && Array.isArray(last)) last.push(block);
+    else rows.push(activity ? [block] : block);
+  }
+  return rows;
+}
+
+function ActivityTree({ blocks }: { blocks: CompanionBlock[] }) {
+  const working = blocks.some(block => block.activity?.state === "pending");
+  const [expanded, setExpanded] = useState<boolean>();
+  const open = expanded ?? working;
+  return <section className="activity-tree" aria-label="Agent activity">
+    <button type="button" className="activity-tree__heading" aria-expanded={open} onClick={() => setExpanded(!open)}>
+      <span className={open ? "activity-tree__chevron--open" : ""}><ChevronRight size={14} /></span>
+      <span className={working ? "transcript-working__shimmer" : ""}>{working ? "Working" : "Worked"}</span>
+      <span>{blocks.length} {blocks.length === 1 ? "step" : "steps"}</span>
+    </button>
+    {open ? <ol>{blocks.map(block => {
+      const kind = block.activity?.kind?.toLowerCase() ?? "";
+      const Icon = /search|list|glob|grep/.test(kind) ? Search : /read|write|edit/.test(kind) ? File : /shell|exec|bash/.test(kind) ? Terminal : Wrench;
+      return <li key={block.id} data-state={block.activity?.state}>
+        <Icon size={14} aria-hidden="true" />
+        <details className="action-details"><summary><span className="action-details__summary">{block.role === "reasoning" ? "Thinking" : block.activity?.name || block.activity?.label || actionSummary(block.text)}</span>{block.activity?.state === "accepted" ? <Check size={12} aria-label="Completed" /> : <small>{block.approval?.decided ? actionStatus(block) : block.activity?.state === "rejected" ? "Failed" : block.activity?.state === "pending" ? "Running" : "Details"}</small>}</summary><p>{block.text}{block.truncated ? <span className="truncated-note">Preview shortened · review on your Mac</span> : null}</p>
+          {block.activity?.steps?.length ? <ol aria-label="Subagent activity">{block.activity.steps.map(step => <li key={step.id} data-state={step.state}><span>{step.label}</span></li>)}</ol> : null}
+          {block.activity?.stepsTruncated ? <span className="truncated-note">Latest 20 steps · full history on your Mac</span> : null}
+        </details>
+      </li>;
+    })}</ol> : null}
+  </section>;
 }

@@ -100,7 +100,7 @@ export function createCompanionClient(
       const saved = await call<PendingMutation[]>("companion_pending");
       if (!Array.isArray(saved) || saved.length > 1) throw new CompanionRequestError("Saved command recovery is unavailable");
       for (const item of saved) {
-        if (!item || typeof item.requestId !== "string" || !["sessions.send", "sessions.approve", "sessions.stop", "sessions.configure", "sessions.create"].includes(item.action) || typeof item.input?.sessionId !== "string" || (item.action === "sessions.create" && typeof item.input.projectId !== "string")) {
+        if (!item || typeof item.requestId !== "string" || !["sessions.send", "sessions.approve", "sessions.answer", "sessions.question.keepOpen", "sessions.stop", "sessions.configure", "sessions.create"].includes(item.action) || typeof item.input?.sessionId !== "string" || (item.action === "sessions.create" && typeof item.input.projectId !== "string")) {
           throw new CompanionRequestError("Saved command recovery is invalid");
         }
       }
@@ -160,9 +160,9 @@ export function createCompanionClient(
     if (!epoch || input.epoch !== epoch) {
       throw new CompanionRequestError("Desktop connection changed; refresh before acting");
     }
-    // Mutation receipts compare the exact payload. Copy the shallow command
-    // object so a caller changing a draft cannot alter a pending retry.
-    return { ...input };
+    // Receipts compare the exact payload, including nested question answers.
+    // Edits to a draft must never alter a pending retry.
+    return structuredClone(input);
   }
 
   function isKnownRejection(message: string) {
@@ -214,6 +214,8 @@ export function createCompanionClient(
     reconnect,
     sessionsList,
     sessionRead,
+    reviewList: (sessionId: string) => request<import("../../src/features/companion/model/companionReview").CompanionReview & { epoch: string; turn: number }>("sessions.review.list", { sessionId }),
+    reviewRead: (sessionId: string, relative: string) => request<import("../../src/features/companion/model/companionReview").CompanionReviewDiff & { epoch: string; turn: number }>("sessions.review.read", { sessionId, relative }),
     inboxList: () => request<CompanionInboxList & { epoch: string }>("inbox.list"),
     inboxRead: (key: string, offset?: number) => request<CompanionInboxRead & { epoch: string }>("inbox.read", {
       key,

@@ -8,7 +8,7 @@
   <strong>Continue your Mac coding-agent sessions from your iPhone.</strong>
 </p>
 
-An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/monocode). Check an agent's progress, send a follow-up, answer an approval prompt, or stop a turn while away from your desk. The phone controls the same sessions already running on your Mac; agent processes, provider credentials, project files, and authoritative conversation history remain on the Mac.
+An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/monocode). Follow an agent's tool activity, send a follow-up, answer questions and approval prompts, review recorded file changes, or stop a turn while away from your desk. The phone controls the same sessions already running on your Mac; agent processes, provider credentials, project files, and authoritative conversation history remain on the Mac.
 
 **Development prototype:** this fork includes a modified Mac host and a native Tauri iOS client. It is an independent experiment, not an official MonoCode mobile release. The unmodified upstream desktop app cannot host this companion. Building for a physical iPhone requires Xcode and Apple development signing; no App Store or TestFlight release is available.
 

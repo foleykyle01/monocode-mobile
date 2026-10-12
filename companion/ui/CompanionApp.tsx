@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import "./companion.css";
 import { Transcript } from "./Transcript";
+import { SessionChanges } from "./SessionChanges";
 import { MonoMascot, Navigation } from "./Navigation";
 import { MonoDetailsView } from "./MonoDetailsView";
 import { ConnectionNotice } from "./ConnectionNotice";
@@ -61,7 +62,7 @@ const DEMO_NAVIGATION: CompanionNavigation = {
 };
 const DEMO_SESSIONS: CompanionSession[] = [
   { id: "mono-scout", title: "Scout", cwd: "/Users/kyle/Code/monocode", harness: "claude", model: "Opus 5.5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: false },
-  { id: "mono-atlas", title: "Atlas", cwd: "/Users/kyle/Code/notes", harness: "codex", model: "GPT-5", runtimeMode: "supervised", busy: false, turn: 0, needsApproval: true },
+  { id: "mono-atlas", title: "Atlas", cwd: "/Users/kyle/Code/notes", harness: "codex", model: "GPT-5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: true, needsQuestion: true },
   {
     id: "demo-shipyard",
     projectId: "monocode",
@@ -119,6 +120,9 @@ const DEMO_BLOCKS: Record<string, CompanionBlock[]> = {
   "demo-docs": [
     ...Array.from({ length: 12 }, (_, index): CompanionBlock => ({ id: `history-${index}`, role: index % 2 ? "assistant" : "user", text: index % 2 ? "The project keeps its existing desktop session. I’ll preserve the draft and the current working directory." : `Review item ${Math.floor(index / 2) + 1} from the release checklist.` })),
     { id: "d4", role: "user", text: "Summarize the changes from this morning." },
+    { id: "tool-1", role: "tool", text: "Read the taskboard configuration and existing sections.", activity: { label: "Read tasks.json", kind: "read", state: "accepted" } },
+    { id: "tool-2", role: "tool", text: "Found three active project tasks.", activity: { label: "List Taskboard", kind: "list", state: "accepted" } },
+    { id: "tool-3", role: "tool", text: "Updated the section documentation.", activity: { label: "Edit README.md", kind: "edit", state: "accepted" } },
     { id: "d5", role: "assistant", text: "## Ready for review\n\nYou can create a session inside a project and continue an existing Mono conversation. **Your Mac owns the session.**\n\n- Project icons and appearance follow the desktop.\n- Model and access changes apply to the next message.\n- Earlier messages remain available as the conversation grows.\n\n```ts\nconst session = await workspace.createSession(project.id);\n```\n\n| Check | Result |\n| --- | --- |\n| Project hierarchy | Preserved |\n| Session defaults | Inherited from Mac |\n| Long conversation | Load earlier messages |\n\n> Keep the Mac awake while using the companion.\n\nThis is sample content for reviewing the interface." },
   ],
   "demo-scratch": [
@@ -139,6 +143,10 @@ function demoClient() {
   const epoch = DEMO_EPOCH;
   const sessions = DEMO_SESSIONS.map((session) => ({ ...session }));
   const blocks = structuredClone(DEMO_BLOCKS);
+  let question: SessionRead["pendingQuestion"] = { requestId: 7, title: "Section type", questions: [{ id: "section", header: "Section type", prompt: "What kind of section would you like to add?", multiSelect: false, allowCustom: true, options: [
+    { id: "tasks", label: "New status column in tasks.json", description: "Add a category alongside the existing tasks." },
+    { id: "docs", label: "New section in README.md", description: "Add a documentation section to the README." },
+  ] }] };
   const workspace = createWorkspaceDemo(epoch);
   const navigation = () => ({ ...DEMO_NAVIGATION, monos: DEMO_NAVIGATION.monos.map(mono => {
     const session = sessions.find(entry => entry.id === mono.sessionId)!;
@@ -194,6 +202,8 @@ function demoClient() {
             session: { ...session },
             blocks: transcript.slice(start, end),
             configuration: DEMO_CONFIGURATION,
+            pendingQuestion: session.id === "mono-atlas" ? question : undefined,
+            reviewAvailable: true,
             nextBefore: start || null,
             totalBlocks: (blocks[session.id] || []).length,
           },
@@ -201,6 +211,12 @@ function demoClient() {
       }
       const session = sessions.find(entry => entry.id === input.sessionId);
       if (!session) return { ok: false, error: "Sample session unavailable" } as T;
+      if (action === "sessions.review.list") return { ok: true, result: { epoch, turn: session.turn, total: session.id === "demo-docs" ? 2 : 0, files: session.id === "demo-docs" ? [{ relative: "README.md", additions: 3, deletions: 1, exact: true }, { relative: "src/tasks.json", additions: 2, deletions: 0, exact: false }] : [], additions: 5, deletions: 1, truncated: false } } as T;
+      if (action === "sessions.review.read") return { ok: true, result: { epoch, turn: session.turn, relative: input.relative, original: "# Taskboard\nOld section\n", current: "# Taskboard\n\n## Sections\nGroup related tasks into sections.\n", unavailable: false } } as T;
+      if (action === "sessions.answer") {
+        question = undefined; session.busy = false; session.needsApproval = false; session.needsQuestion = false;
+        blocks[session.id].push({ id: "question-replied", role: "assistant", text: "Answer received in this preview. The live app sends your choice back to the agent on your Mac." });
+      }
       if (action === "sessions.configure") {
         if (typeof input.model === "string") session.model = input.model;
         if (typeof input.harness === "string") session.harness = input.harness;
@@ -573,7 +589,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     if (actingRef.current || pendingRef.current || offlineRef.current || displayOffline || !networkOnline || reconnecting) return;
     if (action === "sessions.create") {
       if (!creationEpoch || input.epoch !== creationEpoch) return;
-    } else if (!activeRead || activeRead.session.id !== selectedId) return;
+    } else if (!activeRead || activeRead.session.id !== selectedId || input.sessionId !== selectedIdRef.current) return;
     if (action === "sessions.send" && (selected?.busy || !input.text?.trim() || input.text.length > 32_768)) return;
     if (action === "sessions.approve") {
       const block = activeRead?.blocks.find((entry) => entry.id === input.blockId);
@@ -581,7 +597,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     }
     if (action === "sessions.stop" && !selected?.busy) return;
     actingRef.current = true;
-    setActing(true);
+    if (action !== "sessions.question.keepOpen") setActing(true);
     setError(undefined);
     try {
       await client.mutate(action, input);
@@ -781,7 +797,13 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
             </header>
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
             {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
-            <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null && !displayOffline ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled} onApprove={(block, decision) => { if (block.approval && activeRead) void action("sessions.approve", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, blockId: block.id, decision }); }} />
+            <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null && !displayOffline ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
+              pendingQuestion={activeRead?.pendingQuestion} questionUnavailable={activeRead?.questionUnavailable}
+              questionKey={`${activeRead?.epoch}:${activeRead?.session.turn}`}
+              changes={activeRead?.reviewAvailable ? <SessionChanges key={selected.id} client={client} sessionId={selected.id} epoch={activeRead.epoch} turn={activeRead.session.turn} busy={selected.busy} offline={displayOffline} /> : undefined}
+              onQuestionInteraction={async questionId => { if (activeRead) return action("sessions.question.keepOpen", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId }); }}
+              onAnswer={(questionId, reply) => { if (activeRead) void action("sessions.answer", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId, reply }); }}
+              onApprove={(block, decision) => { if (block.approval && activeRead) void action("sessions.approve", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, blockId: block.id, decision }); }} />
             <form className="composer" onSubmit={submit}><div className="composer-input"><textarea ref={composerElement} value={composer} onChange={(event) => setComposer(event.target.value)} placeholder={selected.busy ? "Draft a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} />{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button>}</div><SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>

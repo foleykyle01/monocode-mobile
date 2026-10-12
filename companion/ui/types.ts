@@ -63,6 +63,7 @@ export type CompanionSession = {
   busy: boolean;
   turn: number;
   needsApproval: boolean;
+  needsQuestion?: boolean;
 };
 
 export type CompanionApproval = {
@@ -76,6 +77,8 @@ export type CompanionBlock = {
   text: string;
   truncated?: boolean;
   approval?: CompanionApproval;
+  activity?: { label: string; state: "pending" | "accepted" | "rejected"; kind?: string; name?: string;
+    steps?: { id: string; label: string; state: "pending" | "accepted" | "rejected" }[]; stepsTruncated?: boolean };
 };
 
 export type SessionsList = {
@@ -109,6 +112,9 @@ export type SessionRead = {
   totalBlocks: number;
   configuration?: SessionConfiguration;
   chatBackground?: CompanionChatBackground | null;
+  pendingQuestion?: import("../../src/features/sessions/model/userQuestion").UserQuestionPrompt;
+  questionUnavailable?: boolean;
+  reviewAvailable?: boolean;
 };
 
 export type SessionConfiguration = {
@@ -124,6 +130,8 @@ export type CompanionDesktopResponse<T = unknown> = {
 };
 
 export type CompanionAction =
+  | "sessions.review.list" | "sessions.review.read"
+  | "sessions.answer" | "sessions.question.keepOpen"
   | "inbox.list" | "inbox.read"
   | "changes.list" | "changes.read"
   | "monos.read"
@@ -136,6 +144,7 @@ export type CompanionAction =
   | "sessions.configure";
 
 export type CompanionMutationAction =
+  | "sessions.answer" | "sessions.question.keepOpen"
   | "sessions.create"
   | "sessions.send"
   | "sessions.approve"
@@ -153,6 +162,8 @@ export type MutationInput = {
   harness?: string;
   model?: string;
   runtimeMode?: string;
+  questionId?: number;
+  reply?: import("../../src/features/sessions/model/userQuestion").UserQuestionReply;
 };
 
 export type PendingMutation = {

@@ -2,6 +2,23 @@ import { describe, expect, it } from "vitest";
 import { createCompanionClient, CompanionRequestError } from "./client";
 
 describe("companion client mutation recovery", () => {
+  it("keeps nested question answers immutable for an uncertain retry", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command !== "companion_request") throw new Error("Unexpected command");
+      if (args?.action === "sessions.list") return { ok: true, result: { epoch: "e", sessions: [] } } as T;
+      calls.push(args!);
+      if (calls.length === 1) return { ok: false, error: "timeout", outcomeUnknown: true } as T;
+      return { ok: true, result: { epoch: "e", accepted: true } } as T;
+    }, { native: true });
+    await client.sessionsList();
+    const reply = { kind: "answered" as const, answers: { q: ["one"] } };
+    await expect(client.mutate("sessions.answer", { epoch: "e", sessionId: "s", turn: 1, questionId: 2, reply })).rejects.toMatchObject({ uncertain: true });
+    reply.answers.q[0] = "two";
+    await client.retry(client.pendingMutations()[0]);
+    expect(calls[1].requestId).toBe(calls[0].requestId);
+    expect(calls[1].input).toMatchObject({ reply: { answers: { q: ["one"] } } });
+  });
   it("routes Inbox and Changes reads through the native request boundary", async () => {
     const requests: Array<Record<string, unknown>> = [];
     const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {

@@ -10,6 +10,10 @@ These counts describe the source integration checkpoint. They do not claim a new
 
 ## Physical-device evidence
 
+Matching companion Mac 0.13.0 and signed iPhone builds were installed on October 12, 2026 with structured question replies, the connected tool activity tree, and read-only session checkpoint review. The user confirmed reconnection with the existing pairing and both sample projects. A real Claude single-choice question was answered on the phone, and the Mac independently recorded the expected reply with no pending question. See [chat parity](chat-parity.md) for implementation boundaries and remaining checks.
+
+The chat update passed 79 desktop bridge/shared-question tests, 89 phone UI/client tests, six native journal tests, four core protocol/auth tests, ten native host control tests, both TypeScript checks, frontend/native builds, and private CI. Native preview inspection exercised custom answers, tool expansion, and recorded diff review. Physical coverage of the new custom-answer keyboard, timed expiry, other providers, and recorded diffs remains pending.
+
 An earlier signed iPhone build was paired to the isolated Mac host. Same-session delivery after lock/reopen was independently confirmed in the Mac transcript. A separate Wi-Fi-off cellular check was user-confirmed, with the message and reply independently recorded in that same session. Automatic versus manual reconnect was not distinguished in the resume check.
 
 Allow completed a bounded test write; Deny and Stop prevented their test files from being created on an earlier device build. These checks establish exercised controls, not coverage of every provider, permission mode, lifecycle race, or later source revision.

@@ -18,6 +18,8 @@ pub fn is_mutation(action: &str) -> bool {
         action,
         "sessions.send"
             | "sessions.approve"
+            | "sessions.answer"
+            | "sessions.question.keepOpen"
             | "sessions.stop"
             | "sessions.configure"
             | "sessions.create"
@@ -117,6 +119,24 @@ mod tests {
         assert!(original.matches_retry(&restored));
         let mut changed = restored;
         changed.input["runtimeMode"] = json!("autonomous");
+        assert!(!original.matches_retry(&changed));
+    }
+
+    #[test]
+    fn question_answers_preserve_nested_choices_for_recovery() {
+        let mut original = command();
+        original.action = "sessions.answer".into();
+        original.input = json!({"epoch":"e", "sessionId":"s", "turn":1, "questionId":7,
+            "reply":{"kind":"answered","answers":{"section":["docs"]}}});
+        let restored: PendingCommand =
+            serde_json::from_slice(&serde_json::to_vec(&original).unwrap()).unwrap();
+        restored.validate("host-one").unwrap();
+        assert!(is_mutation(&restored.action));
+        assert!(is_mutation("sessions.question.keepOpen"));
+        assert!(!is_mutation("sessions.review.read"));
+        assert!(original.matches_retry(&restored));
+        let mut changed = restored;
+        changed.input["reply"]["answers"]["section"] = json!(["tasks"]);
         assert!(!original.matches_retry(&changed));
     }
 

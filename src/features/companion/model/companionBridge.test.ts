@@ -26,6 +26,96 @@ function fixture() {
 }
 
 describe("desktop companion owner boundary", () => {
+  function questionFixture() {
+    const f = fixture();
+    f.session.busy = true;
+    f.session.pendingQuestion = { requestId: 7, questions: [{ id: "section", prompt: "What kind of section?", multiSelect: false, allowCustom: true, options: [{ id: "tasks", label: "Tasks" }, { id: "docs", label: "Docs" }] }] };
+    f.owner.answer = vi.fn();
+    f.owner.keepQuestionOpen = vi.fn();
+    const reply = { kind: "answered", answers: { section: ["tasks"] } };
+    return { ...f, reply, answer: () => ({ ...f.input(), questionId: 7, reply }) };
+  }
+
+  it("exports the exact question and accepts its answer once across retries", async () => {
+    const { bridge, session, owner, answer, reply } = questionFixture();
+    expect(await bridge.handle("read", "sessions.read", { sessionId: session.id })).toMatchObject({ pendingQuestion: session.pendingQuestion, session: { needsQuestion: true, needsApproval: true } });
+    await bridge.handle("answer", "sessions.answer", answer());
+    await bridge.handle("answer", "sessions.answer", answer());
+    await expect(bridge.handle("other-phone", "sessions.answer", answer())).rejects.toThrow("no longer pending");
+    expect(owner.answer).toHaveBeenCalledExactlyOnceWith(session.id, 7, reply);
+  });
+
+  it("keeps a deadline open without consuming the question, then permits skip", async () => {
+    const { bridge, session, owner, input } = questionFixture();
+    await bridge.handle("interact", "sessions.question.keepOpen", { ...input(), questionId: 7 });
+    expect(owner.keepQuestionOpen).toHaveBeenCalledExactlyOnceWith(session.id, 7);
+    await bridge.handle("skip", "sessions.answer", { ...input(), questionId: 7, reply: { kind: "skipped" } });
+    expect(owner.answer).toHaveBeenCalledExactlyOnceWith(session.id, 7, { kind: "skipped" });
+  });
+
+  it.each([
+    { kind: "answered", answers: { missing: ["tasks"] } },
+    { kind: "answered", answers: { section: ["invented"] } },
+    { kind: "answered", answers: { section: ["tasks", "docs"] } },
+    { kind: "answered", answers: { section: ["tasks", "tasks"] } },
+    { kind: "answered", answers: { section: ["__custom__"] } },
+    { kind: "answered", answers: { section: ["tasks"] }, custom: { section: "hidden extra" } },
+    { kind: "answered", answers: {}, custom: { section: "x".repeat(8193) } },
+    { kind: "skipped", extra: true },
+  ])("rejects malformed/unsupported question answers before dispatch (%#)", async reply => {
+    const { bridge, owner, answer } = questionFixture();
+    await expect(bridge.handle("bad", "sessions.answer", { ...answer(), reply })).rejects.toThrow();
+    expect(owner.answer).not.toHaveBeenCalled();
+  });
+
+  it("accepts custom and partial multi-question answers, but enforces custom permission", async () => {
+    const { bridge, session, owner, answer } = questionFixture();
+    const reply = { kind: "answered", answers: { section: ["__custom__"] }, custom: { section: "A new project" } };
+    session.pendingQuestion!.questions[0].allowCustom = false;
+    await expect(bridge.handle("forbidden", "sessions.answer", { ...answer(), reply })).rejects.toThrow();
+    session.pendingQuestion!.questions[0].allowCustom = true;
+    session.pendingQuestion!.questions.push({ id: "later", prompt: "Optional?", options: [], multiSelect: false, allowCustom: true });
+    await bridge.handle("custom", "sessions.answer", { ...answer(), reply });
+    expect(owner.answer).toHaveBeenCalledWith(session.id, 7, reply);
+  });
+
+  it("rejects stale questions and retains uncertain decisions without redispatch", async () => {
+    const { bridge, owner, answer } = questionFixture();
+    await expect(bridge.handle("stale", "sessions.answer", { ...answer(), questionId: 6 })).rejects.toThrow("no longer pending");
+    owner.answer = vi.fn(() => { throw new Error("provider disconnected"); });
+    await expect(bridge.handle("uncertain", "sessions.answer", answer())).rejects.toMatchObject({ outcomeUnknown: true });
+    await expect(bridge.handle("uncertain", "sessions.answer", answer())).rejects.toMatchObject({ outcomeUnknown: true });
+    await expect(bridge.handle("new", "sessions.answer", answer())).rejects.toThrow("no longer pending");
+    expect(owner.answer).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed for oversized questions without sending abbreviated choices", async () => {
+    const { bridge, session, owner, answer } = questionFixture();
+    session.pendingQuestion!.questions[0].prompt = "x".repeat(33_000);
+    expect(await bridge.handle("read", "sessions.read", { sessionId: session.id })).toMatchObject({ pendingQuestion: undefined, questionUnavailable: true });
+    await expect(bridge.handle("bad", "sessions.answer", answer())).rejects.toThrow("no longer pending");
+    expect(owner.answer).not.toHaveBeenCalled();
+  });
+
+  it("revalidates session review after asynchronous loading", async () => {
+    const { bridge, owner, session } = fixture();
+    const result = { files: [], total: 0, additions: 0, deletions: 0, truncated: false };
+    owner.review = vi.fn(async () => result);
+    expect(await bridge.handle("review", "sessions.review.list", { sessionId: session.id })).toMatchObject({ ...result, epoch: bridge.epoch, turn: 1 });
+    owner.review = vi.fn(async () => { session.busy = true; return result; });
+    await expect(bridge.handle("race", "sessions.review.list", { sessionId: session.id })).rejects.toThrow("Session changed");
+    await expect(bridge.handle("path", "sessions.review.read", { sessionId: session.id, relative: "a", cwd: "/secret" })).rejects.toThrow("Unsupported input");
+  });
+
+  it("bounds subagent activity while keeping desktop tool labels and states", async () => {
+    const { bridge, session } = fixture();
+    session.blocks.push({ id: "agent", role: "tool", text: "Inspect tasks", tool: { kind: "agent", status: "running" }, agentRun: { name: "Task review", steps: Array.from({ length: 25 }, (_, index) => ({ id: `s${index}`, kind: "tool", text: "x".repeat(1000), status: "completed" })) } });
+    const snapshot = await bridge.handle("read", "sessions.read", { sessionId: session.id }) as { blocks: { activity?: { steps: { label: string }[] } }[] };
+    expect(snapshot.blocks[1]).toMatchObject({ activity: { name: "Task review", state: "pending", stepsTruncated: true } });
+    expect(snapshot.blocks[1].activity!.steps).toHaveLength(20);
+    expect(snapshot.blocks[1].activity!.steps[0].label).toHaveLength(512);
+  });
+
   it("routes Inbox and project-only Changes reads through the owner boundary", async () => {
     const { bridge, owner } = fixture();
     owner.inbox = {

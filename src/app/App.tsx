@@ -1,5 +1,6 @@
 import { sessionConversationPage } from "../features/agent-app/model/sessionConversation";
 import { createCompanionBridge, CompanionCommandUncertain } from "../features/companion/model/companionBridge";
+import { companionReview } from "../features/companion/model/companionReview";
 import { createCompanionInbox } from "../features/companion/model/companionInbox";
 import { createCompanionMonoReader } from "../features/companion/model/companionMono";
 import { createCompanionChanges, type CompanionChangesTarget } from "../features/companion/model/companionChanges";
@@ -10712,6 +10713,7 @@ function Workspace({
           navigation: companionNavigation,
           inbox: companionInbox,
           changes: companionChanges,
+          review: (session, relative) => companionReview(session.id, sessionWorkCwd(session), relative, sessionEditPaths(session.blocks)),
           monoRead: companionMonos.read,
           projectId: (session, navigation) => companionProjectId(session.cwd, navigation),
           listable: (session) => !isMonoSession(session.id),
@@ -10743,6 +10745,8 @@ function Workspace({
             return await accepted;
           },
           approve: onApproval,
+          answer: onQuestionReply,
+          keepQuestionOpen: onQuestionInteraction,
           stop: async (id) => {
             await flushSync(() => stopSessionRef.current(id));
             flushHarnessEvents();
