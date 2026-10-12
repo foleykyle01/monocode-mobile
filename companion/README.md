@@ -76,7 +76,11 @@ Install `companion/mobile/src-tauri/gen/apple/build/arm64-sim/MonoCode Companion
 
 ## Capabilities and security boundaries
 
-Browse Monos and the Mac's group → project → session hierarchy, read paged transcripts, send follow-ups, create blank sessions, select advertised models/access modes, Allow/Deny supported actions, and Stop a running turn. Inbox, Changes/diffs, and Mono details are read-only. Appearance follows the Mac where it has a phone equivalent; phone Light/Dark overrides do not alter the Mac.
+Browse Monos and the Mac's group → project → session hierarchy, read paged transcripts, send follow-ups, create blank sessions, select advertised models/access modes, answer structured agent questions (choices, multiple selections, custom text, and Skip), Allow/Deny supported actions, and Stop a running turn. Inbox, Changes/diffs, and Mono details are read-only. Appearance follows the Mac where it has a phone equivalent; phone Light/Dark overrides do not alter the Mac.
+
+Chat activity uses a collapsible connected tool tree, including the latest 20 steps of a delegated run. Completed sessions show the desktop checkpoint's **Changed files** summary and individual recorded diffs, independently of workspace Git changes. Review is read-only: Keep, Undo, staging, and committing remain on the Mac. Lists show at most 200 files; unavailable, binary, or oversized diffs direct you to the Mac.
+
+Question answers use the same desktop provider handler and durable exact-request retry mechanism as approvals. Interacting with a timed question asks the Mac to keep it open. Stale questions, unsupported choices, and truncated question payloads cannot be answered. Both the Mac host and phone need updated builds for these commands; older hosts continue showing their supported features.
 
 Eligible sessions exclude remote projects, habit runs, ephemeral/Inbox-ask sessions, orchestration-controlled sessions, and sessions undergoing removal or workspace changes. Unopened Monos require initialization on the Mac. Advertised capabilities disable unsupported features on older hosts.
 

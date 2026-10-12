@@ -6,7 +6,7 @@ import { CircleHelp, ChevronRight, Plus, FileDiff } from "../../src/shared/ui/ic
 import type { CompanionMono, CompanionNavigation, CompanionProject, CompanionSession } from "./types";
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
-export const activityLabel = (item: { busy: boolean; needsApproval: boolean }) => item.needsApproval ? "Needs approval" : item.busy ? "Working" : "Ready";
+export const activityLabel = (item: { busy: boolean; needsApproval: boolean; needsQuestion?: boolean }) => item.needsQuestion ? "Needs an answer" : item.needsApproval ? "Needs approval" : item.busy ? "Working" : "Ready";
 export const monoStatusLabel = (mono: CompanionMono) => mono.statusLabel || activityLabel(mono);
 const Chevron = ({ expanded }: { expanded: boolean }) => <ChevronRight className="nav-chevron" data-expanded={expanded} size={12} aria-hidden="true" />;
 

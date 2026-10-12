@@ -1,4 +1,5 @@
 import type { Block, Session } from "../../sessions/model/session";
+import { sessionWorkCwd } from "../../sessions/model/session";
 import { isPreparingHandoff } from "../../sessions/model/handoff";
 import { MAX_PREVIEW_LINES } from "../../../integrations/harness/core/preview";
 import type { CompanionNavigation } from "./companionNavigation";
@@ -6,6 +7,9 @@ import type { CompanionChatBackground } from "./companionChatBackground";
 import type { CompanionMonoReadInput, CompanionMonoReadSection } from "./companionMono";
 import type { createCompanionInbox } from "./companionInbox";
 import type { createCompanionChanges } from "./companionChanges";
+import { companionQuestion, validateQuestionReply } from "./companionQuestion";
+import type { UserQuestionReply } from "../../sessions/model/userQuestion";
+import { toolCallLabel, toolCallState } from "../../sessions/model/transcriptActivity";
 
 export type CompanionConfiguration = {
   models: { harness: string; id: string; label: string }[];
@@ -20,6 +24,8 @@ export type CompanionOwner = {
   turn(sessionId: string): number;
   send(sessionId: string, text: string, requestId: string): Promise<boolean>;
   approve(sessionId: string, requestId: number, decision: "allow" | "deny"): void;
+  answer?(sessionId: string, requestId: number, reply: UserQuestionReply): void;
+  keepQuestionOpen?(sessionId: string, requestId: number): void;
   stop(sessionId: string): Promise<void>;
   appearance?(): unknown;
   chatBackground?(session: Session): CompanionChatBackground | null;
@@ -35,6 +41,7 @@ export type CompanionOwner = {
   createSession?(projectId: string, sessionId: string): void;
   inbox?: ReturnType<typeof createCompanionInbox>;
   changes?: ReturnType<typeof createCompanionChanges>;
+  review?(session: Session, relative?: string): Promise<import("./companionReview").CompanionReview | import("./companionReview").CompanionReviewDiff>;
   monoRead?(input: CompanionMonoReadInput): Promise<import("./companionMono").CompanionMonoRead>;
 };
 
@@ -44,6 +51,8 @@ const RECEIPT_LIMIT = 512;
 const MUTATIONS = new Set([
   "sessions.send",
   "sessions.approve",
+  "sessions.answer",
+  "sessions.question.keepOpen",
   "sessions.stop",
   "sessions.configure",
   "sessions.create",
@@ -66,6 +75,18 @@ function snapshotBlock(block: Block) {
     id: block.id, role: block.role, text: fullText.slice(0, TEXT_LIMIT),
     truncated: fullText.length > TEXT_LIMIT || previewIncomplete,
     approval: block.approval,
+    ...((block.tool || block.role === "tool") ? { activity: {
+      label: toolCallLabel(block).slice(0, 300), state: toolCallState(block),
+      kind: block.tool?.kind?.slice(0, 80),
+      ...(block.agentRun ? {
+        name: block.agentRun.name.slice(0, 160),
+        steps: block.agentRun.steps.slice(-20).map(step => ({
+          id: step.id, label: step.text.slice(0, 512),
+          state: toolCallState({ id: step.id, role: "tool", text: step.text, tool: { status: step.status } }),
+        })),
+        stepsTruncated: block.agentRun.steps.length > 20,
+      } : {}),
+    } } : {}),
   };
 }
 
@@ -123,12 +144,27 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       runtimeMode: session.runtimeMode,
       busy: !!session.busy,
       turn: owner.turn(session.id),
-      needsApproval: session.blocks.some((block) => block.approval && !block.approval.decided),
+      needsApproval: !!session.pendingQuestion || session.blocks.some((block) => block.approval && !block.approval.decided),
+      needsQuestion: !!session.pendingQuestion,
     };
   }
 
   function read(action: string, input: Record<string, unknown>) {
     owner.flush();
+    if (action === "sessions.review.list" || action === "sessions.review.read") {
+      fields(input, ["sessionId", ...(action === "sessions.review.read" ? ["relative"] : [])]);
+      const session = current(text(input, "sessionId"));
+      if (!owner.review) throw new Error("Session review is unavailable on this Mac");
+      if (session.busy || session.worktreePreparing || session.worktreeRemoved) throw new Error("Wait for the session to finish before reviewing changes");
+      const turn = owner.turn(session.id);
+      const cwd = sessionWorkCwd(session);
+      return owner.review(session, action === "sessions.review.read" ? text(input, "relative", 1024) : undefined).then(result => {
+        const latest = current(session.id);
+        if (latest.busy || sessionWorkCwd(latest) !== cwd || owner.turn(session.id) !== turn || latest.worktreePreparing || latest.worktreeRemoved)
+          throw new Error("Session changed; refresh before reviewing changes");
+        return { ...result, epoch, turn };
+      });
+    }
     if (action === "inbox.list" || action === "inbox.read") {
       const inbox = owner.inbox;
       if (!inbox) throw new Error("Inbox is unavailable; update the Mac companion");
@@ -201,6 +237,9 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       nextBefore: start || null,
       totalBlocks: session.blocks.length,
       chatBackground,
+      pendingQuestion: owner.answer ? companionQuestion(session.pendingQuestion) : undefined,
+      questionUnavailable: !!session.pendingQuestion && (!owner.answer || !companionQuestion(session.pendingQuestion)),
+      reviewAvailable: !!owner.review,
     };
   }
 
@@ -257,6 +296,23 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       answered.add(key);
       try { owner.approve(id, block.approval.requestId, input.decision); }
       catch (error) { throw new CompanionCommandUncertain(error); }
+    } else if (action === "sessions.answer" || action === "sessions.question.keepOpen") {
+      fields(input, ["epoch", "sessionId", "turn", "questionId", ...(action === "sessions.answer" ? ["reply"] : [])]);
+      const prompt = companionQuestion(session.pendingQuestion);
+      const key = JSON.stringify([id, input.turn, "question", input.questionId]);
+      if (!session.busy || !prompt || input.questionId !== prompt.requestId || answered.has(key))
+        throw new Error("Question is no longer pending");
+      if (action === "sessions.answer") {
+        if (!owner.answer) throw new Error("Question answers are unavailable on this Mac");
+        const reply = validateQuestionReply(prompt, input.reply);
+        answered.add(key);
+        try { owner.answer(id, prompt.requestId, reply); }
+        catch (error) { throw new CompanionCommandUncertain(error); }
+      } else {
+        if (!owner.keepQuestionOpen) throw new Error("Question interaction is unavailable on this Mac");
+        try { owner.keepQuestionOpen(id, prompt.requestId); }
+        catch (error) { throw new CompanionCommandUncertain(error); }
+      }
     } else if (action === "sessions.stop") {
       fields(input, ["epoch", "sessionId", "turn"]);
       if (!session.busy) throw new Error("Session is not running");

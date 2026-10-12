@@ -4,6 +4,7 @@ The companion is an experimental iPhone client for sessions already owned by an 
 
 - [Setup, pairing, capabilities, and current validation](../../companion/README.md)
 - [Source and device validation scope](validation-public.md)
+- [Question replies, tool activity tree, and session diffs](chat-parity.md)
 - [Product and design record](design-notes.md)
 - [Read-only Inbox and Changes](inbox-and-changes.md)
 - [Mono details and navigation polish](mono-details.md)

@@ -197,6 +197,10 @@ fn companion_action(action: &str) -> bool {
             | "sessions.read"
             | "sessions.send"
             | "sessions.approve"
+            | "sessions.answer"
+            | "sessions.review.list"
+            | "sessions.review.read"
+            | "sessions.question.keepOpen"
             | "sessions.stop"
             | "sessions.configure"
             | "sessions.create"
@@ -768,6 +772,16 @@ mod tests {
 
     #[test]
     fn companion_action_allowlist_includes_companion_extensions() {
+        for action in [
+            "sessions.answer",
+            "sessions.question.keepOpen",
+            "sessions.review.list",
+            "sessions.review.read",
+        ] {
+            assert!(companion_action(action));
+        }
+        assert!(!companion_action("sessions.review.undo"));
+        assert!(!companion_action("sessions.review.keep"));
         assert!(companion_action("sessions.configure"));
         assert!(companion_action("sessions.create"));
         for action in [

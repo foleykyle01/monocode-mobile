@@ -96,6 +96,10 @@ pub fn validate_command(request_id: &str, action: &str, input: &Value) -> Result
                 | "sessions.read"
                 | "sessions.send"
                 | "sessions.approve"
+                | "sessions.answer"
+                | "sessions.review.list"
+                | "sessions.review.read"
+                | "sessions.question.keepOpen"
                 | "sessions.stop"
                 | "sessions.configure"
                 | "sessions.create"
@@ -166,6 +170,15 @@ mod tests {
     use super::*;
     #[test]
     fn rejects_unknown_command_and_malformed_input() {
+        for action in [
+            "sessions.answer",
+            "sessions.question.keepOpen",
+            "sessions.review.list",
+            "sessions.review.read",
+        ] {
+            assert!(validate_command("abc", action, &serde_json::json!({})).is_ok());
+        }
+        assert!(validate_command("abc", "sessions.review.undo", &serde_json::json!({})).is_err());
         assert!(validate_command("abc", "sessions.list", &serde_json::json!({})).is_ok());
         assert!(validate_command("abc", "shell.exec", &serde_json::json!({})).is_err());
         assert!(validate_command("bad:id", "sessions.send", &serde_json::json!({})).is_err());
