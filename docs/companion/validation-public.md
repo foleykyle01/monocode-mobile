@@ -16,7 +16,9 @@ Allow completed a bounded test write; Deny and Stop prevented their test files f
 
 ## Simulator screenshots
 
-The README images were captured directly from an iPhone Simulator running iOS 18.6 on October 12, 2026. They show simulated workspace data, approvals, Inbox, and QR-pairing onboarding. They contain no live provider data or usable pairing invitation. Screenshots establish presentation, not real transport or camera behavior.
+The iPhone screenshots in the README were captured directly from an iPhone Simulator running iOS 18.6 on October 12, 2026. They show simulated workspace data, approvals, Inbox, and QR-pairing onboarding. They contain no live provider data or usable pairing invitation. Screenshots establish presentation, not real transport or camera behavior.
+
+The Mac pairing images were supplied as screenshots of Settings → Connections → Phone companion. Only the QR invitation and paired-device ID were covered with opaque pixel masks for publication; the rest of each screenshot is unchanged. Original unmasked images are kept outside both repositories.
 
 ## Outstanding
 

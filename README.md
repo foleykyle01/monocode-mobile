@@ -14,6 +14,8 @@ An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/m
 
 ## Screenshots
 
+### iPhone interface
+
 These are unedited device-screen captures from the iPhone Simulator on iOS 18.6, using the companion's sample workspace. No live conversations, provider accounts, or pairing tickets are shown.
 
 <table>
@@ -34,6 +36,22 @@ These are unedited device-screen captures from the iPhone Simulator on iOS 18.6,
     <td><img src="docs/companion/screenshots/pairing-setup.png" alt="iPhone connection setup with Mac instructions and the Scan QR ticket button" width="290" /></td>
   </tr>
 </table>
+
+### Pairing on the Mac
+
+Open **Settings → Connections → Phone companion** to enable remote access, create a QR invitation, and manage paired phones. These Mac screenshots have opaque masks over the QR invitation and device ID; all other pixels are unchanged.
+
+**Remote access and paired-phone management**
+
+<p align="center">
+  <img src="docs/companion/screenshots/mac-connections.png" alt="Mac Connections settings with Phone companion remote access, Show QR code, and paired-phone revocation controls; device ID masked" width="1000" />
+</p>
+
+**QR invitation ready to scan from the iPhone**
+
+<p align="center">
+  <img src="docs/companion/screenshots/mac-pairing.png" alt="Mac Phone companion panel with a five-minute QR invitation, Regenerate and Cancel controls; QR content and device ID masked" width="1000" />
+</p>
 
 ## What the companion supports
 
