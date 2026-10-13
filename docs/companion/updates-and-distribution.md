@@ -18,6 +18,18 @@ No terminal, Xcode, USB cable or separate VPN app in the community install flow.
 The Mac must remain open and awake to run agents. Updating an app cannot make a
 sleeping/offline Mac reachable.
 
+The community download page will offer two distinct buttons: **Download for Mac**
+links to the signed GitHub release DMG, and **Join the iPhone beta** links to the
+public TestFlight invitation after external beta approval. Source archives remain
+available separately for contributors. Do not present a GitHub IPA download as an
+install button for ordinary iPhone users. Until the signed installers and approved
+invitation exist, label the current release as a source preview.
+
+Each user installs the Mac host, uses their own provider accounts, and pairs their
+phone to their own Mac. They do not need membership in our Apple developer team
+or access to our GitHub release credentials. Never ship the maintainer's profile,
+paired-device records, provider keys or personal workspaces in a release.
+
 Automatic means discovery and delivery, not forcibly interrupting agents. The Mac
 must not relaunch while an agent, habit, tool, approval or question is active.
 Start with a user-confirmed restart after a fresh idle check; offer Later. An
@@ -73,6 +85,24 @@ build expires after 90 days, so this channel needs ongoing beta maintenance and
 is not permanent production distribution. Ship a replacement well before expiry.
 Delivery remains under user/iOS control and is not an instantaneous forced push.
 
+Community rollout follows the owner-only upgrade check:
+
+1. Verify the owner's existing development install upgrades through TestFlight
+   while retaining pairing and real workspaces.
+2. Complete beta description, feedback/support contact, review instructions and
+   encryption compliance, then submit the candidate for external beta review.
+3. After approval, enable a public invitation for a **Community beta** group with
+   a modest initial tester limit. Publish that link alongside the compatible Mac
+   download; only add builds whose phone/host compatibility checks pass.
+4. Monitor feedback and ship replacement builds before the 90-day expiry. Explain
+   the beta lifetime on the download page; TestFlight is not a permanent stable
+   distribution channel. Apple permits up to 10,000 external testers per app.
+
+The public invitation allows testers to join without developer-team access. It
+does not grant access to anyone else's Mac. See Apple's
+[external tester setup](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
+and [TestFlight overview](https://developer.apple.com/testflight/).
+
 A public App Store release is not an accepted next step. Retain the working
 native client while evaluating a PWA as a separate future option. That would
 reuse the interface but needs a browser-compatible connection and credential
@@ -123,12 +153,12 @@ Apple Distribution and Developer ID Application certificates were created in
 Xcode with the owner's authorization. The development certificate is retained.
 Certificates alone do not configure notarization, App Store Connect or CI access.
 
-The manual TestFlight workflow and its protected GitHub environment are prepared,
-but disabled pending account configuration. Still needed before normal-user delivery: notarization setup,
-Tauri signing key and owned feed location, App Store Connect app and distribution
-credentials, privacy/support metadata, the signed Mac release workflow, idle-safe
-desktop update handling, and the one-time bootstrap installers. No credentials
-were uploaded to CI and no automatic feed is enabled. See the
+The manual TestFlight workflow has a protected GitHub environment, registered app
+record and authorized API credentials. The first signed candidate is being
+validated before upload. Still needed before normal-user delivery: notarization
+setup, Tauri signing key and owned feed location, privacy/support metadata,
+external beta approval, the signed Mac release workflow, idle-safe desktop update
+handling, and the one-time bootstrap installers. No automatic Mac feed is enabled. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,

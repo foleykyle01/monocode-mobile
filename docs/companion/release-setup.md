@@ -103,6 +103,10 @@ Do not assert that the custom Iroh encrypted transport is exempt without checkin
 Apple's questionnaire. Add the owner's account to internal testing first; confirm
 an in-place TestFlight install keeps pairing before opening external testing.
 
-The workflow has local guardrail tests but has not yet produced a signed release
-in CI. Mac release CI and safe installation/restart handling are still pending;
+The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
+packaged app, and generates opaque PNG icons without alpha channels. These guard
+against the SDK and large-icon rejections encountered on the first signed
+candidate. Signing and package verification succeeded in CI; Apple rejected that
+candidate's upload before TestFlight processing. A corrected candidate still needs
+upload validation. Mac release CI and safe installation/restart handling are pending;
 the `mac` preflight alone does not implement automatic updates.

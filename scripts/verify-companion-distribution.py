@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 
 
 def validate_ios_distribution(info, profile, *, team, version, build):
@@ -17,6 +18,9 @@ def validate_ios_distribution(info, profile, *, team, version, build):
     for key, value in expected.items():
         if info.get(key) != value:
             errors.append(f"Packaged {key} does not match release configuration")
+    sdk = re.fullmatch(r"iphoneos(\d+)(?:\.\d+)*", info.get("DTSDKName", ""))
+    if not sdk or int(sdk.group(1)) < 26:
+        errors.append("App Store Connect requires a build made with iOS SDK 26 or newer")
     entitlements = profile.get("Entitlements", {})
     if profile.get("TeamIdentifier") != [team]:
         errors.append("Provisioning team does not match release configuration")
