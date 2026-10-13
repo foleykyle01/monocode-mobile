@@ -1,10 +1,12 @@
 # MonoCode Mobile Companion
 
+See the [main README](../README.md) for current availability and the complete installation/use walkthrough. This guide adds developer and protocol details.
+
 An experimental native iPhone client for sessions running in **MonoCode Dev**, the isolated companion-enabled Mac build. The ordinary upstream app cannot host this client. Agents, provider credentials, project files, and authoritative conversation history remain on the Mac.
 
 The path is **iPhone React UI → native Keychain + Iroh → encrypted direct/relay connection → embedded Mac host → authenticated loopback bridge → existing desktop session owner**.
 
-This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.13.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent companion beta, not an official mobile release. iPhone build **0.1.1 (1003)** is valid in App Store Connect and available to the internal Owner testing group through TestFlight. External beta review and a public invitation have not been completed.
+This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.13.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent companion beta, not an official mobile release. iPhone build **0.1.1 (1004)** is valid in App Store Connect and available to the internal Owner testing group through TestFlight. External beta review and a public invitation have not been completed.
 
 ## TestFlight path
 
@@ -23,7 +25,7 @@ TestFlight pipeline.
 ## Build requirements
 
 These requirements apply to contributors building from source, not to TestFlight
-testers. Use a Mac with Node.js 20+, stable Rust, Xcode with an iOS SDK/runtime,
+testers. Use a Mac with Node.js 22.12+ (or a newer supported Node LTS), stable Rust, Xcode with an iOS SDK/runtime,
 and Apple's command-line tools. Native archives have been built with Xcode 26.4;
 older toolchain compatibility is not established. A source build for a physical
 iPhone requires the builder's own Apple development signing configuration.
@@ -48,13 +50,15 @@ npm run companion:desktop
 
 Open `target/release/bundle/macos/MonoCode Dev.app`. It uses the separate `com.monocode.companion-spike` identity and data directory. This build does not migrate a daily profile. Provider binaries and login state can still be shared with the daily installation; the isolation is not an agent sandbox. The companion build disables MonoCode-managed provider updates and the upstream application updater feed.
 
-For a physical iPhone, set your signing team in the shell and build:
+For a physical iPhone, use your own development signing configuration and a trusted device with Developer Mode enabled. Set your signing team before initializing the Xcode project, then build:
 
 ```sh
-APPLE_DEVELOPMENT_TEAM=YOUR_TEAM_ID npm run companion:ios
+export APPLE_DEVELOPMENT_TEAM=YOUR_TEAM_ID
+npm run companion:ios -- init --ci --skip-targets-install
+npm run companion:ios
 ```
 
-The wrapper builds the UI, regenerates the AppIcon, and creates a signed debug archive under the generated Apple tree. Install through Xcode or Apple's CoreDevice tools onto a trusted device. The phone identity is `dev.monocode.companion`; the build reports its archive path.
+The wrapper builds the UI, regenerates the AppIcon, and creates a signed debug archive under the generated Apple tree. Open the generated Xcode project under `companion/mobile/src-tauri/gen/apple/`, select your team and connected iPhone, and run the app. The configured phone identity is `dev.monocode.companion`; resolve any App ID/profile conflicts with your own development signing configuration. A different signing identity may require a separate installation and pairing. The build reports its archive path.
 
 For an unsigned simulator build of the connected client:
 
@@ -108,7 +112,7 @@ Phone identity and unconfirmed commands use Apple Keychain with synchronization 
 
 ## Recovery and limits
 
-The current preview is version **0.1.1** (iPhone build **1003**), based on MonoCode
+The current preview is version **0.1.1** (iPhone build **1004**), based on MonoCode
 **0.13.0**. TestFlight internal Owner testing is available; external beta
 distribution and a signed Mac download are still pending. See the
 [update and distribution plan](../docs/companion/updates-and-distribution.md) for
@@ -123,7 +127,9 @@ Remote access after a full app restart or change the paired-device list.
 
 Mutations are saved before dispatch with their exact host, request ID, action, and input. The Mac deduplicates matching requests within its renderer epoch and rejects changed input or stale state. A timeout may mean the command ran but its receipt was lost: review the conversation or explicitly retry the same command. Desktop receipts are memory-only and limited to 512 commands per epoch; a restart may require manual outcome review.
 
-Push notifications, event replay, full desktop feature parity, external TestFlight
+Push notifications are disabled in build 1004 and their Settings controls are hidden. The native push plugin and relay integration are not included in this public release.
+
+Event replay, full desktop feature parity, external TestFlight
 distribution, signed Mac production distribution, and dedicated relay operations
 remain unfinished. Physical keyboard/safe-area behavior, accessibility, long
 suspension, and interrupted-command/network-handoff races need broader testing.
