@@ -44,8 +44,9 @@ an uncertain phone command to complete an update.
 The installed owner build currently has no updater feed embedded. Existing MonoCode
 Dev users therefore need one final manual drag-and-drop/bootstrap install when the
 first compatible signed Mac release is ready. After that bootstrap, the planned
-fork-owned feed can deliver verified optional updates; that updater feed and its
-idle-safe restart behavior are not implemented yet. The latest owner build is
+fork-owned feed can deliver verified optional updates. The guarded updater and
+release workflow are implemented, while real bootstrap/upgrade validation and
+feed publication remain pending. The latest installed owner build is
 `be563c1`, but it is not a public signed/notarized download.
 
 Reuse the existing Tauri updater and Settings update UI. Configure only a
@@ -56,7 +57,7 @@ Use this fork's public GitHub Releases for delivery; no additional user account
 or paid update service is needed. The proposed beta feed is
 `https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json`.
 Reserve a separate `companion-updates-stable` tag for stable delivery. These feeds
-are **not live** and must not be embedded in an installed build yet. Each pointer
+are **not live**; the release overlay embeds the beta endpoint for bootstrap testing. Each pointer
 contains the fork version, notes, date and per-architecture artifact URL/signature;
 artifact URLs refer to immutable, versioned releases rather than the channel tag.
 Publish and validate signed artifacts first, then replace the channel manifest.
@@ -106,19 +107,21 @@ have no feed, so one final drag-and-drop install is required to bootstrap update
    version. Keep previous artifacts. Replacing an app binary must never restore an
    old database over newer chats.
 
-### Required restart change
+### Guarded restart implementation
 
-`src/app/model/updater.ts` currently calls `downloadAndInstall()` followed by
-`relaunch()`. That is not safe enough for this companion release. Split download
-from installation, retaining the downloaded update while agents run. Immediately
-before installation, obtain a native process-wide update lock and query every
-workspace's session owner. A missing or unresponsive owner blocks installation.
-Reject the restart while any session, question, approval, helper, habit or queued
-run is active. Hold the lock through persistence, installation and relaunch, and
-make all paths that admit new runs honor that lock, including phone commands and
-scheduled work. Release it on cancellation or failure; never pause or delete the
-user's saved schedules to achieve an idle state. A renderer-only busy check is
-insufficient because other windows and scheduled tasks can race it.
+`src-tauri/src/safe_updater.rs` owns signature-verified downloads and the final
+installation. The webview no longer has permission to call the updater plugin's
+install command directly. `src/app/model/updater.ts` offers a download followed
+by **Restart to update / Later**; startup and six-hour checks discover releases.
+Downloaded bytes stay in memory until installation or app exit.
+
+Before installation, a native process-wide admission lock blocks new turns,
+helpers, terminals and workspace construction. Every workspace must confirm
+idle session state and flush its saved sessions. Missing/unresponsive owners,
+pending questions/approvals, queued work, habit preparation, active terminals
+and tracked worktree operations block restart. The lock stays through install
+and relaunch and is released on failure. This does not pause or delete saved
+habit schedules, and it cannot detect unrelated work in other Mac applications.
 
 Before embedding a feed, tests must prove that an active second window blocks
 installation, a new run cannot slip between the idle check and restart, unknown
@@ -208,13 +211,13 @@ Developer ID Application certificates were created in Xcode with the owner's
 authorization. The development certificate is retained. Certificates alone do not
 configure notarization, App Store Connect or CI access.
 
-The manual TestFlight workflow has a protected GitHub environment, registered app
-record and authorized API credentials. Candidate 1003 passed the release checks,
-uploaded, and completed Apple processing. Still needed before normal-user delivery:
-notarization setup, Tauri signing key and owned feed location, privacy/support
-metadata, external beta approval, the signed Mac release workflow, idle-safe
-desktop update handling, and the one-time bootstrap installer. No automatic Mac
-feed is enabled. See the
+The TestFlight and Mac workflows have separate protected GitHub environments.
+The Mac environment contains Developer ID/notarization credentials and a separate
+Tauri signing key; both workflows run only on public `main` after review. Candidate
+1003 passed iPhone processing and the owner confirmed operation/reconnection.
+Remaining delivery gates include the verified signed Mac installer, a real
+bootstrap-to-update check, privacy metadata and external beta approval. The Mac
+feed remains disabled through `COMPANION_MAC_UPDATE_VERIFIED=false`. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,
