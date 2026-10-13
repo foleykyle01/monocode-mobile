@@ -390,6 +390,50 @@ it("shows project running and unread badges on Home and clears completion after 
   }
 });
 
+it.each([false, true])("keeps the conversation and draft visible through resume (read fails: %s)", async fails => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.useFakeTimers();
+  const saved = { ...await defaultRead("session"), blocks: [{ id: "saved", role: "assistant" as const, text: "Last received reply" }], totalBlocks: 3, nextBefore: 2 };
+  fake.sessionRead.mockResolvedValue(saved);
+  let connected!: () => void;
+  fake.reconnect.mockImplementationOnce(() => new Promise<void>(resolve => { connected = resolve; }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
+    const message = container.querySelector(".test-transcript p");
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Draft\nwith another line");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const send = container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!;
+    let finishRead!: () => void;
+    fake.sessionRead.mockImplementation(() => new Promise((resolve, reject) => { finishRead = () => fails ? reject(new Error("Mac unavailable")) : resolve({ ...saved, blocks: [{ ...saved.blocks[0], text: "Fresh reply" }] }); }));
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(container.querySelector(".test-transcript p")).toBe(message);
+    expect(message?.textContent).toBe("Last received reply");
+    expect(field.value).toBe("Draft\nwith another line");
+    expect(container.querySelector(".chat-connection")?.textContent).toBe("Reconnecting…");
+    expect(send.disabled).toBe(true);
+    await act(async () => connected());
+    // Listing the workspace is not enough to re-enable actions on the old transcript.
+    expect(container.querySelector(".chat-connection")?.textContent).toBe("Reconnecting…");
+    expect(send.disabled).toBe(true);
+    await act(async () => finishRead());
+    expect(container.querySelector(".test-transcript p")).toBe(message);
+    expect(message?.textContent).toBe(fails ? "Last received reply" : "Fresh reply");
+    expect(send.disabled).toBe(fails);
+    expect(container.querySelector(".chat-connection")?.textContent ?? "").toBe(fails ? "Mac unavailableRetry" : "");
+    expect(field.value).toBe("Draft\nwith another line");
+  } finally {
+    await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  }
+});
+
 it("keeps connection recovery in Settings, reports progress, and requires a separate forget confirmation", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);

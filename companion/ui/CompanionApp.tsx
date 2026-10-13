@@ -342,7 +342,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const historySerial = useRef(0);
   const historyInFlight = useRef(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const composerElement = useRef<HTMLTextAreaElement>(null);
   const composer = selectedId ? drafts[selectedId] || "" : "";
   const setComposer = (text: string) => {
     if (selectedId) setDrafts((current) => ({ ...current, [selectedId]: text }));
@@ -377,13 +376,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     if (settingsOpen) dialog?.showModal();
     else if (dialog?.open) dialog.close();
   }, [settingsOpen]);
-
-  useLayoutEffect(() => {
-    const field = composerElement.current;
-    if (!field) return;
-    field.style.height = "0px";
-    field.style.height = `${Math.min(128, Math.max(40, field.scrollHeight))}px`;
-  }, [composer, selectedId, selectedMonoId, viewportHeight, mobileListOpen]);
 
   useEffect(() => {
     const update = () => { setViewportHeight(window.visualViewport?.height ?? window.innerHeight); setViewportTop(window.visualViewport?.offsetTop ?? 0); };
@@ -457,7 +449,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     offlineRef.current = true;
     setOffline(true);
     setReconnecting(true);
-    setRead(undefined);
+    // Keep the last transcript and reading position visible while controls are disabled.
     ++historySerial.current;
     historyInFlight.current = false;
     setLoadingEarlier(false);
@@ -543,7 +535,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   }, [refresh, refreshTranscript, selectedId]);
 
   const selectedMono = navigation?.monos.find(mono => selectedMonoId ? mono.id === selectedMonoId : mono.sessionId === selectedId);
-  const displayOffline = demo ? previewConnection !== "connected" : offline || !networkOnline;
+  const displayOffline = demo ? previewConnection !== "connected" : offline || reconnecting || !networkOnline;
   const displayReconnecting = demo ? previewConnection === "reconnecting" : reconnecting;
   const displayOnline = demo ? previewConnection !== "offline" : networkOnline;
   const activeRead = read?.session.id === selectedId ? read : undefined;
@@ -795,16 +787,17 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               {selectedMono ? <MonoMascot mono={selectedMono} /> : null}
               <h2 className="conversation-title" title={selectedMono?.name || selected.title || "Untitled session"}>{selectedMono?.name || selected.title || "Untitled session"}</h2>
             </header>
+            {displayOffline ? <div className="chat-connection" role="status"><span className={connectionDot} aria-hidden="true" /><span>{!displayOnline ? "Offline" : displayReconnecting ? "Reconnecting…" : "Mac unavailable"}</span>{displayOnline && !displayReconnecting ? <button type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()}>Retry</button> : null}</div> : null}
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
             {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
-            <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null && !displayOffline ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
+            <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
               pendingQuestion={activeRead?.pendingQuestion} questionUnavailable={activeRead?.questionUnavailable}
               questionKey={`${activeRead?.epoch}:${activeRead?.session.turn}`}
               changes={activeRead?.reviewAvailable ? <SessionChanges key={selected.id} client={client} sessionId={selected.id} epoch={activeRead.epoch} turn={activeRead.session.turn} busy={selected.busy} offline={displayOffline} /> : undefined}
               onQuestionInteraction={async questionId => { if (activeRead) return action("sessions.question.keepOpen", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId }); }}
               onAnswer={(questionId, reply) => { if (activeRead) void action("sessions.answer", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId, reply }); }}
               onApprove={(block, decision) => { if (block.approval && activeRead) void action("sessions.approve", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, blockId: block.id, decision }); }} />
-            <form className="composer" onSubmit={submit}><div className="composer-input"><textarea ref={composerElement} value={composer} onChange={(event) => setComposer(event.target.value)} placeholder={selected.busy ? "Draft a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} />{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button>}</div><SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
+            <form className="composer" onSubmit={submit}><div className="composer-input"><div className="composer-field"><textarea value={composer} onChange={(event) => setComposer(event.target.value)} placeholder={selected.busy ? "Draft a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} /><div className="composer-measure" aria-hidden="true">{composer + " "}</div></div>{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button>}</div><SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>

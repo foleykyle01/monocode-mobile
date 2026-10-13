@@ -10,6 +10,16 @@ These counts describe the source integration checkpoint. They do not claim a new
 
 ## Physical-device evidence
 
+October 13 source preview 0.1.1 includes bridge owner recovery, retained
+transcripts/drafts while reconnecting, stable multiline composer sizing,
+individual session activity dots and subtle chat contrast. The October 12 bridge
+authorization repair was installed on the Mac and the user confirmed their real
+workspace and phone access after migration. The October 13 phone UI build was
+installed and the user reported improved appearance. The subsequent multi-window
+owner-reclaim change is source-tested separately; it has not been exercised by
+closing a live user's Mac workspace. The public automatic-update plan remains a
+specification, not an enabled distribution service.
+
 Matching companion Mac 0.13.0 and signed iPhone builds were installed on October 12, 2026 with structured question replies, the connected tool activity tree, and read-only session checkpoint review. The user confirmed reconnection with the existing pairing and both sample projects. A real Claude single-choice question was answered on the phone, and the Mac independently recorded the expected reply with no pending question. See [chat parity](chat-parity.md) for implementation boundaries and remaining checks.
 
 The chat update passed 79 desktop bridge/shared-question tests, 89 phone UI/client tests, six native journal tests, four core protocol/auth tests, ten native host control tests, both TypeScript checks, frontend/native builds, and private CI. Native preview inspection exercised custom answers, tool expansion, and recorded diff review. Physical coverage of the new custom-answer keyboard, timed expiry, other providers, and recorded diffs remains pending.

@@ -1,6 +1,7 @@
 import { sessionConversationPage } from "../features/agent-app/model/sessionConversation";
 import { createCompanionBridge, CompanionCommandUncertain } from "../features/companion/model/companionBridge";
 import { companionReview } from "../features/companion/model/companionReview";
+import { registerCompanionOwner } from "../features/companion/model/companionOwner";
 import { createCompanionInbox } from "../features/companion/model/companionInbox";
 import { createCompanionMonoReader } from "../features/companion/model/companionMono";
 import { createCompanionChanges, type CompanionChangesTarget } from "../features/companion/model/companionChanges";
@@ -10753,7 +10754,6 @@ function Workspace({
           },
         })
       : null;
-    let disposed = false;
     const listening = listen<{
       id: string;
       namespace: string;
@@ -11234,14 +11234,9 @@ function Workspace({
         )
         .catch(console.error);
     });
-    // Publish a credential only after this window can receive requests.
-    if (companion) {
-      void listening.then(() => {
-        if (!disposed) return invoke("companion_enable");
-      }).catch(console.error);
-    }
+    const releaseCompanionOwner = companion ? registerCompanionOwner(listening) : undefined;
     return () => {
-      disposed = true;
+      releaseCompanionOwner?.();
       void listening.then((unlisten) => unlisten());
     };
   }, []);

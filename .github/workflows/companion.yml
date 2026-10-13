@@ -49,6 +49,9 @@ jobs:
       - name: Test desktop companion model suite
         run: npx vitest run src/features/companion/model
 
+      - name: Test app updater routing
+        run: npx vitest run --maxWorkers=1 --no-file-parallelism src/app/model/updater.test.ts src/app/model/updaterConfig.test.ts
+
       - name: Test companion UI suite
         run: npx vitest run --config companion/ui/vitest.config.ts
 

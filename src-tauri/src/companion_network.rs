@@ -149,12 +149,14 @@ pub async fn companion_network_status(
 
 #[tauri::command]
 pub async fn companion_network_start(
+    window: tauri::WebviewWindow,
     app: AppHandle,
     network: State<'_, CompanionNetwork>,
 ) -> Result<CompanionNetworkStatus, String> {
     #[cfg(feature = "companion-spike")]
     {
         require_experiment(&app)?;
+        crate::control::companion_enable(window, app.state())?;
         let mut inner = network.inner.lock().await;
         if let Some(running) = inner.running.as_mut() {
             return Ok(snapshot(running).await);
@@ -189,7 +191,7 @@ pub async fn companion_network_start(
     }
     #[cfg(not(feature = "companion-spike"))]
     {
-        let _ = (app, network);
+        let _ = (window, app, network);
         Err("Companion access requires the isolated development app".into())
     }
 }
@@ -221,6 +223,7 @@ pub async fn companion_network_stop(
 
 #[tauri::command]
 pub async fn companion_network_invite(
+    window: tauri::WebviewWindow,
     app: AppHandle,
     network: State<'_, CompanionNetwork>,
 ) -> Result<CompanionInviteResult, String> {
@@ -230,6 +233,7 @@ pub async fn companion_network_invite(
         use qrcode::{render::svg, QrCode};
 
         require_experiment(&app)?;
+        crate::control::companion_enable(window, app.state())?;
         let mut inner = network.inner.lock().await;
         let running = inner
             .running
@@ -258,7 +262,7 @@ pub async fn companion_network_invite(
     }
     #[cfg(not(feature = "companion-spike"))]
     {
-        let _ = (app, network);
+        let _ = (window, app, network);
         Err("Companion access requires the isolated development app".into())
     }
 }

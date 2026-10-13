@@ -3,9 +3,9 @@
   --companion-content: hsl(240 0% 92%);
   --companion-muted: color-mix(in srgb, var(--companion-content) 64%, var(--companion-bg));
   --companion-dim: color-mix(in srgb, var(--companion-content) 40%, var(--companion-bg));
-  --companion-panel: color-mix(in srgb, var(--companion-content) 5%, var(--companion-bg));
-  --companion-raised: color-mix(in srgb, var(--companion-content) 9%, var(--companion-bg));
-  --companion-stroke: color-mix(in srgb, var(--companion-content) 7%, transparent);
+  --companion-panel: color-mix(in srgb, var(--companion-content) 6%, var(--companion-bg));
+  --companion-raised: color-mix(in srgb, var(--companion-content) 10%, var(--companion-bg));
+  --companion-stroke: color-mix(in srgb, var(--companion-content) 9%, transparent);
   --companion-accent: hsl(211 92% 62%);
   --companion-accent-ink: color-mix(in srgb, var(--companion-bg) 84%, black);
   --companion-green: hsl(157 72% 49%);
@@ -169,7 +169,9 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .session-group h2 > span:last-child { margin-left: auto; }
 .folder-glyph { color: var(--companion-muted); font-size: calc(13px * var(--companion-ui-scale)); }
 .session-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 60px; border: 1px solid transparent; border-radius: 10px; padding: 8px 9px; background: transparent; color: var(--companion-content); text-align: left; cursor: pointer; }
-.session-row:hover { background: var(--companion-panel); }
+@media (hover: hover) and (pointer: fine) {
+  .session-row:hover { background: var(--companion-panel); }
+}
 .session-row--selected { border-color: color-mix(in srgb, var(--companion-accent) 40%, transparent); background: color-mix(in srgb, var(--companion-accent) 10%, var(--companion-bg)); }
 .session-row__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
 .session-row__body strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: calc(16px * var(--companion-ui-scale)); line-height: 1.35; font-weight: 600; }
@@ -177,8 +179,6 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .session-row__provider { display: flex; flex: 0 0 16px; align-self: flex-start; margin-top: 3px; color: var(--companion-muted); }
 .session-row__metadata { display: flex; flex-wrap: wrap; gap: 3px 8px; }
 .session-row__metadata > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-row__activity { color: var(--companion-green); }
-.session-row__activity--approval { color: var(--companion-amber); }
 .provider-chip { color: var(--companion-content); }
 .row-separator { color: var(--companion-dim); }
 .session-row__flag { flex: 0 0 auto; max-width: 80px; color: var(--companion-muted); font: calc(10px * var(--companion-ui-scale))/1.25 var(--companion-mono); text-align: right; }
@@ -198,7 +198,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .mono-section { border-bottom: 1px solid var(--companion-stroke); padding: 0 3px 18px; margin-bottom: 14px; }
 .mono-roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(140px * var(--companion-ui-scale))), 1fr)); gap: 6px; }
 .mono-row { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 65px; border: 1px solid var(--companion-stroke); border-radius: 10px; padding: 10px; text-align: left; background: var(--companion-panel); color: var(--companion-content); cursor: pointer; }
-.mono-row:hover, .mono-row--selected { border-color: var(--companion-accent); }
+.mono-row--selected { border-color: var(--companion-accent); }
+@media (hover: hover) and (pointer: fine) {
+  .mono-row:hover { border-color: var(--companion-accent); }
+}
 .mono-row > span { display: grid; gap: 5px; min-width: 0; }
 .mono-row strong { font-size: calc(14px * var(--companion-ui-scale)); overflow-wrap: anywhere; }
 .mono-row small { overflow-wrap: anywhere; font-size: calc(10px * var(--companion-ui-scale)); line-height: 1.4; color: var(--companion-muted); }
@@ -206,7 +209,9 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .detail-heading .mono-mascot { width: 20px; height: 20px; }
 .project-group { margin-bottom: 13px; }
 .group-toggle, .project-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; border: 0; border-radius: 7px; padding: 6px; background: transparent; color: var(--companion-content); text-align: left; cursor: pointer; }
-.group-toggle:hover, .project-toggle:hover { background: var(--companion-panel); }
+@media (hover: hover) and (pointer: fine) {
+  .group-toggle:hover, .project-toggle:hover { background: var(--companion-panel); }
+}
 .group-toggle strong { font-size: calc(12px * var(--companion-ui-scale)); font-weight: 650; color: var(--companion-muted); }
 .project-toggle strong { font-size: calc(14px * var(--companion-ui-scale)); font-weight: 600; }
 .group-toggle strong, .project-toggle strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -218,13 +223,15 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .project-activity--done { background: #20ae80; }
 .project-heading .project-toggle { min-width: 0; flex: 1; }
 .new-session-button { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border: 0; border-radius: 7px; background: transparent; color: var(--companion-muted); cursor: pointer; }
-.new-session-button:hover { background: var(--companion-panel); color: var(--companion-content); }
+@media (hover: hover) and (pointer: fine) {
+  .new-session-button:not(:disabled):hover { background: var(--companion-panel); color: var(--companion-content); }
+}
 .new-session-button:disabled { opacity: .4; cursor: default; }
 .nav-chevron { flex: 0 0 12px; color: var(--companion-dim); text-align: center; font-size: calc(17px * var(--companion-ui-scale)); }
 .folder-outline { display: inline-block; width: 14px; height: 10px; flex: 0 0 14px; border: 1px solid currentColor; border-radius: 2px; color: var(--companion-muted); position: relative; }
 .folder-outline::before { content: ""; position: absolute; left: -1px; top: -4px; width: 7px; height: 3px; border: 1px solid currentColor; border-bottom: 0; border-radius: 2px 2px 0 0; }
 .project-group__children { margin-left: 6px; border-left: 1px solid var(--companion-stroke); padding-left: 5px; }
-.project-sessions { padding: 0 0 6px 18px; }
+.project-sessions { display: grid; gap: 4px; padding: 4px 0 6px 18px; }
 .project-sessions .session-row { padding: 9px 8px; gap: 8px; }
 .project-sessions .session-row__body strong { font-size: calc(14px * var(--companion-ui-scale)); font-weight: 500; }
 .project-sessions .session-row__flag { max-width: 49px; font-size: calc(9px * var(--companion-ui-scale)); }
@@ -257,6 +264,9 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .connection-notice summary { cursor: pointer; }
 
 .session-detail { position: relative; isolation: isolate; display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.chat-connection { position: absolute; z-index: 2; top: 60px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; max-width: calc(100% - 24px); padding: 6px 10px; border: 1px solid var(--companion-stroke); border-radius: 16px; background: var(--companion-bg); color: var(--companion-muted); font-size: 12px; white-space: nowrap; box-shadow: var(--shadow-soft); }
+.chat-connection .status-dot { width: 6px; height: 6px; box-shadow: none; }
+.chat-connection button { border: 0; padding: 2px 4px; background: transparent; color: var(--companion-content); cursor: pointer; }
 .companion-chat-background { position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: var(--chat-background-image); background-position: center; background-size: cover; background-repeat: no-repeat; }
 .detail-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; min-height: 52px; border-bottom: 1px solid var(--companion-stroke); padding: 4px 12px; }
 .back-button { display: none; }
@@ -271,7 +281,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .message { max-width: 896px; margin: 0 auto 18px; }
 .message__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; color: var(--companion-muted); font: 550 calc(11px * var(--companion-ui-scale))/1.3 var(--companion-mono); }
 .message--user { padding: 8px 12px; border: 1px solid var(--companion-user-border, var(--companion-stroke)); border-radius: 8px; background: var(--companion-user-bg, color-mix(in srgb, var(--companion-content) 10%, transparent)); }
-.transcript--chat .message--user { width: fit-content; max-width: min(90%, 576px); margin-left: auto; margin-right: 0; border: 0; border-radius: 12px; }
+.transcript--chat .message--user { width: fit-content; max-width: min(90%, 576px); margin-left: auto; margin-right: 0; border-radius: 12px; }
 .transcript--full .message { max-width: none; }
 .message p { margin: 0; color: var(--companion-content); font-size: calc(14px * var(--companion-ui-scale)); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message--tool, .message--approval { border: 1px solid var(--companion-stroke); border-radius: 8px; padding: 10px 12px; background: var(--companion-panel); }
@@ -303,9 +313,14 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .approval-actions .button { min-width: 104px; }
 .empty-transcript { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 180px; height: 100%; color: var(--companion-muted); font-size: calc(13px * var(--companion-ui-scale)); }
 .empty-line { width: 22px; height: 1px; background: var(--companion-accent); }
-.composer { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; margin: 6px max(10px, 5vw) 8px; padding: 5px 5px 3px 10px; border: 1px solid var(--companion-stroke); border-radius: 8px; background: color-mix(in srgb, var(--companion-content) 3%, transparent); }
+.composer { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; margin: 6px max(10px, 5vw) 8px; padding: 5px 5px 3px 10px; border: 1px solid color-mix(in srgb, var(--companion-content) 14%, transparent); border-radius: 8px; background: var(--companion-panel); }
 .composer-input { display: contents; }
-.composer-input textarea { grid-column: 1 / -1; grid-row: 1; }
+.composer { flex-shrink: 0; }
+.composer-field { display: grid; grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+/* Size in one layout pass; collapsing a focused textarea makes WebKit move the caret viewport. */
+.composer-field textarea, .composer-measure { grid-area: 1 / 1; min-width: 0; min-height: 40px; max-height: 128px; padding: 9px 0; font: max(16px, calc(16px * var(--companion-ui-scale)))/calc(22px * var(--companion-ui-scale)) var(--companion-sans); white-space: pre-wrap; overflow-wrap: break-word; }
+.composer-measure { visibility: hidden; overflow: hidden; pointer-events: none; }
+.composer-field textarea { height: 100%; }
 .composer:focus-within { border-color: color-mix(in srgb, var(--companion-content) 20%, transparent); }
 .composer textarea { min-width: 0; min-height: 40px; max-height: 128px; border: 0; border-radius: 0; padding: 9px 0; background: transparent; font-size: calc(15px * var(--companion-ui-scale)); line-height: calc(22px * var(--companion-ui-scale)); }
 .composer textarea:focus, .composer textarea:focus-visible { box-shadow: none; outline: none; }
@@ -369,9 +384,13 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .settings-picker { animation: menu-enter 150ms cubic-bezier(.2, .8, .2, 1); transform-origin: bottom left; }
 .nav-chevron { transition: transform 160ms ease; }
 .nav-chevron[data-expanded="true"] { transform: rotate(90deg); }
-.session-row:active, .mono-row:active, .group-toggle:active, .project-toggle:active,
+/* Touch scrolling must not paint a row as pressed or leave a synthetic hover behind. */
+@media (hover: hover) and (pointer: fine) {
+  .session-row:active, .mono-row:active, .group-toggle:active, .project-toggle:active,
+  .new-session-button:active:not(:disabled) { background: var(--companion-raised); }
+}
 .back-button:active, .search-toggle:active, .settings-toggle:active,
-.new-session-button:active:not(:disabled), .setting-trigger:active:not(:disabled),
+.setting-trigger:active:not(:disabled),
 .settings-picker__option:active:not(:disabled), .settings-picker__close:active { background: var(--companion-raised); }
 
 @keyframes menu-enter {

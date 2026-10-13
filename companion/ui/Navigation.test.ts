@@ -18,6 +18,34 @@ const navigation: CompanionNavigation = {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("companion workspace navigation", () => {
+  it("uses the project dots for running, attention and unread sessions, with no dot for idle or read sessions", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div"); document.body.append(container);
+    const root = createRoot(container);
+    const rows = [
+      { ...sessions[0], id: "running", title: "Running chat", needsApproval: false },
+      { ...sessions[0], id: "attention", title: "Approval chat" },
+      { ...sessions[0], id: "done", title: "Finished chat", busy: false, needsApproval: false },
+      { ...sessions[0], id: "idle", title: "Idle chat", busy: false, needsApproval: false },
+    ];
+    const render = (unread: Set<string>) => act(async () => root.render(createElement(Navigation, { sessions: rows, navigation, query: "", filter: "all", unreadSessionIds: unread, onSession: vi.fn(), onMono: vi.fn() })));
+    try {
+      await render(new Set(["done"]));
+      const items = [...container.querySelectorAll(".session-row")];
+      for (const [index, state] of ["running", "attention", "done"].entries()) {
+        const dot = items[index].querySelector(`.project-activity--${state}`);
+        expect(dot).not.toBeNull();
+        expect(dot?.textContent).toBe("");
+        expect(dot?.getAttribute("aria-label")).toBeTruthy();
+      }
+      expect(items[3].querySelector(".project-activity")).toBeNull();
+      expect(container.querySelector(".session-row__activity")).toBeNull();
+      await render(new Set());
+      expect(items[2].querySelector(".project-activity")).toBeNull();
+      expect(items[0].querySelector(".project-activity--running")).not.toBeNull();
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  });
+
   it("shows a dot on projects while expanded and only on their group when collapsed, without counts", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div"); document.body.append(container);

@@ -28,6 +28,7 @@ describe("updater", () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("keeps automatic checks quiet when updater endpoints are missing", async () => {
@@ -64,6 +65,22 @@ describe("updater", () => {
       error: "network failed",
     });
     expect(message).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the companion's manual fallback on its own release channel", async () => {
+    vi.stubEnv("VITE_MONOCODE_COMPANION_SPIKE", "1");
+    vi.resetModules();
+    getVersion.mockResolvedValue("0.13.0");
+    check.mockRejectedValue(new Error("Updater does not have any endpoints set"));
+    const companionUpdater = await import("./updater");
+
+    await companionUpdater.runUpdateFlow(true);
+
+    expect(message).toHaveBeenCalledWith(
+      expect.stringContaining("https://github.com/foleykyle01/monocode-mobile/releases"),
+      { title: "MonoCode" },
+    );
+    expect(relaunch).not.toHaveBeenCalled();
   });
 
   it.each(["deb", "rpm"] as const)("names one %s installer and the releases URL", (kind) => {
