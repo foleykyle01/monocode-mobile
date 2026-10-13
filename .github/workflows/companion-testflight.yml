@@ -49,6 +49,8 @@ jobs:
           test "$RELEASE_READY" = true || { echo 'TestFlight account, app record and environment protection must be configured first.'; exit 1; }
           node scripts/companion-release-preflight.mjs testflight
           node --test scripts/companion-release-preflight.test.mjs
+          # Tauri resolves Xcode through the system selection, not just DEVELOPER_DIR.
+          sudo xcode-select --switch "$DEVELOPER_DIR"
           xcodebuild -version
           SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
           test "${SDK_VERSION%%.*}" -ge 26 || { echo 'App Store Connect requires iOS SDK 26 or newer.'; exit 1; }
