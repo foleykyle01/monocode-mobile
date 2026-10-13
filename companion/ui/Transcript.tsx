@@ -116,7 +116,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     <div ref={viewport} className={`transcript transcript--${layout} ${mono ? "transcript--mono" : ""}`} onScroll={measure} aria-label="Conversation" tabIndex={0}>
       <div ref={content}>
         {onLoadEarlier ? <div className="history-control">
-          <button type="button" className="history-control__button" onClick={loadEarlier} disabled={loadingEarlier}>
+          <button type="button" className="history-control__button" onClick={loadEarlier} disabled={loadingEarlier || mutationsDisabled}>
             {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
           </button>
           {historyError ? <p className="history-control__error" role="alert">{historyError}</p> : null}

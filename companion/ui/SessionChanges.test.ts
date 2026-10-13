@@ -22,9 +22,23 @@ it("shows recorded totals, loads only the chosen diff, and never offers Keep/Und
     await act(async () => container.querySelector<HTMLButtonElement>(".session-changes header button")!.click());
     expect(client.reviewRead).toHaveBeenCalledExactlyOnceWith("s", "a.ts");
     expect(container.querySelector(".changes-diff")?.textContent).toContain("new");
+    const card = container.querySelector(".session-changes");
+    const diff = container.querySelector(".changes-diff");
+    await act(async () => root.render(createElement(SessionChanges, { ...props, offline: true })));
+    expect(container.querySelector(".session-changes")).toBe(card);
+    expect(container.querySelector(".changes-diff")).toBe(diff);
+    expect(container.querySelector<HTMLButtonElement>(".session-changes header button")?.disabled).toBe(true);
+    expect(client.reviewList).toHaveBeenCalledTimes(1);
+    let finish!: (value: Awaited<ReturnType<typeof client.reviewList>>) => void;
+    client.reviewList.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => root.render(createElement(SessionChanges, props)));
+    expect(container.querySelector(".changes-diff")).toBe(diff);
+    expect(container.textContent).not.toContain("Loading diff");
+    await act(async () => finish({ epoch: "e", turn: 1, files: [{ relative: "a.ts", additions: 1, deletions: 1, exact: true }], total: 1, additions: 1, deletions: 1, truncated: false }));
+    expect(container.querySelector(".changes-diff")).toBe(diff);
     await act(async () => root.render(createElement(SessionChanges, { ...props, busy: true })));
     expect(container.querySelector(".session-changes")).toBeNull();
-    expect(client.reviewList).toHaveBeenCalledTimes(1);
+    expect(client.reviewList).toHaveBeenCalledTimes(2);
   } finally {
     await act(async () => root.unmount());
     vi.unstubAllGlobals();

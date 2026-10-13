@@ -90,7 +90,16 @@ Phone identity and unconfirmed commands use Apple Keychain with synchronization 
 
 ## Recovery and limits
 
+The source preview is version **0.1.1**, based on MonoCode **0.13.0**. See the
+[update and distribution plan](../docs/companion/updates-and-distribution.md) for
+the path from developer builds to signed installers and automatic app updates.
+
 The app polls bounded snapshots while visible and refreshes/rebuilds transport after foregrounding or regained connectivity. Reconnect retains pairing and does not automatically replay pending commands.
+
+If the Mac bridge's owning workspace closes while another workspace remains,
+surviving workspaces can reclaim the bridge after their request listener is ready.
+The native ownership check prevents replacing a live owner. This does not start
+Remote access after a full app restart or change the paired-device list.
 
 Mutations are saved before dispatch with their exact host, request ID, action, and input. The Mac deduplicates matching requests within its renderer epoch and rejects changed input or stale state. A timeout may mean the command ran but its receipt was lost: review the conversation or explicitly retry the same command. Desktop receipts are memory-only and limited to 512 commands per epoch; a restart may require manual outcome review.
 

@@ -15,9 +15,12 @@ export function SessionChanges({ client, sessionId, epoch, turn, busy, offline }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const serial = useRef(0);
+  useEffect(() => {
+    setData(undefined); setFile(undefined); setExpanded(false);
+  }, [sessionId, epoch, turn, busy]);
   const load = useCallback(async () => {
     const request = ++serial.current;
-    setData(undefined); setFile(undefined); setError(undefined);
+    setError(undefined); setLoading(false);
     if (busy || offline) return;
     setLoading(true);
     try {
@@ -64,6 +67,6 @@ export function SessionChanges({ client, sessionId, epoch, turn, busy, offline }
     </div>) : null}
     {!expanded && data && data.files.length > 3 ? <button className="session-changes__more" type="button" onClick={() => setExpanded(true)}><ChevronRight size={14} />Show {data.files.length - 3} more files</button> : null}
     {data?.truncated ? <p className="session-changes__notice">Showing the first {data.files.length} files. Review the full list on your Mac.</p> : null}
-    {loading ? <p className="session-changes__notice" role="status">Loading diff…</p> : null}
+    {loading && expanded && !file ? <p className="session-changes__notice" role="status">Loading diff…</p> : null}
   </section>;
 }

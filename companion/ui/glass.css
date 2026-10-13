@@ -1,9 +1,10 @@
 /* Translucent controls keep the desktop palette, with a solid fallback. */
 .companion-shell {
-  --glass-fill: color-mix(in srgb, var(--companion-panel) 68%, transparent);
-  --glass-edge: color-mix(in srgb, var(--companion-content) 8%, transparent);
-  --glass-shadow: 0 1px 3px rgb(0 0 0 / .04);
+  --glass-fill: color-mix(in srgb, var(--companion-panel) 74%, transparent);
+  --glass-edge: color-mix(in srgb, var(--companion-content) 9%, transparent);
+  --glass-shadow: 0 1px 3px rgb(0 0 0 / .06), inset 0 1px 0 rgb(255 255 255 / .035);
 }
+.companion-shell :is(.composer, .session-changes, .message--pending) { box-shadow: var(--glass-shadow); }
 .companion-shell :is(.search-toggle, .settings-toggle, .back-button, .inbox-back, .inbox-refresh, .mono-details-button, .button--quiet, .inbox-navigation-button) {
   border: .5px solid var(--glass-edge);
   border-radius: 22px;
@@ -63,7 +64,7 @@
 }
 .mono-card .mono-row { flex: 1; align-self: stretch; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .mono-card .mono-details-button { flex: 0 0 36px; width: 36px; height: 44px; margin-right: 5px; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
-.mono-card:focus-within { border-color: var(--companion-accent); }
+.mono-card:has(:focus-visible) { border-color: var(--companion-accent); }
 .companion-shell .inbox-navigation-button { margin: 0 0 18px; padding: 10px 14px; min-height: 48px; border-radius: 14px; }
 .companion-shell .inbox-navigation-button strong { font-weight: 500; }
 @media (prefers-reduced-transparency: reduce) {

@@ -8,13 +8,39 @@ The target is remote access to projects, Monos, and sessions already open in an 
 
 The current implementation uses a shared React UI inside a Tauri iOS shell. A narrow desktop bridge forwards only supported session actions to the existing desktop owner. Pairing creates a revocable device identity; encrypted Iroh direct/relay transport provides reachability. This is a prototype architecture, not a release or service commitment.
 
-The phone information architecture is Monos, then groups, projects, and sessions. It follows the connected Mac's resolved appearance where that has a phone equivalent. Chats retain the desktop transcript and composer language while using phone-sized navigation and touch targets.
+The phone home page shows Inbox, Monos, then groups, projects, and sessions. It follows the connected Mac's resolved appearance where that has a phone equivalent. Chats retain the desktop transcript and composer language while using phone-sized navigation and touch targets.
 
 ## Supported prototype slice
 
 The bridge exposes bounded session listing and reads, blank-session creation, follow-ups, approvals, stop, and advertised model/access configuration. Every mutation carries an exact request identity and current state preconditions. The desktop remains the sole process, provider, and transcript writer.
 
 The scope intentionally excludes copying provider credentials, direct database access, arbitrary native commands, unbounded transcript transfer, and automatic replay of an uncertain mutation.
+
+## October 12: subtle surface depth
+
+Code `1623a39` lightly raises host-derived panel, raised-surface and edge contrast.
+Existing glass controls and Mono cards get a faint inner highlight and a soft
+shadow; the composer, approval cards and session-change cards share that depth.
+Layout, typography, theme choices and blur strength are unchanged.
+
+TypeScript/UI build, native Mac preview and signed iPhone archive pass. Light and
+dark home/chat views were visually checked in native WebKit; the preview's Light
+setting was restored and the preview closed. No additional logic tests were needed
+for the two-file CSS change. Physical-device appearance remains unverified; the
+validation boundary is recorded in [validation scope](validation-public.md).
+
+## October 13: touch feedback and chat contrast
+
+October 13 (`d55bff3`): navigation hover/pressed fills now require a fine pointer
+with hover capability to avoid iOS synthetic hover while scrolling. Keyboard
+focus remains available; the actual selected session stays marked. A 4px gap
+separates session highlights from adjacent rows. Chat bubbles retain their
+host-derived border instead of overriding it to zero; composer fill uses the
+panel token with a slightly clearer edge. No new gesture handlers or animations.
+UI/native/device builds pass; installed on the connected phone. The user reported
+that it looks much better; this is not a full gesture/lifecycle certification.
+Native preview screenshots stayed at transition-start
+frames this run, limiting visual verification; no animation code was changed.
 
 ## Known gaps
 

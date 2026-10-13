@@ -100,12 +100,12 @@ impl Inner {
         ids.dedup();
         ids
     }
-    fn close_window(&mut self, label: &str) -> Vec<String> {
-        if self
+    fn close_window(&mut self, label: &str) -> (Vec<String>, bool) {
+        let companion_owner_closed = self
             .companion
             .as_ref()
-            .is_some_and(|grant| grant.window == label)
-        {
+            .is_some_and(|grant| grant.window == label);
+        if companion_owner_closed {
             self.companion = None;
         }
         let ids = self.window_sessions(label);
@@ -123,7 +123,7 @@ impl Inner {
                 .send(json!({"ok":false,"error":"MonoCode window closed"}));
             false
         });
-        ids
+        (ids, companion_owner_closed)
     }
 }
 pub struct ControlHost {
@@ -323,6 +323,23 @@ fn serve(mut stream: TcpStream, app: &AppHandle, inner: &Arc<Mutex<Inner>>) {
     let _ = writeln!(stream, "{response}");
 }
 
+fn require_companion_owner(inner: &Inner, window: &str) -> Result<(), String> {
+    if !crate::window::is_workspace_window(window) {
+        return Err("Open phone access from a MonoCode workspace window".into());
+    }
+    if inner
+        .companion
+        .as_ref()
+        .is_some_and(|grant| grant.window != window)
+    {
+        return Err(
+            "Phone access belongs to another MonoCode window. Open Connections in that window."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn companion_enable(
     window: WebviewWindow,
@@ -330,7 +347,6 @@ pub fn companion_enable(
 ) -> Result<String, String> {
     if !cfg!(feature = "companion-spike")
         || window.app_handle().config().identifier != "com.monocode.companion-spike"
-        || window.label() != "main"
     {
         return Err("Companion access requires the isolated development app".into());
     }
@@ -375,6 +391,8 @@ pub fn companion_enable(
             .inner
             .lock()
             .map_err(|_| "Control service unavailable")?;
+        // Reopened workspaces get new labels; never steal another live owner's sessions.
+        require_companion_owner(&inner, window.label())?;
         std::fs::rename(&temporary, &path).map_err(|e| e.to_string())?;
         inner.companion = Some(grant);
         Ok(())
@@ -561,9 +579,15 @@ pub fn window_closed(app: &AppHandle, label: &str) {
     for id in &ids {
         let _ = crate::harness::harness_kill(app.state(), id.clone());
     }
-    if let Ok(mut inner) = host.inner.lock() {
-        inner.close_window(label);
-    };
+    let companion_owner_closed = host
+        .inner
+        .lock()
+        .map(|mut inner| inner.close_window(label).1)
+        .unwrap_or(false);
+    if companion_owner_closed {
+        // Surviving workspaces already mounted while this owner was alive.
+        let _ = app.emit("monocode-companion-owner-needed", ());
+    }
 }
 
 pub fn configure_child(app: &AppHandle, session_id: &str, cmd: &mut Command) {
@@ -764,10 +788,48 @@ mod tests {
         assert!(request_grant(&inner, "companion", "wrong-token").is_err());
         assert!(request_grant(&inner, "app", "device-token").is_err());
         assert!(request_grant(&inner, "control", "device-token").is_err());
-        inner.close_window("other-window");
+        assert!(!inner.close_window("other-window").1);
         assert!(inner.companion.is_some());
-        inner.close_window("main");
+        assert!(inner.close_window("main").1);
         assert!(request_grant(&inner, "companion", "device-token").is_err());
+        assert!(!inner.close_window("main").1);
+    }
+
+    #[test]
+    fn companion_reopened_workspace_can_replace_closed_owner_without_stealing_live_owner() {
+        let mut inner = Inner {
+            companion: Some(Grant {
+                window: "main".into(),
+                session: String::new(),
+                cwd: String::new(),
+                token: "old-token".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(require_companion_owner(&inner, "main").is_ok());
+        assert!(require_companion_owner(&inner, "window-1").is_err());
+        inner.close_window("main");
+        assert!(request_grant(&inner, "companion", "old-token").is_err());
+        assert!(require_companion_owner(&inner, "window-1").is_ok());
+        inner.companion = Some(Grant {
+            window: "window-1".into(),
+            session: String::new(),
+            cwd: String::new(),
+            token: "new-token".into(),
+        });
+        assert_eq!(
+            request_grant(&inner, "companion", "new-token").is_ok(),
+            cfg!(feature = "companion-spike")
+        );
+        assert!(require_companion_owner(&inner, "window-2").is_err());
+        for panel in [
+            "mono-chat",
+            "mono-chat-test",
+            "quick-composer",
+            "quick-composer-git",
+        ] {
+            assert!(require_companion_owner(&Inner::default(), panel).is_err());
+        }
     }
 
     #[test]
@@ -980,7 +1042,7 @@ mod tests {
         );
 
         assert_eq!(
-            inner.close_window("closing"),
+            inner.close_window("closing").0,
             ["lead", "ordinary", "worker"]
         );
         assert_eq!(inner.active.len(), 1);
@@ -992,7 +1054,7 @@ mod tests {
         assert_eq!(response.try_recv().unwrap()["ok"], false);
         assert!(other_response.try_recv().is_err());
         assert!(inner.pending.contains_key("other-pending"));
-        assert!(inner.close_window("closing").is_empty());
+        assert!(inner.close_window("closing").0.is_empty());
     }
 
     #[test]

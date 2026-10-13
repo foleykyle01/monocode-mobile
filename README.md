@@ -12,6 +12,11 @@ An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/m
 
 **Development prototype:** this fork includes a modified Mac host and a native Tauri iOS client. It is an independent experiment, not an official MonoCode mobile release. The unmodified upstream desktop app cannot host this companion. Building for a physical iPhone requires Xcode and Apple development signing; no App Store or TestFlight release is available.
 
+**Current source preview: Companion 0.1.1 · MonoCode desktop base 0.13.0.**
+The [automatic-update and distribution plan](docs/companion/updates-and-distribution.md)
+describes the proposed signed Mac installer, in-app updates and TestFlight/App Store
+path. These distribution channels are not live yet.
+
 ## Screenshots
 
 ### iPhone interface
