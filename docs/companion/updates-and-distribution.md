@@ -1,7 +1,7 @@
 # Updates and distribution
 
 Status: accepted distribution direction, October 13, 2026. Companion **0.1.1**
-(iPhone build **1003**) is valid in App Store Connect and in internal Owner
+(iPhone build **1004**) is valid in App Store Connect and in internal Owner
 testing, with desktop base **MonoCode 0.13.0**. Automatic Mac distribution is not
 enabled, and no signed/notarized Mac installer or external TestFlight invitation
 has been published. A public GitHub repository is not itself a production
@@ -138,8 +138,10 @@ build expires after 90 days, so this channel needs ongoing beta maintenance and
 is not permanent production distribution. Ship a replacement well before expiry.
 Delivery remains under user/iOS control and is not an instantaneous forced push.
 
-Current TestFlight state: build **1003** is **VALID** and **IN_BETA_TESTING** in the
-internal Owner testing group. The external **Community beta** group is prepared;
+Current TestFlight state: build **1004** has completed Apple processing and export
+compliance and is **Testing** in the internal Owner testing group. Notification
+controls and delivery are disabled in this build. Physical upgrade/reconnection
+validation for 1004 remains pending; the owner confirmed operation on 1003. The external **Community beta** group is prepared;
 its public invitation is disabled and external review has not been submitted.
 Community rollout follows the owner-only upgrade
 check:
@@ -206,7 +208,7 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 Current foundations: Tauri updater is present but companion endpoints are disabled;
 the manual fallback now points to this fork. Phone version metadata is 0.1.1 and
-build 1003 is valid in internal TestFlight Owner testing. Apple Distribution and
+build 1004 is available in internal TestFlight Owner testing. Apple Distribution and
 Developer ID Application certificates were created in Xcode with the owner's
 authorization. The development certificate is retained. Certificates alone do not
 configure notarization, App Store Connect or CI access.
@@ -215,8 +217,10 @@ The TestFlight and Mac workflows have separate protected GitHub environments.
 The Mac environment contains Developer ID/notarization credentials and a separate
 Tauri signing key; both workflows run only on public `main` after review. Candidate
 1003 passed iPhone processing and the owner confirmed operation/reconnection.
-Remaining delivery gates include the verified signed Mac installer, a real
-bootstrap-to-update check, privacy metadata and external beta approval. The Mac
+The Apple Silicon 1.0.0-beta.1 Mac installer has been signed, notarized and
+verified, and is staged in a draft GitHub release. Remaining delivery gates
+include real bootstrap-to-update validation, public installer publication,
+privacy metadata and external beta approval. The Mac
 feed remains disabled through `COMPANION_MAC_UPDATE_VERIFIED=false`. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 

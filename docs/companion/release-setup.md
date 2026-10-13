@@ -2,7 +2,7 @@
 
 The intended normal-user path is a direct signed Mac download with verified
 in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
-now live for internal Owner testing: build **0.1.1 (1003)** is valid in App Store
+now live for internal Owner testing: build **0.1.1 (1004)** is valid in App Store
 Connect and in beta testing. The public external beta and signed Mac download are
 still pending, so do not publish an installer or invitation yet. The eventual
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
@@ -93,7 +93,7 @@ after relaunch; the pairing remains stored.
 
 ## TestFlight iPhone beta
 
-The next phone build keeps `PHONE_NOTIFICATIONS_ENABLED` false in
+Build 1004 keeps `PHONE_NOTIFICATIONS_ENABLED` false in
 `companion/ui/features.ts`. Notification settings, polling, permission requests,
 and tap routing remain inactive. The native push plugin and relay integration
 are not included in this release. Enable the flag only with the native integration
@@ -139,7 +139,7 @@ supports those operations. Do not put a signing key in repository variables.
 Before setting `COMPANION_TESTFLIGHT_READY=true` in that environment, verify the
 App Store Connect app record owns `dev.monocode.companion`, agreements are current,
 and the account can distribute the app. Select an unused build number greater than
-the last uploaded build (1003 at this milestone). The workflow writes it directly
+the last uploaded build (1004 at this milestone). The workflow writes it directly
 to `bundle.iOS.bundleVersion`, not the CLI flag that appends a number to the
 marketing version.
 
@@ -152,12 +152,12 @@ submits it to Apple for processing; it does not submit a public App Store releas
 or automatically invite testers. No signing key is retained in artifacts; the
 temporary key is removed on exit.
 
-Apple processing for build **1003** is complete: App Store Connect reports the
-build as **VALID** and **IN_BETA_TESTING** in the internal Owner testing group.
-The owner-only encryption declaration has been submitted. An external **Community
+Apple processing and export compliance for build **1004** are complete; it is
+**Testing** in the internal Owner testing group. Its physical upgrade and
+reconnection check remains pending. The owner confirmed TestFlight operation
+and reconnection on the previous build, 1003. An external **Community
 beta** group exists with its public invitation disabled. The English beta
-description and build testing notes are saved. The owner has confirmed TestFlight
-operation and reconnection. Feedback email (`foley.kyle01@gmail.com`) and Apple's
+description and build testing notes are saved. Feedback email (`foley.kyle01@gmail.com`) and Apple's
 private review contact are configured. Privacy URL and external beta review still
 need completion before inviting community testers. Do not assert that the custom
 Iroh encrypted transport is exempt without checking Apple's questionnaire.
@@ -166,9 +166,11 @@ The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
 packaged app, and generates opaque PNG icons without alpha channels. These guard
 against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
-processing. Mac release CI, notarized Mac packaging, and safe installation/restart
-handling are pending; the `mac` preflight alone does not implement automatic
-updates.
+processing. Candidate 1004 also passed the signed upload and Apple processing.
+Mac release CI and guarded installation/restart handling are implemented. The
+signed/notarized Apple Silicon 1.0.0-beta.1 installer is staged in a draft release;
+public download publication and real bootstrap-to-update validation remain
+pending. The Mac update feed stays disabled.
 
 ## External TestFlight handoff
 
@@ -179,7 +181,7 @@ review contact fields. A build must be approved for external beta testing before
 the community can use it.
 
 The reviewer needs a usable companion-enabled Mac and pairing instructions, or a
-clearly labeled sample mode exposed in the submitted app. Build 1003's preview is
+clearly labeled sample mode exposed in the submitted app. Build 1004's preview is
 a developer URL option, not an accessible reviewer onboarding flow. Do not claim
 that review can use a hidden preview button or supply the maintainer's real Mac,
 provider credentials, or short-lived QR invitation. Complete the signed Mac
