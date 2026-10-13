@@ -133,4 +133,34 @@ describe("companion workspace navigation", () => {
     expect(monoStatusLabel(navigation.monos[0])).toBe("Working");
     expect(monoStatusLabel({ ...navigation.monos[0], statusLabel: "" })).toBe("Working");
   });
+
+  it("remembers collapsed groups and projects and collapses to either level at once", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    localStorage.clear();
+    const container = document.createElement("div"); document.body.append(container);
+    let root = createRoot(container);
+    const render = () => act(async () => root.render(createElement(Navigation, { sessions, navigation, query: "", filter: "all", onSession: vi.fn(), onMono: vi.fn() })));
+    const click = (selector: string, text?: string) => act(async () => { ([...container.querySelectorAll<HTMLButtonElement>(selector)].find(button => !text || button.textContent === text))!.click(); });
+    const titles = () => [...container.querySelectorAll(".session-row strong")].map(node => node.textContent);
+    try {
+      await render();
+      expect(titles()).toEqual(["Fix reconnect"]);
+      await click(".nav-collapse button", "Projects");
+      expect(titles()).toEqual([]);
+      expect(container.querySelectorAll(".project-toggle")).toHaveLength(2);
+      await click(".nav-collapse button", "Groups");
+      expect(container.querySelectorAll(".project-toggle")).toHaveLength(0);
+      await click(".group-toggle");
+      act(() => root.unmount());
+      root = createRoot(container);
+      await render();
+      expect(container.querySelector(".group-toggle")?.getAttribute("aria-expanded")).toBe("true");
+      expect(container.querySelectorAll(".project-toggle")).toHaveLength(1);
+      expect(titles()).toEqual([]);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      localStorage.clear();
+    }
+  });
 });

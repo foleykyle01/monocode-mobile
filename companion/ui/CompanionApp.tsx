@@ -22,6 +22,9 @@ import { MonoMascot, Navigation } from "./Navigation";
 import { MonoDetailsView } from "./MonoDetailsView";
 import { ConnectionNotice } from "./ConnectionNotice";
 import { SessionSettings } from "./SessionSettings";
+import { NotificationSettings } from "./NotificationSettings";
+import { PHONE_NOTIFICATIONS_ENABLED } from "./features";
+import { usePhoneNotifications } from "./phoneNotifications";
 import { appearanceStyle as desktopAppearanceStyle, BASE_APPEARANCES, readAppearanceMode, resolveAppearance } from "./appearance";
 import { ChatBackground } from "./ChatBackground";
 import { mergeLatest, prependHistory } from "./history";
@@ -323,6 +326,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false });
   const [workspaceView, setWorkspaceView] = useState<{ kind: "inbox" } | { kind: "changes"; projectId: string } | { kind: "mono"; monoId: string }>();
   const availableSessionIds = useRef(new Set<string>());
+  const notificationSelection = useRef<string | undefined>(undefined);
   const [selectedMonoId, setSelectedMonoId] = useState<string>();
   const [networkOnline, setNetworkOnline] = useState(() => navigator.onLine);
   const [lastSeen, setLastSeen] = useState<number>();
@@ -357,7 +361,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [appearance, setAppearance] = useState<CompanionAppearance>();
   const [mobileListOpen, setMobileListOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsDialog = useRef<HTMLDialogElement>(null);
+  const settingsBack = useRef<HTMLButtonElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
   const [forgetOpen, setForgetOpen] = useState(false);
@@ -371,11 +375,21 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const offlineRef = useRef(false);
   const reconnectInFlight = useRef<Promise<void> | null>(null);
 
-  useEffect(() => {
-    const dialog = settingsDialog.current;
-    if (settingsOpen) dialog?.showModal();
-    else if (dialog?.open) dialog.close();
-  }, [settingsOpen]);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setForgetOpen(false);
+    requestAnimationFrame(() => settingsButton.current?.focus({ preventScroll: true }));
+  }, []);
+  const settingsSurface = useEdgeSwipeBack(closeSettings, settingsOpen, "settings");
+  useEffect(() => { if (settingsOpen) settingsBack.current?.focus({ preventScroll: true }); }, [settingsOpen]);
+  const notifications = usePhoneNotifications(demo, status.hostId,
+    !mobileListOpen && !settingsOpen && !workspaceView ? selectedId : undefined,
+    target => {
+      notificationSelection.current = target.sessionId;
+      setSettingsOpen(false); setWorkspaceView(undefined); setSelectedMonoId(undefined);
+      if (target.sessionId !== selectedId) setRead(undefined);
+      setSelectedId(target.sessionId); setMobileListOpen(false);
+    });
 
   useEffect(() => {
     const update = () => { setViewportHeight(window.visualViewport?.height ?? window.innerHeight); setViewportTop(window.visualViewport?.offsetTop ?? 0); };
@@ -402,8 +416,14 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
         availableSessionIds.current = new Set(list.sessions.map(session => session.id));
         setLastSeen(Date.now());
         setAppearance(list.appearance);
+        const notified = notificationSelection.current;
+        if (notified && !list.sessions.some(entry => entry.id === notified) && !list.navigation?.monos.some(mono => mono.canChat && mono.sessionId === notified)) {
+          setError("The notified session is no longer available in this workspace.");
+          setMobileListOpen(true);
+        }
+        notificationSelection.current = undefined;
         setSelectedId((current) => {
-          const preferred = selectId ?? current ?? initialPendingRef.current?.input.sessionId;
+          const preferred = notified ?? selectId ?? current ?? initialPendingRef.current?.input.sessionId;
           const available = preferred && (list.sessions.some(entry => entry.id === preferred) || list.navigation?.monos.some(mono => mono.canChat && mono.sessionId === preferred));
           return available ? preferred : list.sessions[0]?.id;
         });
@@ -742,9 +762,9 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
 
   return (
     <main className={`companion-shell companion-shell--workspace ${displayedAppearance?.scheme === "light" ? "companion-shell--light" : ""}`} style={appearanceStyle}>
-      <dialog ref={settingsDialog} className="workspace-settings" aria-labelledby="workspace-settings-title" onClose={() => { setSettingsOpen(false); setForgetOpen(false); settingsButton.current?.focus({ preventScroll: true }); }} onClick={event => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
+      <section ref={settingsSurface} hidden={!settingsOpen} className="workspace-settings" aria-labelledby="workspace-settings-title" onKeyDown={event => { if (event.key === "Escape") closeSettings(); }}>
         <div className="workspace-settings__surface">
-          <header className="workspace-settings__heading"><h2 id="workspace-settings-title">Settings</h2><button className="settings-picker__close" type="button" aria-label="Close settings" autoFocus onClick={() => setSettingsOpen(false)}><X size={18} aria-hidden="true" /></button></header>
+          <header className="detail-heading"><button ref={settingsBack} className="back-button" type="button" aria-label="Back from settings" onClick={closeSettings}><ChevronLeft size={20} aria-hidden="true" /></button><h2 id="workspace-settings-title">Settings</h2></header>
           <div className="workspace-settings__body">
             <section className="workspace-settings__section" aria-label="Mac connection">
               <h3>Connection</h3>
@@ -752,6 +772,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               {displayOffline ? <ConnectionNotice online={displayOnline} reconnecting={displayReconnecting} lastSeen={lastSeen} error={demo ? undefined : connectionError} onReconnect={() => demo ? setPreviewConnection("connected") : void reconnect()} /> : <button className="button button--quiet settings-reconnect" type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()} disabled={reconnecting}>Reconnect</button>}
               {demo ? <SettingsChoices label="Connection preview" value={previewConnection} options={[["connected", "Connected"], ["reconnecting", "Reconnecting"], ["unreachable", "Mac unreachable"], ["offline", "Device offline"]]} onChange={setPreviewConnection} /> : null}
             </section>
+            {PHONE_NOTIFICATIONS_ENABLED ? <NotificationSettings notifications={notifications} demo={demo} /> : null}
             <section className="workspace-settings__section" aria-label="Appearance"><h3>Appearance</h3>
               <SettingsChoices label="Theme" value={appearanceMode} options={[["host", "Follow host"], ["light", "Light"], ["dark", "Dark"]]} onChange={changeAppearance} />
               <p className="settings-note">Follow host uses your Mac’s appearance. Light and Dark use a plain theme on this device. Text stays at 100%.</p>
@@ -763,13 +784,13 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
             </section> : null}
           </div>
         </div>
-      </dialog>
-      <div className="app-header">
+      </section>
+      <div className="app-header" hidden={settingsOpen}>
         {pendingMutation?.action === "sessions.create" ? recoveryBanner : null}
       </div>
-      <div className="workspace-grid">
+      <div className="workspace-grid" hidden={settingsOpen}>
         <aside className={`session-panel ${mobileListOpen ? "mobile-list-open" : ""}`} aria-label="Workspace">
-          <div className="workspace-toolbar"><h1 className="workspace-title">MonoCode Mobile</h1><button ref={searchButton} className="search-toggle" type="button" aria-label={searchOpen ? "Close workspace search" : "Search workspace"} aria-expanded={searchOpen} onClick={() => { setSearchOpen(open => !open); if (searchOpen) { setQuery("");  } }}>{searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}</button><button ref={settingsButton} className="settings-toggle" type="button" aria-label="Settings" aria-describedby="companion-connection-status" aria-haspopup="dialog" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}><Settings size={19} aria-hidden="true" /><span id="companion-connection-status" className="connection-indicator" role="status" aria-label={connectionLabel} title={connectionLabel}><span className={connectionDot} aria-hidden="true" /></span></button></div>
+          <div className="workspace-toolbar"><h1 className="workspace-title">MonoCode Mobile</h1><button ref={searchButton} className="search-toggle" type="button" aria-label={searchOpen ? "Close workspace search" : "Search workspace"} aria-expanded={searchOpen} onClick={() => { setSearchOpen(open => !open); if (searchOpen) { setQuery("");  } }}>{searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}</button><button ref={settingsButton} className="settings-toggle" type="button" aria-label="Settings" aria-describedby="companion-connection-status" aria-expanded={settingsOpen} aria-controls="workspace-settings-title" onClick={() => setSettingsOpen(true)}><Settings size={19} aria-hidden="true" /><span id="companion-connection-status" className="connection-indicator" role="status" aria-label={connectionLabel} title={connectionLabel}><span className={connectionDot} aria-hidden="true" /></span></button></div>
           {searchOpen ? <div className="session-search" onKeyDown={event => { if (event.key === "Escape") { setSearchOpen(false); setQuery("");  searchButton.current?.focus(); } }}><input type="search" aria-label="Search workspace" placeholder="Search workspace" autoFocus value={query} onChange={event => { setQuery(event.target.value); if (event.target.value.trim()) setMonosExpanded(true); }} /></div> : null}
           {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
           <div className="workspace-scroll">
