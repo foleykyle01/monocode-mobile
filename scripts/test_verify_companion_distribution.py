@@ -10,7 +10,7 @@ spec.loader.exec_module(distribution)
 
 class DistributionTest(unittest.TestCase):
     def test_rejects_wrong_identity_version_and_development_export(self):
-        info = {"CFBundleIdentifier": "dev.monocode.companion", "CFBundleShortVersionString": "0.1.1", "CFBundleVersion": "1001"}
+        info = {"CFBundleIdentifier": "dev.monocode.companion", "CFBundleShortVersionString": "0.1.1", "CFBundleVersion": "1001", "DTSDKName": "iphoneos26.2"}
         profile = {"TeamIdentifier": ["TEAM123456"], "Entitlements": {"application-identifier": "TEAM123456.dev.monocode.companion", "get-task-allow": False}}
         options = dict(team="TEAM123456", version="0.1.1", build="1001")
         self.assertEqual(distribution.validate_ios_distribution(info, profile, **options), [])
@@ -18,3 +18,6 @@ class DistributionTest(unittest.TestCase):
         self.assertTrue(distribution.validate_ios_distribution(info, profile, **{**options, "build": "1002"}))
         self.assertTrue(distribution.validate_ios_distribution(info, {**profile, "ProvisionedDevices": []}, **options))
         self.assertTrue(distribution.validate_ios_distribution(info, {**profile, "Entitlements": {}}, **options))
+        for sdk in ("iphoneos18.5", "", "iphonesimulator26.2"):
+            with self.subTest(sdk=sdk):
+                self.assertTrue(distribution.validate_ios_distribution({**info, "DTSDKName": sdk}, profile, **options))

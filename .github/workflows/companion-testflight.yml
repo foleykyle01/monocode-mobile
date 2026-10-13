@@ -26,6 +26,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       CARGO_BUILD_JOBS: 2
       NODE_OPTIONS: --max-old-space-size=2048
       APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_DEVELOPMENT_TEAM }}
@@ -48,6 +49,9 @@ jobs:
           test "$RELEASE_READY" = true || { echo 'TestFlight account, app record and environment protection must be configured first.'; exit 1; }
           node scripts/companion-release-preflight.mjs testflight
           node --test scripts/companion-release-preflight.test.mjs
+          xcodebuild -version
+          SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          test "${SDK_VERSION%%.*}" -ge 26 || { echo 'App Store Connect requires iOS SDK 26 or newer.'; exit 1; }
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
@@ -102,9 +106,9 @@ jobs:
         if: inputs.upload
         working-directory: ${{ runner.temp }}/companion-signing
         run: |
-          xcrun altool --upload-app --type ios \
-            --file "$GITHUB_WORKSPACE/companion/mobile/src-tauri/gen/apple/build/arm64/MonoCode Companion.ipa" \
-            --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"
+          xcrun altool --upload-package "$GITHUB_WORKSPACE/companion/mobile/src-tauri/gen/apple/build/arm64/MonoCode Companion.ipa" \
+            --api-key "$APPLE_API_KEY" --api-issuer "$APPLE_API_ISSUER" \
+            --p8-file-path "$APPLE_API_KEY_PATH"
           echo 'Upload submitted. Apple processing, encryption compliance and beta review must finish before testers can install.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove ephemeral private key
         if: always()

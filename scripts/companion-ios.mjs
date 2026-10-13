@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { copyFile, mkdtemp, readdir, rename } from "node:fs/promises";
+import { mkdtemp, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -17,10 +17,8 @@ async function syncIosIcons() {
   const target = join(root, "companion/mobile/src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset");
   const generated = await mkdtemp(join(tmpdir(), "monocode-ios-icons-"));
   await run("npm", ["run", "tauri", "--", "icon", "--ios-color", "#1757C2", "-o", generated, "src-tauri/icons/icon.png"], join(root, "companion/mobile"));
-  // Tauri writes iOS PNGs under an ios subdirectory; Xcode reads this catalog directly.
-  for (const name of await readdir(join(generated, "ios"))) {
-    if (name.endsWith(".png")) await copyFile(join(generated, "ios", name), join(target, name));
-  }
+  // Apple rejects an alpha channel even when all its pixels are opaque.
+  await run("xcrun", ["swift", join(root, "scripts/companion-ios-icons.swift"), join(generated, "ios"), target], root);
 }
 
 try {
