@@ -1,0 +1,284 @@
+name: Companion Mac release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Companion beta version (for example 1.0.0-beta.1)"
+        required: true
+        default: "1.0.0-beta.1"
+        type: string
+      phase:
+        description: "Prepare verifies artifacts. Publish download creates an immutable DMG release. Promote feed requires a separately verified live update."
+        required: true
+        default: prepare
+        type: choice
+        options:
+          - prepare
+          - publish-download
+          - promote-feed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-mac-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'foleykyle01/monocode-mobile' && github.ref == 'refs/heads/main' && inputs.phase != 'promote-feed'
+    name: Prepare signed Apple Silicon Mac release
+    environment: companion-mac-release
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      CARGO_BUILD_JOBS: 2
+      NODE_OPTIONS: --max-old-space-size=2048
+      VITE_MONOCODE_COMPANION_SPIKE: '1'
+      MONOCODE_DEV_APP_NAME: MonoCode Dev
+      RELEASE_VERSION: ${{ inputs.version }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+      TAURI_UPDATER_ENDPOINT: https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json
+      MONOCODE_COMPANION_UPDATE_HOST: github.com
+    outputs:
+      release_tag: ${{ steps.metadata.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+      - name: Verify protected release configuration
+        run: |
+          set -euo pipefail
+          node scripts/companion-release-preflight.mjs mac
+          node --test scripts/companion-release-preflight.test.mjs scripts/companion-mac-release.test.mjs
+          node --input-type=module -e 'import { assertBetaVersion } from "./scripts/companion-mac-release.mjs"; assertBetaVersion(process.env.RELEASE_VERSION)'
+          sudo xcode-select --switch "$DEVELOPER_DIR"
+          xcodebuild -version
+      - run: npm ci
+      - name: Validate desktop and companion sources
+        run: |
+          npx vitest run --maxWorkers=1 --no-file-parallelism src/app/model/updater.test.ts src/app/model/updaterConfig.test.ts
+          npm run build
+      - name: Prepare temporary notarization key and Tauri release config
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="$RUNNER_TEMP/companion-mac-release"
+          install -d -m 700 "$RELEASE_DIR/private_keys"
+          umask 077
+          printf '%s' "$APPLE_API_KEY_P8" > "$RELEASE_DIR/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          test -s "$RELEASE_DIR/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          node scripts/companion-mac-release.mjs config "$RELEASE_DIR/tauri.release.conf.json" "$RELEASE_VERSION"
+          echo "APPLE_API_KEY_PATH=$RELEASE_DIR/private_keys/AuthKey_${APPLE_API_KEY}.p8" >> "$GITHUB_ENV"
+          echo "RELEASE_DIR=$RELEASE_DIR" >> "$GITHUB_ENV"
+      - name: Build, sign, and notarize Apple Silicon packages
+        run: |
+          set -euo pipefail
+          npx tauri build --target aarch64-apple-darwin --bundles app,dmg --config "$RELEASE_DIR/tauri.release.conf.json" --features companion-spike
+      # Tauri notarizes/staples the .app, but only signs the surrounding DMG.
+      - name: Notarize and staple the installer disk image
+        run: |
+          set -euo pipefail
+          DMG="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release/bundle/dmg/MonoCode Dev_${RELEASE_VERSION}_aarch64.dmg"
+          xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
+            --wait --output-format json > "$RELEASE_DIR/dmg-notarization.json"
+          node --input-type=module - "$RELEASE_DIR/dmg-notarization.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const result = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          if (result.status !== "Accepted") throw new Error("Apple has not accepted this DMG");
+          NODE
+          xcrun stapler staple "$DMG"
+      - name: Verify app, updater archive, signature, and notarization
+        id: metadata
+        run: |
+          set -euo pipefail
+          BUNDLE="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release/bundle"
+          node scripts/companion-mac-release.mjs verify "$BUNDLE" "$RELEASE_VERSION"
+          ASSETS="$RELEASE_DIR/release-assets"
+          install -d -m 700 "$ASSETS"
+          UPDATER=$(find "$BUNDLE/macos" -maxdepth 1 -type f -name '*.app.tar.gz' -print -quit)
+          SIGNATURE=$(find "$BUNDLE/macos" -maxdepth 1 -type f -name '*.app.tar.gz.sig' -print -quit)
+          DMG=$(find "$BUNDLE/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          test -n "$UPDATER" && test -n "$SIGNATURE" && test -n "$DMG"
+          brew list minisign >/dev/null 2>&1 || brew install minisign
+          umask 077
+          node --input-type=module - "$RELEASE_DIR/updater.pub" "$RELEASE_DIR/updater.sig" "$SIGNATURE" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const [publicKey, decodedSignature, sourceSignature] = process.argv.slice(2);
+          const decode = value => Buffer.from(value.trim(), "base64").toString("utf8");
+          const updaterKey = decode(process.env.TAURI_UPDATER_PUBKEY || "");
+          const updaterSignature = decode(readFileSync(sourceSignature, "utf8"));
+          if (!updaterKey || !updaterSignature) process.exit(1);
+          writeFileSync(publicKey, updaterKey, { mode: 0o600 });
+          writeFileSync(decodedSignature, updaterSignature, { mode: 0o600 });
+          NODE
+          minisign -Vm "$UPDATER" -p "$RELEASE_DIR/updater.pub" -x "$RELEASE_DIR/updater.sig"
+          cp "$UPDATER" "$ASSETS/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz"
+          cp "$SIGNATURE" "$ASSETS/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig"
+          cp "$DMG" "$ASSETS/MonoCode-Dev_${RELEASE_VERSION}_aarch64.dmg"
+          node scripts/companion-mac-release.mjs manifest "$RELEASE_DIR/latest.json" "$ASSETS/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig" "$RELEASE_VERSION"
+          node scripts/companion-mac-release.mjs check-manifest "$RELEASE_DIR/latest.json" "$RELEASE_VERSION"
+          printf 'release_tag=companion-mac-v%s\n' "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+      - name: Retain verified packages for manual review
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-mac-${{ inputs.version }}
+          path: |
+            ${{ runner.temp }}/companion-mac-release/release-assets
+            ${{ runner.temp }}/companion-mac-release/latest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary Apple API key
+        if: always()
+        run: |
+          if [ -n "${RELEASE_DIR:-}" ]; then
+            rm -rf "$RELEASE_DIR"
+          fi
+
+  publish-download:
+    if: inputs.phase == 'publish-download'
+    needs: prepare
+    name: Publish immutable verified beta download
+    environment: companion-mac-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: companion-mac-${{ inputs.version }}
+          path: release
+      - name: Re-verify staged release assets
+        run: |
+          set -euo pipefail
+          node scripts/companion-mac-release.mjs check-manifest release/latest.json "$RELEASE_VERSION"
+          for asset in \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.dmg" \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz" \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig"; do
+            test -s "$asset"
+          done
+      - name: Publish immutable versioned release
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'The versioned companion release already exists; refusing to replace immutable assets.' >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            --target "$GITHUB_SHA" \
+            --title "MonoCode Dev $RELEASE_VERSION" \
+            --notes "Signed and notarized Apple Silicon bootstrap build for MonoCode Dev $RELEASE_VERSION." \
+            --prerelease \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.dmg" \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz" \
+            "release/release-assets/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig"
+      - name: Confirm anonymous download URLs work
+        run: |
+          set -euo pipefail
+          base="https://github.com/foleykyle01/monocode-mobile/releases/download/$RELEASE_TAG"
+          for asset in \
+            "MonoCode-Dev_${RELEASE_VERSION}_aarch64.dmg" \
+            "MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz" \
+            "MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig"; do
+            curl --fail --location --retry 3 --retry-all-errors --range 0-0 --output /dev/null --silent --show-error "$base/$asset"
+          done
+
+  promote-feed:
+    if: github.repository == 'foleykyle01/monocode-mobile' && github.ref == 'refs/heads/main' && inputs.phase == 'promote-feed'
+    name: Promote previously verified download to beta feed
+    environment: companion-mac-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      COMPANION_MAC_UPDATE_VERIFIED: ${{ vars.COMPANION_MAC_UPDATE_VERIFIED }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require the separate live update verification gate
+        run: |
+          set -euo pipefail
+          test "$COMPANION_MAC_UPDATE_VERIFIED" = true || {
+            echo 'A maintainer must set COMPANION_MAC_UPDATE_VERIFIED=true in the protected release environment after a real bootstrap-to-update check.' >&2
+            exit 1
+          }
+          node --input-type=module -e 'import { assertBetaVersion } from "./scripts/companion-mac-release.mjs"; assertBetaVersion(process.env.RELEASE_VERSION)'
+      - name: Verify published immutable release and anonymous download URLs
+        id: release
+        run: |
+          set -euo pipefail
+          RELEASE_TAG="companion-mac-v$RELEASE_VERSION"
+          gh release view "$RELEASE_TAG" --json isDraft,assets > "$RUNNER_TEMP/companion-release.json"
+          node --input-type=module - "$RUNNER_TEMP/companion-release.json" "$RELEASE_VERSION" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const release = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          const version = process.argv[3];
+          const required = new Set([
+            `MonoCode-Dev_${version}_aarch64.dmg`,
+            `MonoCode-Dev_${version}_aarch64.app.tar.gz`,
+            `MonoCode-Dev_${version}_aarch64.app.tar.gz.sig`,
+          ]);
+          if (release.isDraft || !release.assets || ![...required].every(name => release.assets.some(asset => asset.name === name))) {
+            console.error("The immutable companion release is missing a required published asset.");
+            process.exit(1);
+          }
+          NODE
+          base="https://github.com/foleykyle01/monocode-mobile/releases/download/$RELEASE_TAG"
+          for asset in \
+            "MonoCode-Dev_${RELEASE_VERSION}_aarch64.dmg" \
+            "MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz"; do
+            curl --fail --location --retry 3 --retry-all-errors --range 0-0 --output /dev/null --silent --show-error "$base/$asset"
+          done
+          curl --fail --location --retry 3 --retry-all-errors --output "$RUNNER_TEMP/updater.sig" --silent --show-error "$base/MonoCode-Dev_${RELEASE_VERSION}_aarch64.app.tar.gz.sig"
+      - name: Promote only the published signature and immutable URL to the beta feed
+        run: |
+          set -euo pipefail
+          node scripts/companion-mac-release.mjs manifest "$RUNNER_TEMP/latest.json" "$RUNNER_TEMP/updater.sig" "$RELEASE_VERSION"
+          node scripts/companion-mac-release.mjs check-manifest "$RUNNER_TEMP/latest.json" "$RELEASE_VERSION"
+          if ! gh release view companion-updates-beta >/dev/null 2>&1; then
+            gh release create companion-updates-beta \
+              --title 'MonoCode Dev beta updates' \
+              --notes 'Mutable signed update manifest for MonoCode Dev beta releases.' \
+              --prerelease
+          fi
+          gh release upload companion-updates-beta "$RUNNER_TEMP/latest.json#latest.json" --clobber
+          gh release view companion-updates-beta --json isDraft,isPrerelease >/dev/null

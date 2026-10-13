@@ -17,14 +17,20 @@ const updaterMocks = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(),
   getBundleType: vi.fn().mockResolvedValue("appimage"),
-  BundleType: { Nsis: "nsis", Msi: "msi", Deb: "deb", Rpm: "rpm", AppImage: "appimage", App: "app" },
+  BundleType: {
+    Nsis: "nsis",
+    Msi: "msi",
+    Deb: "deb",
+    Rpm: "rpm",
+    AppImage: "appimage",
+    App: "app",
+  },
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   ask: vi.fn(),
   message: vi.fn(),
 }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../model/updater", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../model/updater")>();
   return {
@@ -62,12 +68,13 @@ describe("isSidebarUpdateActionable", () => {
       "current",
       "available",
       "downloading",
+      "ready",
       "error",
     ];
     const actionable = phases.filter((phase) =>
       isSidebarUpdateActionable({ phase, currentVersion: "0.1.37" }),
     );
-    expect(actionable).toEqual(["available", "downloading"]);
+    expect(actionable).toEqual(["available", "downloading", "ready"]);
   });
 });
 

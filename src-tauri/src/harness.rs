@@ -893,6 +893,7 @@ pub fn harness_free_port() -> Result<u16, String> {
 pub fn harness_spawn(
     app: AppHandle,
     host: State<'_, HarnessHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
     session_id: String,
     command: String,
     args: Vec<String>,
@@ -903,6 +904,7 @@ pub fn harness_spawn(
     codex_store: Option<String>,
     devin_ask_edits: Option<bool>,
 ) -> Result<u32, String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let workdir = expand_home(&cwd);
     if !workdir.is_dir() {
         return Err(format!(

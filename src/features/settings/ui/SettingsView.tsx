@@ -1799,7 +1799,8 @@ function UpdateRow({
 
   const busy =
     snapshot.phase === "checking" || snapshot.phase === "downloading";
-  const hasUpdate = snapshot.phase === "available";
+  const hasUpdate =
+    snapshot.phase === "available" || snapshot.phase === "ready";
 
   const onClick = async () => {
     if (busy) return;
@@ -1813,17 +1814,19 @@ function UpdateRow({
   const status =
     snapshot.phase === "available"
       ? `Version ${snapshot.availableVersion} is available.`
-      : snapshot.phase === "downloading"
-        ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-        : snapshot.phase === "checking"
-          ? "Checking for updates…"
-          : snapshot.phase === "current"
-            ? "You're on the latest version."
-            : snapshot.phase === "error"
-              ? (snapshot.error ?? "Update check failed.")
-              : snapshot.packageManaged
-                ? packageManagerHint(snapshot.packageManaged)
-                : "MonoCode updates itself from the release feed.";
+      : snapshot.phase === "ready"
+        ? `Version ${snapshot.availableVersion} is downloaded and ready to restart.`
+        : snapshot.phase === "downloading"
+          ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
+          : snapshot.phase === "checking"
+            ? "Checking for updates…"
+            : snapshot.phase === "current"
+              ? "You're on the latest version."
+              : snapshot.phase === "error"
+                ? (snapshot.error ?? "Update check failed.")
+                : snapshot.packageManaged
+                  ? packageManagerHint(snapshot.packageManaged)
+                  : "MonoCode updates itself from the release feed.";
 
   return (
     <Row

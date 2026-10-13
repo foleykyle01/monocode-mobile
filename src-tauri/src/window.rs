@@ -78,6 +78,14 @@ fn configure_session_window(config: &mut tauri::utils::config::WindowConfig, rev
 }
 
 pub fn open_session_window(app: &AppHandle, reveal: bool) -> Result<WebviewWindow, String> {
+    // Hold the admission through the actual Webview build. A read of the
+    // restart flag alone leaves a gap where a fresh owner can appear after a
+    // successful readiness poll but before the updater asks the old owners.
+    let updater = app.try_state::<crate::safe_updater::SafeUpdater>();
+    let _admission = updater
+        .as_ref()
+        .map(|updater| crate::safe_updater::admit(updater))
+        .transpose()?;
     let mut config = app
         .config()
         .app

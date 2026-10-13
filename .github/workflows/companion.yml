@@ -48,7 +48,7 @@ jobs:
 
       - name: Test distribution guardrails
         run: |
-          node --test scripts/companion-release-preflight.test.mjs
+          node --test scripts/companion-release-preflight.test.mjs scripts/companion-mac-release.test.mjs
           python3 -B -m unittest discover -s scripts -p 'test_verify_companion_distribution.py' -v
 
       - name: Test desktop companion model suite

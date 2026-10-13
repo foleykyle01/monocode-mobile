@@ -131,6 +131,19 @@ pub struct ControlHost {
     inner: Arc<Mutex<Inner>>,
 }
 
+impl ControlHost {
+    /// A restart may only proceed when the native control service has no
+    /// active turn, helper, or request still owned by a workspace.
+    pub fn restart_safe(&self) -> bool {
+        self.inner
+            .lock()
+            .map(|inner| {
+                inner.active.is_empty() && inner.workers.is_empty() && inner.pending.is_empty()
+            })
+            .unwrap_or(false)
+    }
+}
+
 fn paths_overlap(a: &str, b: &str) -> bool {
     a == b || a.starts_with(&format!("{b}/")) || b.starts_with(&format!("{a}/"))
 }
@@ -212,6 +225,18 @@ fn companion_action(action: &str) -> bool {
     )
 }
 
+fn companion_starts_or_resumes_work(action: &str) -> bool {
+    matches!(
+        action,
+        "sessions.send"
+            | "sessions.approve"
+            | "sessions.answer"
+            | "sessions.question.keepOpen"
+            | "sessions.configure"
+            | "sessions.create"
+    )
+}
+
 pub fn init(app: &AppHandle) -> Result<(), String> {
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let endpoint = listener
@@ -270,6 +295,14 @@ fn serve(mut stream: TcpStream, app: &AppHandle, inner: &Arc<Mutex<Inner>>) {
         let request: Request = serde_json::from_str(&raw).map_err(|_| "Invalid control request")?;
         if request.namespace == "companion" && !companion_action(&request.action) {
             return Err("Unsupported companion action".into());
+        }
+        if request.namespace == "companion"
+            && companion_starts_or_resumes_work(&request.action)
+            && app
+                .try_state::<crate::safe_updater::SafeUpdater>()
+                .is_some_and(|updater| crate::safe_updater::restart_locked(&updater))
+        {
+            return Err("MonoCode is restarting for an update; wait for it to reopen".into());
         }
         if !request.input.is_object()
             || request.request_id.is_empty()
@@ -408,9 +441,11 @@ pub fn companion_enable(
 pub fn control_enable(
     window: WebviewWindow,
     host: State<'_, ControlHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
     session_id: String,
     cwd: String,
 ) -> Result<String, String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let cwd = std::fs::canonicalize(crate::fs::expand_home(&cwd)).map_err(|e| e.to_string())?;
     if !cwd.is_dir() {
         return Err("Choose a project folder first".into());
@@ -481,9 +516,11 @@ pub fn control_disable(
 pub fn control_attach_worker(
     window: WebviewWindow,
     host: State<'_, ControlHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
     lead_id: String,
     session_id: String,
 ) -> Result<String, String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let mut inner = host
         .inner
         .lock()
@@ -529,10 +566,12 @@ fn configure_worker_scratch(cmd: &mut Command, path: &Path) {
 pub fn control_authorize_turn(
     window: WebviewWindow,
     host: State<'_, ControlHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
     session_id: String,
     cwd: String,
     app_access: bool,
 ) -> Result<(), String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let cwd = std::fs::canonicalize(crate::fs::expand_home(&cwd)).map_err(|e| e.to_string())?;
     let cwd = comparison_path(&cwd);
     let mut inner = host
