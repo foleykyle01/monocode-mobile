@@ -93,6 +93,12 @@ after relaunch; the pairing remains stored.
 
 ## TestFlight iPhone beta
 
+The next phone build keeps `PHONE_NOTIFICATIONS_ENABLED` false in
+`companion/ui/features.ts`. Notification settings, polling, permission requests,
+and tap routing remain inactive. The native push plugin and relay integration
+are not included in this release. Enable the flag only with the native integration
+and after physical TestFlight notification delivery has been verified.
+
 The `testflight` target uses Tauri/Xcode automatic signing:
 
 | Variable | Purpose |

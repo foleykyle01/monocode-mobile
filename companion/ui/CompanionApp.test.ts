@@ -446,18 +446,22 @@ it("keeps connection recovery in Settings, reports progress, and requires a sepa
   try {
     await act(async () => root.render(createElement(CompanionApp)));
     const gear = container.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!;
-    const dialog = container.querySelector<HTMLDialogElement>("dialog")!;
+    const dialog = container.querySelector<HTMLElement>(".workspace-settings")!;
     expect(gear.parentElement?.querySelector('[aria-label="Search workspace"]')).not.toBeNull();
     expect(container.querySelector(".workspace-connection button")).toBeNull();
     expect(gear.querySelector('.connection-indicator')?.getAttribute('aria-label')).toBe('Connected to your Mac');
     expect(container.querySelector('.workspace-connection')).toBeNull();
-    expect(dialog.open).toBe(false);
+    expect(dialog.hidden).toBe(true);
     await act(async () => gear.click());
-    expect(dialog.open).toBe(true);
+    expect(dialog.hidden).toBe(false);
+    expect(container.querySelector<HTMLElement>(".workspace-grid")!.hidden).toBe(true);
+    expect(dialog.querySelector('[aria-label="Notifications"]')).toBeNull();
+    expect(dialog.querySelector('.workspace-settings__section')?.getAttribute('aria-label')).toBe('Mac connection');
+    expect(dialog.querySelector('[aria-label="Back from settings"]')?.textContent).toBe('');
     const button = (text: string) => [...dialog.querySelectorAll<HTMLButtonElement>("button")].find(entry => entry.textContent === text)!;
     await act(async () => button("Reconnect").click());
     expect(fake.reconnect).toHaveBeenCalledTimes(1);
-    expect(dialog.open).toBe(true);
+    expect(dialog.hidden).toBe(false);
     expect(button("Reconnecting…").disabled).toBe(true);
     expect(container.querySelector(".connection-indicator .status-dot--reconnecting")).not.toBeNull();
     expect(container.querySelector(".app-header .connection-notice")).toBeNull();
@@ -467,8 +471,9 @@ it("keeps connection recovery in Settings, reports progress, and requires a sepa
     expect(dialog.textContent).toContain("Forget this paired Mac?");
     await act(async () => button("Keep pairing").click());
     expect(dialog.textContent).not.toContain("Forget this paired Mac?");
-    await act(async () => dialog.querySelector<HTMLButtonElement>('[aria-label="Close settings"]')!.click());
-    expect(dialog.open).toBe(false);
+    await act(async () => dialog.querySelector<HTMLButtonElement>('[aria-label="Back from settings"]')!.click());
+    expect(dialog.hidden).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20); });
     expect(document.activeElement).toBe(gear);
   } finally {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -486,16 +491,16 @@ it("uses direct preview choices and preserves them when Settings is reopened", a
     await act(async () => root.render(createElement(CompanionApp)));
     const gear = container.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!;
     await act(async () => gear.click());
-    const dialog = container.querySelector<HTMLDialogElement>("dialog")!;
+    const dialog = container.querySelector<HTMLElement>(".workspace-settings")!;
     expect(dialog.querySelector("select")).toBeNull();
     expect(dialog.querySelector('input[name="Text size"]')).toBeNull();
     await act(async () => dialog.querySelector<HTMLInputElement>('input[name="Theme"][value="light"]')!.click());
     expect(container.querySelector(".companion-shell--light")).not.toBeNull();
     await act(async () => dialog.querySelector<HTMLInputElement>('input[value="unreachable"]')!.click());
-    expect(dialog.open).toBe(true);
+    expect(dialog.hidden).toBe(false);
     expect(dialog.querySelector(".connection-notice")).not.toBeNull();
     expect(container.querySelector(".connection-indicator .status-dot--offline")).not.toBeNull();
-    await act(async () => dialog.querySelector<HTMLButtonElement>('[aria-label="Close settings"]')!.click());
+    await act(async () => dialog.querySelector<HTMLButtonElement>('[aria-label="Back from settings"]')!.click());
     await act(async () => gear.click());
     expect(dialog.querySelector<HTMLInputElement>('input[name="Theme"][value="light"]')!.checked).toBe(true);
   } finally {

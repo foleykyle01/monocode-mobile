@@ -8,6 +8,8 @@ import type { CompanionMono, CompanionNavigation, CompanionProject, CompanionSes
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
 export const activityLabel = (item: { busy: boolean; needsApproval: boolean; needsQuestion?: boolean }) => item.needsQuestion ? "Needs an answer" : item.needsApproval ? "Needs approval" : item.busy ? "Working" : "Ready";
 export const monoStatusLabel = (mono: CompanionMono) => mono.statusLabel || activityLabel(mono);
+const collapsedKey = "companion.navigation.collapsed.v1";
+const readCollapsed = () => { try { return new Set<string>(JSON.parse(localStorage.getItem(collapsedKey) || "[]")); } catch { return new Set<string>(); } };
 const Chevron = ({ expanded }: { expanded: boolean }) => <ChevronRight className="nav-chevron" data-expanded={expanded} size={12} aria-hidden="true" />;
 
 export function MonoMascot({ mono }: { mono: CompanionMono }) {
@@ -80,7 +82,12 @@ type Props = {
 };
 
 export function Navigation({ sessions, navigation, query, filter, selectedId, selectedMonoId, unreadSessionIds, onSession, onMono, onMonoDetails, onCreate, onChanges, createDisabled, monosExpanded = true }: Props) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [collapsed, setCollapsedState] = useState(readCollapsed);
+  const setCollapsed = (update: (previous: Set<string>) => Set<string>) => setCollapsedState(previous => {
+    const next = update(previous);
+    try { localStorage.setItem(collapsedKey, JSON.stringify([...next])); } catch { /* Keep the layout for this run if storage is unavailable. */ }
+    return next;
+  });
   const groups = useMemo(() => navigationProjects(sessions, navigation), [sessions, navigation]);
   const term = query.trim().toLowerCase();
   const matchesActivity = (item: { busy: boolean; needsApproval: boolean }) => filter === "all" || (filter === "attention" ? item.needsApproval : item.busy);
@@ -91,6 +98,14 @@ export function Navigation({ sessions, navigation, query, filter, selectedId, se
     ...project, activitySessions: project.sessions, sessions: project.sessions.filter(session => matchesActivity(session) && matchesText(`${group.name} ${project.name} ${project.path} ${session.title} ${session.harness} ${session.model}`)),
   })).filter(project => project.sessions.length || (filter === "all" && matchesText(`${group.name} ${project.name} ${project.path}`))) })).filter(group => group.projects.length);
   const expanded = (id: string) => !!term || filter !== "all" || !collapsed.has(id);
+  const collapseTo = (level: "group" | "project") => setCollapsed(previous => {
+    const next = new Set(previous);
+    for (const group of groups) {
+      if (level === "group") next.add(`g:${group.id}`); else next.delete(`g:${group.id}`);
+      for (const project of group.projects) next.add(`p:${project.id}`);
+    }
+    return next;
+  });
   const toggle = (id: string) => setCollapsed(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   return <nav className="workspace-navigation" aria-label="Monos and projects">
@@ -102,6 +117,11 @@ export function Navigation({ sessions, navigation, query, filter, selectedId, se
         {onMonoDetails ? <button className="mono-details-button" type="button" aria-label={`Details for ${mono.name}`} title={`Details for ${mono.name}`} onClick={() => onMonoDetails(mono.id)}><CircleHelp size={17} aria-hidden="true" /></button> : null}
       </div>)}</div> : <p className="nav-note">Your Monos will appear here when you add them on this Mac.</p>}
     </section> : null}
+    {!term && filter === "all" && visibleGroups.length ? <div className="nav-collapse" role="group" aria-label="Collapse workspace">
+      <span>Collapse to</span>
+      <button type="button" onClick={() => collapseTo("group")}>Groups</button>
+      <button type="button" onClick={() => collapseTo("project")}>Projects</button>
+    </div> : null}
     {visibleGroups.map(group => <section className="project-group" key={group.id}>
       <button type="button" className="group-toggle" aria-expanded={expanded(`g:${group.id}`)} onClick={() => toggle(`g:${group.id}`)}><Chevron expanded={expanded(`g:${group.id}`)} />{group.mascot ? <ProjectIcon project={group} /> : null}<strong>{group.name}</strong>{!expanded(`g:${group.id}`) ? <ProjectActivity sessions={group.projects.flatMap(project => project.activitySessions)} unread={unreadSessionIds} /> : null}</button>
       {expanded(`g:${group.id}`) ? <div className="project-group__children">{group.projects.map(project => <section className="nav-project" key={project.id}>
