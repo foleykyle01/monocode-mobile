@@ -1,0 +1,116 @@
+name: Companion TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Unused iOS build number for this marketing version (for example 1001)"
+        required: true
+        type: string
+      upload:
+        description: "Upload the verified build to App Store Connect for TestFlight processing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    if: github.repository == 'foleykyle01/monocode-mobile' && github.ref == 'refs/heads/main'
+    environment: companion-testflight
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: 2
+      NODE_OPTIONS: --max-old-space-size=2048
+      APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_DEVELOPMENT_TEAM }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      IOS_BUILD_NUMBER: ${{ inputs.build_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check release readiness before compiling
+        env:
+          RELEASE_READY: ${{ vars.COMPANION_TESTFLIGHT_READY }}
+        run: |
+          test "$RELEASE_READY" = true || { echo 'TestFlight account, app record and environment protection must be configured first.'; exit 1; }
+          node scripts/companion-release-preflight.mjs testflight
+          node --test scripts/companion-release-preflight.test.mjs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: companion/mobile/src-tauri -> target
+      - run: npm ci
+      - name: Validate phone interface
+        run: |
+          npx vitest run --config companion/ui/vitest.config.ts --maxWorkers=1 --no-file-parallelism
+          npm run companion:build
+      - name: Prepare ephemeral signing key and iOS configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const dir = join(process.env.RUNNER_TEMP, 'companion-signing');
+          mkdirSync(join(dir, 'private_keys'), { recursive: true, mode: 0o700 });
+          const key = join(dir, 'private_keys', `AuthKey_${process.env.APPLE_API_KEY}.p8`);
+          writeFileSync(key, process.env.APPLE_API_KEY_P8, { mode: 0o600 });
+          const config = join(dir, 'testflight.json');
+          writeFileSync(config, JSON.stringify({ bundle: { iOS: {
+            developmentTeam: process.env.APPLE_DEVELOPMENT_TEAM,
+            bundleVersion: process.env.IOS_BUILD_NUMBER
+          } } }));
+          appendFileSync(process.env.GITHUB_ENV, `APPLE_API_KEY_PATH=${key}\nTESTFLIGHT_CONFIG=${config}\n`);
+          NODE
+      - name: Generate Xcode project and build distribution IPA
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          npm --prefix companion/mobile run tauri -- ios init --ci --config "$TESTFLIGHT_CONFIG"
+          npm run companion:ios -- build --ci --target aarch64 --export-method app-store-connect --config "$TESTFLIGHT_CONFIG"
+      - name: Verify packaged identity, version, signing and provisioning
+        run: |
+          set -euo pipefail
+          IPA="$GITHUB_WORKSPACE/companion/mobile/src-tauri/gen/apple/build/arm64/MonoCode Companion.ipa"
+          VERIFY_DIR="$RUNNER_TEMP/companion-verify"
+          ditto -xk "$IPA" "$VERIFY_DIR"
+          APP="$VERIFY_DIR/Payload/MonoCode Companion.app"
+          codesign --verify --deep --strict "$APP"
+          security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/companion-profile.plist"
+          export VERIFY_DIR
+          python3 scripts/verify-companion-distribution.py
+      - name: Keep install archive for this release run
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-testflight-${{ inputs.build_number }}
+          path: companion/mobile/src-tauri/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload for TestFlight processing
+        if: inputs.upload
+        working-directory: ${{ runner.temp }}/companion-signing
+        run: |
+          xcrun altool --upload-app --type ios \
+            --file "$GITHUB_WORKSPACE/companion/mobile/src-tauri/gen/apple/build/arm64/MonoCode Companion.ipa" \
+            --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"
+          echo 'Upload submitted. Apple processing, encryption compliance and beta review must finish before testers can install.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove ephemeral private key
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import { rmSync } from 'node:fs';
+          import { join } from 'node:path';
+          rmSync(join(process.env.RUNNER_TEMP, 'companion-signing'), { recursive: true, force: true });
+          NODE
