@@ -1,6 +1,6 @@
 # MonoCode Companion notes
 
-The companion is an experimental iPhone client for sessions already owned by an isolated MonoCode desktop build. The Mac remains the session and provider owner. The iPhone is a paired remote control; it does not receive provider credentials or a copy of the desktop database.
+The companion is an experimental iPhone client for sessions already owned by an isolated MonoCode desktop build. The Mac remains the session and provider owner. The iPhone is a paired remote control; it does not receive provider credentials or a copy of the desktop database. TestFlight build **0.1.1 (1003)** is currently available to the internal Owner testing group; external beta distribution is still pending.
 
 - [Setup, pairing, capabilities, and current validation](../../companion/README.md)
 - [Source and device validation scope](validation-public.md)
@@ -9,7 +9,7 @@ The companion is an experimental iPhone client for sessions already owned by an 
 - [Read-only Inbox and Changes](inbox-and-changes.md)
 - [Mono details and navigation polish](mono-details.md)
 
-The ordinary MonoCode release is deliberately outside this experiment. The companion desktop build has a distinct identity and data directory so it can be tested without replacing a daily-use installation.
+The ordinary MonoCode release is deliberately outside this experiment. The companion desktop build has a distinct identity and data directory so it can be tested without replacing a daily-use installation. Each tester needs a compatible companion Mac host, their own provider accounts, and their own pairing; the TestFlight app does not provide a shared remote host.
 
 ## Repository boundaries
 

@@ -1,15 +1,17 @@
 # Updates and distribution
 
-Status: accepted distribution direction, October 13, 2026. Automatic distribution is not
-enabled yet. The current public milestone is Companion **0.1.1 source preview**,
-with desktop base **MonoCode 0.13.0**. A public GitHub repository is not itself a
-production installer or an iPhone distribution channel.
+Status: accepted distribution direction, October 13, 2026. Companion **0.1.1**
+(iPhone build **1003**) is valid in App Store Connect and in internal Owner
+testing, with desktop base **MonoCode 0.13.0**. Automatic Mac distribution is not
+enabled, and no signed/notarized Mac installer or external TestFlight invitation
+has been published. A public GitHub repository is not itself a production
+installer or an iPhone distribution channel.
 
 ## 1. The user experience
 
 | Stage | Mac | iPhone |
 | --- | --- | --- |
-| First install | Download a signed, notarized DMG; drag the app to Applications | Join our TestFlight beta and tap Install |
+| First install | Planned: download a signed, notarized DMG; drag the app to Applications | Current internal path: join the Owner TestFlight beta and tap Install |
 | Connect | Settings → Connections → Phone companion → Show QR code | Scan once; pairing survives normal updates |
 | Later updates | Check automatically, download a verified update, then offer Restart to update when work is safe | TestFlight manages updates according to the user's settings |
 | Recovery | Keep the current app on download/signature failure; offer Retry | Reconnect to the same Mac after returning to the app |
@@ -18,12 +20,12 @@ No terminal, Xcode, USB cable or separate VPN app in the community install flow.
 The Mac must remain open and awake to run agents. Updating an app cannot make a
 sleeping/offline Mac reachable.
 
-The community download page will offer two distinct buttons: **Download for Mac**
+The eventual community download page will offer two distinct buttons: **Download for Mac**
 links to the signed GitHub release DMG, and **Join the iPhone beta** links to the
 public TestFlight invitation after external beta approval. Source archives remain
 available separately for contributors. Do not present a GitHub IPA download as an
 install button for ordinary iPhone users. Until the signed installers and approved
-invitation exist, label the current release as a source preview.
+invitation exist, label the current release as an internal beta/source preview.
 
 Each user installs the Mac host, uses their own provider accounts, and pairs their
 phone to their own Mac. They do not need membership in our Apple developer team
@@ -39,17 +41,27 @@ an uncertain phone command to complete an update.
 
 ## 2. Mac release channel
 
+The installed owner build currently has no updater feed embedded. Existing MonoCode
+Dev users therefore need one final manual drag-and-drop/bootstrap install when the
+first compatible signed Mac release is ready. After that bootstrap, the planned
+fork-owned feed can deliver verified optional updates; that updater feed and its
+idle-safe restart behavior are not implemented yet. The latest owner build is
+`be563c1`, but it is not a public signed/notarized download.
+
 Reuse the existing Tauri updater and Settings update UI. Configure only a
 fork-owned HTTPS feed, public verification key and release URLs. The upstream
 MonoCode feed must never update a companion-enabled installation.
 
-Proposed hosting: signed artifacts and immutable version manifests in GitHub
-Releases, with a small static HTTPS `stable/latest.json` and `beta/latest.json`
-pointer on an owned update host. Decide that host before shipping the first
-updater-enabled build; do not point production at a placeholder or the upstream
-domain. A manifest contains the fork version, notes, date and per-architecture
-artifact URL/signature. Publish artifacts first, validate downloads, then promote
-the channel pointer. Never include a private GitHub token in the application.
+Use this fork's public GitHub Releases for delivery; no additional user account
+or paid update service is needed. The proposed beta feed is
+`https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json`.
+Reserve a separate `companion-updates-stable` tag for stable delivery. These feeds
+are **not live** and must not be embedded in an installed build yet. Each pointer
+contains the fork version, notes, date and per-architecture artifact URL/signature;
+artifact URLs refer to immutable, versioned releases rather than the channel tag.
+Publish and validate signed artifacts first, then replace the channel manifest.
+Never include a private GitHub token in the application. Keep both channels outside
+GitHub's generic `/releases/latest`, which may refer to an unrelated source preview.
 
 Use Developer ID Application signing, hardened runtime and Apple notarization
 for the Mac app. Tauri's separate updater signature verifies update artifacts;
@@ -77,6 +89,44 @@ bootstrap must be newer than installed 0.13.0 (proposed `1.0.0-beta.1`). Do not
 append semver build metadata as the only version increment. Existing Dev builds
 have no feed, so one final drag-and-drop install is required to bootstrap updates.
 
+### Bootstrap and later delivery
+
+1. Ship the first signed/notarized **MonoCode Dev** DMG with the existing bundle
+   identifier, the fork feed, its public updater key and safe restart handling.
+   Existing users quit Dev and replace only the app in its existing location.
+   Do not delete the app's data folder, import the original MonoCode profile again,
+   or revoke phone pairing. The current local update is not this bootstrap.
+2. After the bootstrap, checking for updates shows a version and release notes.
+   Users can download during work, select Later, or choose Restart to update.
+   TestFlight continues handling phone updates independently.
+3. Release maintainers build from reviewed public source, validate signatures,
+   notarization and anonymous download URLs, and promote the beta feed. The app
+   discovers that manifest on its next check; publishing does not force a restart.
+4. If a release fails, withdraw its feed entry and publish a corrected higher
+   version. Keep previous artifacts. Replacing an app binary must never restore an
+   old database over newer chats.
+
+### Required restart change
+
+`src/app/model/updater.ts` currently calls `downloadAndInstall()` followed by
+`relaunch()`. That is not safe enough for this companion release. Split download
+from installation, retaining the downloaded update while agents run. Immediately
+before installation, obtain a native process-wide update lock and query every
+workspace's session owner. A missing or unresponsive owner blocks installation.
+Reject the restart while any session, question, approval, helper, habit or queued
+run is active. Hold the lock through persistence, installation and relaunch, and
+make all paths that admit new runs honor that lock, including phone commands and
+scheduled work. Release it on cancellation or failure; never pause or delete the
+user's saved schedules to achieve an idle state. A renderer-only busy check is
+insufficient because other windows and scheduled tasks can race it.
+
+Before embedding a feed, tests must prove that an active second window blocks
+installation, a new run cannot slip between the idle check and restart, unknown
+owners fail closed, failed installs release the lock, and the real previous Dev
+profile/Keychain pairing survives the bootstrap. A normal signed update must also
+be exercised from the bootstrap to a higher version before advertising automatic
+updates. No automatic updater has been enabled by this documentation change.
+
 ## 3. iPhone releases
 
 Use TestFlight without a public App Store listing. Users can enable automatic
@@ -85,7 +135,11 @@ build expires after 90 days, so this channel needs ongoing beta maintenance and
 is not permanent production distribution. Ship a replacement well before expiry.
 Delivery remains under user/iOS control and is not an instantaneous forced push.
 
-Community rollout follows the owner-only upgrade check:
+Current TestFlight state: build **1003** is **VALID** and **IN_BETA_TESTING** in the
+internal Owner testing group. The external **Community beta** group is prepared;
+its public invitation is disabled and external review has not been submitted.
+Community rollout follows the owner-only upgrade
+check:
 
 1. Verify the owner's existing development install upgrades through TestFlight
    while retaining pairing and real workspaces.
@@ -147,18 +201,20 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 ## 5. Implementation gates and acceptance
 
-Current foundations: Tauri updater is present; companion endpoints are disabled;
-the manual fallback now points to this fork. Phone version metadata is 0.1.1.
-Apple Distribution and Developer ID Application certificates were created in
-Xcode with the owner's authorization. The development certificate is retained.
-Certificates alone do not configure notarization, App Store Connect or CI access.
+Current foundations: Tauri updater is present but companion endpoints are disabled;
+the manual fallback now points to this fork. Phone version metadata is 0.1.1 and
+build 1003 is valid in internal TestFlight Owner testing. Apple Distribution and
+Developer ID Application certificates were created in Xcode with the owner's
+authorization. The development certificate is retained. Certificates alone do not
+configure notarization, App Store Connect or CI access.
 
 The manual TestFlight workflow has a protected GitHub environment, registered app
-record and authorized API credentials. The first signed candidate is being
-validated before upload. Still needed before normal-user delivery: notarization
-setup, Tauri signing key and owned feed location, privacy/support metadata,
-external beta approval, the signed Mac release workflow, idle-safe desktop update
-handling, and the one-time bootstrap installers. No automatic Mac feed is enabled. See the
+record and authorized API credentials. Candidate 1003 passed the release checks,
+uploaded, and completed Apple processing. Still needed before normal-user delivery:
+notarization setup, Tauri signing key and owned feed location, privacy/support
+metadata, external beta approval, the signed Mac release workflow, idle-safe
+desktop update handling, and the one-time bootstrap installer. No automatic Mac
+feed is enabled. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,

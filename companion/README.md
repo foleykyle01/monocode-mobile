@@ -4,11 +4,29 @@ An experimental native iPhone client for sessions running in **MonoCode Dev**, t
 
 The path is **iPhone React UI → native Keychain + Iroh → encrypted direct/relay connection → embedded Mac host → authenticated loopback bridge → existing desktop session owner**.
 
-This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.13.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent prototype, not an official mobile release. There is no App Store or TestFlight distribution.
+This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.13.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent companion beta, not an official mobile release. iPhone build **0.1.1 (1003)** is valid in App Store Connect and available to the internal Owner testing group through TestFlight. External beta review and a public invitation have not been completed.
+
+## TestFlight path
+
+Maintainers and invited internal testers should install **MonoCode Companion** from
+TestFlight. A TestFlight phone build still needs a compatible MonoCode Dev host on
+the tester's own Mac; it cannot connect to the ordinary upstream MonoCode app and
+does not provide a shared hosted Mac. Pair once from **Settings → Connections → Phone companion** by
+scanning the host's QR code. TestFlight updates should be installed over the
+existing app to retain the phone's Keychain pairing. The Mac stays open and awake
+while agents run, and no separate VPN app is required.
+
+The public external beta is not available yet. Do not treat the IPA attached to a
+GitHub workflow as an iPhone install method; it is an artifact for the signed
+TestFlight pipeline.
 
 ## Build requirements
 
-Use a Mac with Node.js 20+, stable Rust, Xcode with an iOS SDK/runtime, and Apple's command-line tools. Native archives have been built with Xcode 26.4; older toolchain compatibility is not established. Physical installation requires your own Apple development signing configuration.
+These requirements apply to contributors building from source, not to TestFlight
+testers. Use a Mac with Node.js 20+, stable Rust, Xcode with an iOS SDK/runtime,
+and Apple's command-line tools. Native archives have been built with Xcode 26.4;
+older toolchain compatibility is not established. A source build for a physical
+iPhone requires the builder's own Apple development signing configuration.
 
 From the repository root:
 
@@ -90,9 +108,11 @@ Phone identity and unconfirmed commands use Apple Keychain with synchronization 
 
 ## Recovery and limits
 
-The source preview is version **0.1.1**, based on MonoCode **0.13.0**. See the
+The current preview is version **0.1.1** (iPhone build **1003**), based on MonoCode
+**0.13.0**. TestFlight internal Owner testing is available; external beta
+distribution and a signed Mac download are still pending. See the
 [update and distribution plan](../docs/companion/updates-and-distribution.md) for
-the path from developer builds to signed installers and automatic app updates.
+the path from the current beta to signed installers and verified app updates.
 
 The app polls bounded snapshots while visible and refreshes/rebuilds transport after foregrounding or regained connectivity. Reconnect retains pairing and does not automatically replay pending commands.
 
@@ -103,6 +123,9 @@ Remote access after a full app restart or change the paired-device list.
 
 Mutations are saved before dispatch with their exact host, request ID, action, and input. The Mac deduplicates matching requests within its renderer epoch and rejects changed input or stale state. A timeout may mean the command ran but its receipt was lost: review the conversation or explicitly retry the same command. Desktop receipts are memory-only and limited to 512 commands per epoch; a restart may require manual outcome review.
 
-Push notifications, event replay, full desktop feature parity, general Android support, production distribution, and dedicated relay operations remain unfinished. Physical keyboard/safe-area behavior, accessibility, long suspension, and interrupted-command/network-handoff races need broader testing.
+Push notifications, event replay, full desktop feature parity, external TestFlight
+distribution, signed Mac production distribution, and dedicated relay operations
+remain unfinished. Physical keyboard/safe-area behavior, accessibility, long
+suspension, and interrupted-command/network-handoff races need broader testing.
 
 See [validation scope](../docs/companion/validation-public.md), [design notes](../docs/companion/design-notes.md), [Inbox and Changes](../docs/companion/inbox-and-changes.md), and [Mono details](../docs/companion/mono-details.md). The optional `npm run companion:host` CLI is diagnostic; an exclusive lock prevents it from sharing the embedded host's identity concurrently.

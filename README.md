@@ -10,13 +10,16 @@
 
 An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/monocode). Follow an agent's tool activity, send a follow-up, answer questions and approval prompts, review recorded file changes, or stop a turn while away from your desk. The phone controls the same sessions already running on your Mac; agent processes, provider credentials, project files, and authoritative conversation history remain on the Mac.
 
-**Development prototype:** this fork includes a modified Mac host and a native Tauri iOS client. It is an independent experiment, not an official MonoCode mobile release. The unmodified upstream desktop app cannot host this companion. Building for a physical iPhone requires Xcode and Apple development signing; no App Store or TestFlight release is available.
+**Companion beta:** this fork includes a modified Mac host and a native Tauri iOS client. It is an independent experiment, not an official MonoCode mobile release. The unmodified upstream desktop app cannot host this companion. The iPhone build is now available through TestFlight for the maintainer's internal Owner testing group; external beta distribution is not enabled yet.
 
-**Current source preview: Companion 0.1.1 · MonoCode desktop base 0.13.0.**
+**Current preview: Companion 0.1.1 (iPhone build 1003) · MonoCode desktop base 0.13.0.**
 The [automatic-update and distribution plan](docs/companion/updates-and-distribution.md)
 describes direct signed Mac downloads, in-app updates and TestFlight without a
-public App Store listing. These distribution channels are not live yet. Maintainers
-can follow the [release setup checklist](docs/companion/release-setup.md).
+public App Store listing. TestFlight build 1003 is valid in App Store Connect and
+available to the internal Owner testing group. An external Community beta group is
+prepared, but Apple review, a public invitation and a signed,
+notarized Mac download are still pending. Maintainers can follow the [release setup
+checklist](docs/companion/release-setup.md).
 
 ## Screenshots
 
@@ -69,11 +72,30 @@ Open **Settings → Connections → Phone companion** to enable remote access, c
 
 ## Connect your iPhone
 
-1. Build and open **MonoCode Dev** on the Mac. In **Settings → Connections → Phone companion**, enable **Remote access** and choose **Show QR code**.
+For the current internal beta, install **MonoCode Companion** from TestFlight and
+open it on the iPhone you want to pair. This beta still requires a compatible
+MonoCode Dev host running on your own Mac; the phone app cannot use the
+ordinary upstream MonoCode app and does not provide a shared hosted Mac. Each user supplies their
+own provider accounts and pairs their own phone. No separate VPN app is needed.
+
+1. Open a compatible **MonoCode Dev** host on the Mac. In **Settings → Connections → Phone companion**, enable **Remote access** and choose **Show QR code**.
 2. Open the iPhone companion, choose **Scan QR ticket**, scan the Mac's code, and tap **Connect to Mac**. Invitations expire after five minutes and enroll only one new device.
 3. Keep MonoCode Dev open and the Mac awake. Remote access defaults off after each Mac app launch; existing pairing is retained.
 
 See the [build, pairing, and preview guide](companion/README.md) for reproducible setup. `npm run companion:preview` runs the sample phone UI on a Mac without connecting to agents.
+
+## Updating existing installs
+
+On iPhone, use **TestFlight → MonoCode Companion → Update**. Install over the
+existing app; do not delete it or reset pairing for an ordinary update. Automatic
+updates can be enabled in TestFlight. Beta builds expire after 90 days.
+
+Current MonoCode Dev downloads do not contain an automatic-update feed. Existing
+users will need one final manual Mac install when the signed updater-enabled
+release is ready. Later releases will use this fork's verified update feed and
+offer a safe restart. Those Mac updates are not enabled yet; publishing source
+changes on GitHub does not update installed apps. See the
+[Mac bootstrap and update plan](docs/companion/updates-and-distribution.md#bootstrap-and-later-delivery).
 
 ## Connection and security
 
@@ -87,7 +109,7 @@ The companion exposes a fixed set of actions, rather than an arbitrary shell end
 
 Same-session message delivery after lock/reopen and over user-confirmed cellular networking has been verified on a physical iPhone. Allow/Deny and Stop were also checked on an earlier device build. See the [companion guide](companion/README.md) and [validation record](docs/companion/validation-public.md) for the scope of those checks.
 
-Updates use bounded transcript snapshots and polling while the app is visible, rather than event replay. Unconfirmed commands retain their exact request IDs and require explicit recovery; reconnect does not blindly resend them. Desktop receipts are memory-only, so a restart can leave an outcome requiring manual review. Push notifications, broader suspension/network-handoff testing, and production distribution remain unfinished. Full desktop feature parity and general Android support are outside the current prototype.
+Updates use bounded transcript snapshots and polling while the app is visible, rather than event replay. Unconfirmed commands retain their exact request IDs and require explicit recovery; reconnect does not blindly resend them. Desktop receipts are memory-only, so a restart can leave an outcome requiring manual review. Push notifications, broader suspension/network-handoff testing, external TestFlight distribution, and production Mac distribution remain unfinished. Full desktop feature parity and general Android support are outside the current prototype.
 
 This repository retains the upstream [MIT license](LICENSE). Start with the [companion documentation](docs/companion/README.md) for the fork's architecture and implementation.
 
