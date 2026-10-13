@@ -94,6 +94,20 @@ jobs:
         run: |
           set -euo pipefail
           npx tauri build --target aarch64-apple-darwin --bundles app,dmg --config "$RELEASE_DIR/tauri.release.conf.json" --features companion-spike
+      # Tauri notarizes/staples the .app, but only signs the surrounding DMG.
+      - name: Notarize and staple the installer disk image
+        run: |
+          set -euo pipefail
+          DMG="$GITHUB_WORKSPACE/target/aarch64-apple-darwin/release/bundle/dmg/MonoCode Dev_${RELEASE_VERSION}_aarch64.dmg"
+          xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
+            --wait --output-format json > "$RELEASE_DIR/dmg-notarization.json"
+          node --input-type=module - "$RELEASE_DIR/dmg-notarization.json" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const result = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          if (result.status !== "Accepted") throw new Error("Apple has not accepted this DMG");
+          NODE
+          xcrun stapler staple "$DMG"
       - name: Verify app, updater archive, signature, and notarization
         id: metadata
         run: |
