@@ -46,6 +46,11 @@ jobs:
       # npm ci honors the committed package-lock.json so the UI check is reproducible.
       - run: npm ci
 
+      - name: Test distribution guardrails
+        run: |
+          node --test scripts/companion-release-preflight.test.mjs
+          python3 -B -m unittest discover -s scripts -p 'test_verify_companion_distribution.py' -v
+
       - name: Test desktop companion model suite
         run: npx vitest run src/features/companion/model
 

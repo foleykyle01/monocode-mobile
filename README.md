@@ -14,8 +14,9 @@ An experimental iPhone companion for [MonoCode](https://github.com/hardbeat920/m
 
 **Current source preview: Companion 0.1.1 · MonoCode desktop base 0.13.0.**
 The [automatic-update and distribution plan](docs/companion/updates-and-distribution.md)
-describes the proposed signed Mac installer, in-app updates and TestFlight/App Store
-path. These distribution channels are not live yet.
+describes direct signed Mac downloads, in-app updates and TestFlight without a
+public App Store listing. These distribution channels are not live yet. Maintainers
+can follow the [release setup checklist](docs/companion/release-setup.md).
 
 ## Screenshots
 

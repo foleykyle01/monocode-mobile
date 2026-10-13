@@ -1,6 +1,6 @@
 # Updates and distribution
 
-Status: proposed release design, October 13, 2026. Automatic distribution is not
+Status: accepted distribution direction, October 13, 2026. Automatic distribution is not
 enabled yet. The current public milestone is Companion **0.1.1 source preview**,
 with desktop base **MonoCode 0.13.0**. A public GitHub repository is not itself a
 production installer or an iPhone distribution channel.
@@ -9,9 +9,9 @@ production installer or an iPhone distribution channel.
 
 | Stage | Mac | iPhone |
 | --- | --- | --- |
-| First install | Download a signed, notarized DMG; drag the app to Applications | Join our TestFlight beta and tap Install; later install from the App Store |
+| First install | Download a signed, notarized DMG; drag the app to Applications | Join our TestFlight beta and tap Install |
 | Connect | Settings → Connections → Phone companion → Show QR code | Scan once; pairing survives normal updates |
-| Later updates | Check automatically, download a verified update, then offer Restart to update when work is safe | TestFlight/App Store manages updates according to the user's settings |
+| Later updates | Check automatically, download a verified update, then offer Restart to update when work is safe | TestFlight manages updates according to the user's settings |
 | Recovery | Keep the current app on download/signature failure; offer Retry | Reconnect to the same Mac after returning to the app |
 
 No terminal, Xcode, USB cable or separate VPN app in the community install flow.
@@ -67,11 +67,16 @@ have no feed, so one final drag-and-drop install is required to bootstrap update
 
 ## 3. iPhone releases
 
-Start with TestFlight; move to the App Store after the beta exit checks. Users can
-enable automatic TestFlight updates. External beta distribution requires Apple's
-review; each TestFlight build expires after 90 days, so it is not permanent
-production distribution. App Store automatic updates are enabled by default but
-remain under user/iOS control; delivery is not instantaneous or a forced push.
+Use TestFlight without a public App Store listing. Users can enable automatic
+TestFlight updates. External beta distribution requires Apple's review; each
+build expires after 90 days, so this channel needs ongoing beta maintenance and
+is not permanent production distribution. Ship a replacement well before expiry.
+Delivery remains under user/iOS control and is not an instantaneous forced push.
+
+A public App Store release is not an accepted next step. Retain the working
+native client while evaluating a PWA as a separate future option. That would
+reuse the interface but needs a browser-compatible connection and credential
+storage design; it is not a prerequisite for this TestFlight release.
 
 Use `dev.monocode.companion` if it is registered and available under the chosen
 Apple team. Verify that entitlement/App ID ownership before release. Keep the
@@ -104,7 +109,7 @@ a pairing reset. Existing host identity and revocation remain authoritative.
    Upload immutable artifacts with checksums; publish beta channels first.
 4. Verify an installed previous build updates with its profile/pairing intact,
    then promote the tested Mac artifact to stable and submit the corresponding
-   iPhone build for App Store review. Preserve older compatible artifacts.
+   iPhone build for external TestFlight beta review. Preserve older compatible artifacts.
 5. Record supported Mac/phone versions and exact upstream base. Monitor failed
    checks and connection errors without recording tickets, device secrets or
    transcripts. Withdraw a broken feed entry and ship a higher-version fix;
@@ -114,14 +119,17 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 Current foundations: Tauri updater is present; companion endpoints are disabled;
 the manual fallback now points to this fork. Phone version metadata is 0.1.1.
-Only an Apple Development identity was found locally during this review; that
-does not prove whether distribution certificates exist in the Apple account.
+Apple Distribution and Developer ID Application certificates were created in
+Xcode with the owner's authorization. The development certificate is retained.
+Certificates alone do not configure notarization, App Store Connect or CI access.
 
-Still needed before normal-user delivery: Developer ID/notarization setup,
+The manual TestFlight workflow and its protected GitHub environment are prepared,
+but disabled pending account configuration. Still needed before normal-user delivery: notarization setup,
 Tauri signing key and owned feed location, App Store Connect app and distribution
-credentials, privacy/support metadata, a protected release workflow, idle-safe
+credentials, privacy/support metadata, the signed Mac release workflow, idle-safe
 desktop update handling, and the one-time bootstrap installers. No credentials
-were generated or uploaded and no automatic feed was enabled by this spec.
+were uploaded to CI and no automatic feed is enabled. See the
+[release setup checklist](release-setup.md) for the executable readiness check.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,
 beta/stable separation, active-agent restart deferral, multi-window/habit races,
