@@ -520,7 +520,6 @@ export function mapCodexNotification(
 /** Codex thread items MonoCode already renders elsewhere or that are internal metadata. */
 const SILENT_ITEM_TYPES = new Set([
   "userMessage",
-  "contextCompaction",
   "enteredReviewMode",
 ]);
 
@@ -625,6 +624,20 @@ function mapItemLifecycle(
 
   if (SILENT_ITEM_TYPES.has(itemType)) {
     return { events: [] };
+  }
+
+  if (itemType === "contextCompaction") {
+    return {
+      events: [
+        {
+          type: "status",
+          key: `codex-compaction:${callId}`,
+          text: completed
+            ? "Conversation compacted"
+            : "Compacting conversation…",
+        },
+      ],
+    };
   }
 
   if (itemType === "exitedReviewMode" && completed) {

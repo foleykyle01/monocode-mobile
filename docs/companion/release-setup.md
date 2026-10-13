@@ -1,9 +1,12 @@
 # Release setup preflight
 
-The companion's normal-user path is a direct signed Mac download with verified
-in-app updates, plus TestFlight for iPhone beta delivery. It intentionally does
-not require a public App Store listing, a terminal, Xcode, or USB after the
-initial iPhone install. See [Updates and distribution](updates-and-distribution.md)
+The intended normal-user path is a direct signed Mac download with verified
+in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
+now live for internal Owner testing: build **0.1.1 (1003)** is valid in App Store
+Connect and in beta testing. The public external beta and signed Mac download are
+still pending, so do not publish an installer or invitation yet. The eventual
+normal-user path does not require a public App Store listing, a terminal, Xcode, or
+USB. See [Updates and distribution](updates-and-distribution.md)
 for the broader delivery and rollback plan.
 
 Before an expensive signed archive or upload, run one of these in the protected
@@ -85,28 +88,59 @@ supports those operations. Do not put a signing key in repository variables.
 
 Before setting `COMPANION_TESTFLIGHT_READY=true` in that environment, verify the
 App Store Connect app record owns `dev.monocode.companion`, agreements are current,
-and the account can distribute the app. Select an unused build number (first
-candidate `1001`). The workflow writes it directly to `bundle.iOS.bundleVersion`,
-not the CLI flag that appends a number to the marketing version.
+and the account can distribute the app. Select an unused build number greater than
+the last uploaded build (1003 at this milestone). The workflow writes it directly
+to `bundle.iOS.bundleVersion`, not the CLI flag that appends a number to the
+marketing version.
 
-The first run should leave **upload** unchecked. It builds the UI, uses automatic
-signing with the `app-store-connect` export method, and verifies the packaged
-bundle ID, marketing/build versions, team, signature and distribution profile.
-It rejects development/ad hoc provisioning. A verified IPA is retained as a
-14-day workflow artifact. Selecting **upload** submits it to Apple for processing;
-it does not submit a public App Store release or automatically invite testers.
-No signing key is retained in artifacts; the temporary key is removed on exit.
+For a new release, leave **upload** unchecked for the first packaging check. The
+workflow builds the UI, uses automatic signing with the `app-store-connect` export
+method, and verifies the packaged bundle ID, marketing/build versions, team,
+signature and distribution profile. It rejects development/ad hoc provisioning. A
+verified IPA is retained as a 14-day workflow artifact. Selecting **upload** then
+submits it to Apple for processing; it does not submit a public App Store release
+or automatically invite testers. No signing key is retained in artifacts; the
+temporary key is removed on exit.
 
-Apple processing, encryption-compliance answers, beta description/support
-contact and any external beta review still need completion in App Store Connect.
-Do not assert that the custom Iroh encrypted transport is exempt without checking
-Apple's questionnaire. Add the owner's account to internal testing first; confirm
+Apple processing for build **1003** is complete: App Store Connect reports the
+build as **VALID** and **IN_BETA_TESTING** in the internal Owner testing group.
+The owner-only encryption declaration has been submitted. An external **Community
+beta** group exists with its public invitation disabled. The English beta
+description and build testing notes are saved. Public feedback/support contact,
+privacy URL, Apple's private review contact, and external beta review still
+need completion before inviting community testers. Do not assert that the custom
+Iroh encrypted transport is exempt without checking Apple's questionnaire. Confirm
 an in-place TestFlight install keeps pairing before opening external testing.
 
 The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
 packaged app, and generates opaque PNG icons without alpha channels. These guard
 against the SDK and large-icon rejections encountered on the first signed
-candidate. Signing and package verification succeeded in CI; Apple rejected that
-candidate's upload before TestFlight processing. A corrected candidate still needs
-upload validation. Mac release CI and safe installation/restart handling are pending;
-the `mac` preflight alone does not implement automatic updates.
+candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
+processing. Mac release CI, notarized Mac packaging, and safe installation/restart
+handling are pending; the `mac` preflight alone does not implement automatic
+updates.
+
+## External TestFlight handoff
+
+The internal Owner group remains separate from Community beta. Do not add ordinary
+testers to the Apple developer team to bypass external review. Prepare the beta
+description, public feedback contact, privacy/support links, and Apple's private
+review contact fields. A build must be approved for external beta testing before
+the community can use it.
+
+The reviewer needs a usable companion-enabled Mac and pairing instructions, or a
+clearly labeled sample mode exposed in the submitted app. Build 1003's preview is
+a developer URL option, not an accessible reviewer onboarding flow. Do not claim
+that review can use a hidden preview button or supply the maintainer's real Mac,
+provider credentials, or short-lived QR invitation. Complete the signed Mac
+download/reviewer path before submitting a beta that depends on it.
+
+The first encryption declaration covered owner testing without France
+distribution. Confirm intended external availability and the applicable Apple
+questionnaire/documentation before enabling an unrestricted public invitation.
+TestFlight's device/OS eligibility criteria are not a country restriction.
+
+Once review, the compatible Mac download and owner upgrade check pass, add the
+approved build to Community beta, enable a bounded public invitation and put its
+actual TestFlight URL in the README. Keep source-build steps under contributor
+instructions. Never substitute a workflow IPA download for the invitation.

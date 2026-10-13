@@ -12,6 +12,8 @@ import {
   toCodexApprovalDecision,
 } from "./codexProtocol";
 import { parseCodexModelList } from "./codexCatalog";
+import { appendUser, applyHarnessEvent } from "../../core/apply";
+import { newSession } from "../../../../features/sessions/model/session";
 
 describe("runtimeModeToCodexConfig", () => {
   it("maps supervised to untrusted read-only", () => {
@@ -251,6 +253,35 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("mapCodexNotification", () => {
+  it("shows compaction progress and updates the same row without ending the turn", () => {
+    let session = appendUser(newSession("codex", "/tmp"), "Continue");
+    const item = { id: "compact_1", type: "contextCompaction" };
+    const started = mapCodexNotification("item/started", { item });
+    expect(started.events).toEqual([
+      {
+        type: "status",
+        key: "codex-compaction:compact_1",
+        text: "Compacting conversation…",
+      },
+    ]);
+    for (const event of [...started.events, ...started.events]) {
+      session = applyHarnessEvent(session, event);
+    }
+    const statusId = session.blocks[1].id;
+    const completed = mapCodexNotification("item/completed", { item });
+    expect(completed.turnCompleted).toBeUndefined();
+    for (const event of completed.events) {
+      session = applyHarnessEvent(session, event);
+    }
+    expect(session.blocks).toHaveLength(2);
+    expect(session.blocks[1]).toMatchObject({
+      id: statusId,
+      role: "system",
+      text: "Conversation compacted",
+    });
+    expect(session.busy).toBe(true);
+  });
+
   it("maps agent message deltas", () => {
     const mapped = mapCodexNotification("item/agentMessage/delta", {
       delta: "Hello",
