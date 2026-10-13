@@ -1,15 +1,15 @@
 import { useEffect, useRef } from "react";
+import {
+  beginUpdateOwnerWork,
+  isUpdateRestartPending,
+} from "../../app/model/updater";
 import type { ControlOutcome } from "../../features/orchestration/model/orchestration";
 import {
   newSession,
   type Block,
   type Session,
 } from "../../features/sessions/model/session";
-import {
-  findMono,
-  listMonos,
-  monoLook,
-} from "../../features/monos/model/mono";
+import { findMono, listMonos, monoLook } from "../../features/monos/model/mono";
 import { loadMonoFiles } from "../../features/monos/model/monoFiles";
 import {
   artifactCards,
@@ -161,87 +161,95 @@ export function useMonoHabits(host: MonoHabitHost, enabled = true) {
       monoSessionId: string,
       habitId: string,
     ) => {
-      const host = hostRef.current;
-      const mono = await host.open(monoSessionId);
-      if (!mono || stopped || !findMono(monoId)) return;
-      const files = await loadMonoFiles(monoId);
-      if (stopped || !findMono(monoId)) return;
-      const now = Date.now();
-      // Claim after preparation, from the latest definition. A queued habit
-      // may have been removed, paused, rescheduled or claimed in another window.
-      const habit = await claimHabit(monoId, habitId, now);
-      const record = findMono(monoId);
-      if (!habit || stopped || !record) return;
-      const look = monoLook(record);
-      const run: Session = {
-        // Nobody is watching a habit's run, so it cannot stop to ask before
-        // each step. Anything the harness still asks goes to the user below.
-        ...newSession(
-          mono.harness,
-          mono.cwd,
-          mono.model,
-          "full-access",
-          mono.modelSettings,
-        ),
-        title: `${look.name} · ${habit.name}`,
-        ephemeral: true,
-      };
-      markHabitRun(run.id, monoId);
-      setHabitRunning(habit.id, now);
-      host.add(run);
-      let outcome: ControlOutcome;
+      const finishOwnerWork = beginUpdateOwnerWork();
       try {
-        // /operator gives the run the same app access the Mono has.
-        const prompt = `/operator ${habitRunPrompt(look, files, habit, now)}`;
-        outcome = await watchRun(host, mono.id, habit, run.id, () =>
-          host.run(run.id, prompt),
-        );
-      } catch (error) {
-        outcome = {
-          status: "failed",
-          text: "",
-          error: error instanceof Error ? error.message : String(error),
+        if (isUpdateRestartPending()) return;
+        const host = hostRef.current;
+        const mono = await host.open(monoSessionId);
+        if (!mono || stopped || isUpdateRestartPending() || !findMono(monoId))
+          return;
+        const files = await loadMonoFiles(monoId);
+        if (stopped || isUpdateRestartPending() || !findMono(monoId)) return;
+        const now = Date.now();
+        // Claim after preparation, from the latest definition. A queued habit
+        // may have been removed, paused, rescheduled or claimed in another window.
+        const habit = await claimHabit(monoId, habitId, now);
+        const record = findMono(monoId);
+        if (!habit || stopped || isUpdateRestartPending() || !record) return;
+        const look = monoLook(record);
+        const run: Session = {
+          // Nobody is watching a habit's run, so it cannot stop to ask before
+          // each step. Anything the harness still asks goes to the user below.
+          ...newSession(
+            mono.harness,
+            mono.cwd,
+            mono.model,
+            "full-access",
+            mono.modelSettings,
+          ),
+          title: `${look.name} · ${habit.name}`,
+          ephemeral: true,
         };
-      }
-      const reply =
-        finalReply(host.sessions().find((s) => s.id === run.id)) ||
-        outcome.text;
-      const artifacts = artifactCards(
-        host.sessions().find((s) => s.id === run.id)?.blocks ?? [],
-      );
-      host.endApprovals(run.id);
-      await host.remove(run.id).catch(() => undefined);
-      clearHabitRun(run.id);
-      setHabitRunning(habit.id);
+        markHabitRun(run.id, monoId);
+        setHabitRunning(habit.id, now);
+        host.add(run);
+        let outcome: ControlOutcome;
+        try {
+          // /operator gives the run the same app access the Mono has.
+          const prompt = `/operator ${habitRunPrompt(look, files, habit, now)}`;
+          outcome = await watchRun(host, mono.id, habit, run.id, () =>
+            host.run(run.id, prompt),
+          );
+        } catch (error) {
+          outcome = {
+            status: "failed",
+            text: "",
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        const reply =
+          finalReply(host.sessions().find((s) => s.id === run.id)) ||
+          outcome.text;
+        const artifacts = artifactCards(
+          host.sessions().find((s) => s.id === run.id)?.blocks ?? [],
+        );
+        host.endApprovals(run.id);
+        await host.remove(run.id).catch(() => undefined);
+        clearHabitRun(run.id);
+        setHabitRunning(habit.id);
 
-      const report =
-        outcome.status === "completed" ? habitReport(reply) : undefined;
-      if (report) host.post(monoSessionId, habit, report, look.name, artifacts);
-      await updateHabits(monoId, (habits) => ({
-        habits: habits.map((entry) =>
-          entry.id === habit.id
-            ? afterRun(entry, Date.now(), {
-                kind:
-                  outcome.status !== "completed"
-                    ? "failed"
-                    : report
-                      ? "posted"
-                      : "quiet",
-                ...(outcome.status !== "completed"
-                  ? { error: outcome.error ?? "The run did not finish." }
-                  : {}),
-                ...(report ? { report } : {}),
-                startedAt: now,
-              })
-            : entry,
-        ),
-        result: undefined,
-      }));
+        const report =
+          outcome.status === "completed" ? habitReport(reply) : undefined;
+        if (report)
+          host.post(monoSessionId, habit, report, look.name, artifacts);
+        await updateHabits(monoId, (habits) => ({
+          habits: habits.map((entry) =>
+            entry.id === habit.id
+              ? afterRun(entry, Date.now(), {
+                  kind:
+                    outcome.status !== "completed"
+                      ? "failed"
+                      : report
+                        ? "posted"
+                        : "quiet",
+                  ...(outcome.status !== "completed"
+                    ? { error: outcome.error ?? "The run did not finish." }
+                    : {}),
+                  ...(report ? { report } : {}),
+                  startedAt: now,
+                })
+              : entry,
+          ),
+          result: undefined,
+        }));
+      } finally {
+        finishOwnerWork();
+      }
     };
 
     const tick = async () => {
       if ((window as OwnedWindow)[OWNER] !== owner) stopped = true;
-      if (stopped) return;
+      if (stopped || isUpdateRestartPending()) return;
       if (running) {
         checkAgain = true;
         return;

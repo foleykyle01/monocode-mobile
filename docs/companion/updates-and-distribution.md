@@ -141,8 +141,8 @@ its public invitation is disabled and external review has not been submitted.
 Community rollout follows the owner-only upgrade
 check:
 
-1. Verify the owner's existing development install upgrades through TestFlight
-   while retaining pairing and real workspaces.
+1. Owner TestFlight operation and reconnection are confirmed. Retain this check
+   when changing app identity, storage or pairing behavior.
 2. Complete beta description, feedback/support contact, review instructions and
    encryption compliance, then submit the candidate for external beta review.
 3. After approval, enable a public invitation for a **Community beta** group with

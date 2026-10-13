@@ -21,6 +21,13 @@ pub(crate) struct Reservation<'a> {
 }
 
 impl Lifecycle {
+    fn restart_safe(&self) -> bool {
+        self.reservations
+            .lock()
+            .map(|reservations| reservations.is_empty())
+            .unwrap_or(false)
+    }
+
     fn reserve(&self, path: &Path, removing: bool) -> Result<Reservation<'_>, String> {
         let path = match path.canonicalize() {
             Ok(path) => path,
@@ -69,6 +76,10 @@ pub(crate) fn reserve_spawn(path: &Path) -> Result<Reservation<'static>, String>
 
 pub(crate) fn reserve_removal(path: &Path) -> Result<Reservation<'static>, String> {
     LIFECYCLE.reserve(path, true)
+}
+
+pub(crate) fn restart_safe() -> bool {
+    LIFECYCLE.restart_safe()
 }
 
 #[cfg(test)]

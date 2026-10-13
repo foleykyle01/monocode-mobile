@@ -52,6 +52,13 @@ pub struct PtyHost {
 }
 
 impl PtyHost {
+    pub(crate) fn restart_safe(&self) -> bool {
+        self.sessions
+            .lock()
+            .map(|sessions| sessions.is_empty())
+            .unwrap_or(false)
+    }
+
     pub(crate) fn has_working_dir(&self, path: &std::path::Path) -> bool {
         self.sessions
             .lock()
@@ -128,11 +135,13 @@ impl Drop for PtyHost {
 pub fn pty_spawn(
     app: AppHandle,
     host: State<PtyHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
     id: String,
     cwd: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let workdir = working_dir(&cwd);
     let _reservation = crate::worktree_lifecycle::reserve_spawn(&workdir)?;
     if let Some(prev) = host.remove(&id) {

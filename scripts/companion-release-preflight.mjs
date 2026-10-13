@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DESKTOP_IDENTIFIER = "com.monocode.companion-spike";
 const IOS_IDENTIFIER = "dev.monocode.companion";
+const COMPANION_TEAM_ID = "RBT45GBH6K";
+const BETA_FEED_URL = "https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json";
 
 const MAC_REQUIRED = [
   "TAURI_SIGNING_PRIVATE_KEY",
@@ -17,7 +19,7 @@ const MAC_REQUIRED = [
   "APPLE_SIGNING_IDENTITY",
   "APPLE_API_ISSUER",
   "APPLE_API_KEY",
-  "APPLE_API_KEY_PATH",
+  "APPLE_API_KEY_P8",
 ];
 
 const TESTFLIGHT_REQUIRED = [
@@ -110,11 +112,22 @@ function macErrors(env) {
   if (!updateHostName && value(env, "MONOCODE_COMPANION_UPDATE_HOST")) {
     errors.push("Invalid: MONOCODE_COMPANION_UPDATE_HOST");
   }
-  if (parsedEndpoint && (parsedEndpoint.protocol !== "https:" || parsedEndpoint.username || parsedEndpoint.password || parsedEndpoint.search || parsedEndpoint.hash || isUnsafeUpdaterUrl(parsedEndpoint) || !updateHostName || parsedEndpoint.hostname.toLowerCase() !== updateHostName)) {
+  if (parsedEndpoint && (parsedEndpoint.protocol !== "https:" || parsedEndpoint.username || parsedEndpoint.password || parsedEndpoint.search || parsedEndpoint.hash || isUnsafeUpdaterUrl(parsedEndpoint) || !updateHostName || parsedEndpoint.hostname.toLowerCase() !== updateHostName || endpoint !== BETA_FEED_URL)) {
     errors.push("Invalid: TAURI_UPDATER_ENDPOINT");
   }
-  if (value(env, "APPLE_SIGNING_IDENTITY") && !value(env, "APPLE_SIGNING_IDENTITY").startsWith("Developer ID Application:")) {
+  if (value(env, "MONOCODE_COMPANION_UPDATE_HOST") && updateHostName !== "github.com") {
+    errors.push("Invalid: MONOCODE_COMPANION_UPDATE_HOST");
+  }
+  if (value(env, "APPLE_SIGNING_IDENTITY") && (!value(env, "APPLE_SIGNING_IDENTITY").startsWith("Developer ID Application:") || !value(env, "APPLE_SIGNING_IDENTITY").includes(`(${COMPANION_TEAM_ID})`))) {
     errors.push("Invalid: APPLE_SIGNING_IDENTITY");
+  }
+  if (value(env, "APPLE_API_KEY_P8")) {
+    try {
+      const key = createPrivateKey(value(env, "APPLE_API_KEY_P8"));
+      if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1") throw new Error("wrong key type");
+    } catch {
+      errors.push("Invalid: APPLE_API_KEY_P8");
+    }
   }
   return errors;
 }

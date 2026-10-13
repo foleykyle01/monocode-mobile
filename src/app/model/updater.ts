@@ -1,7 +1,7 @@
 import { BundleType, getBundleType, getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ask, message } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { announceUpdateAvailable } from "../../features/settings/model/sounds";
 import { rememberInstalledUpdate } from "./updateNotice";
 
@@ -11,6 +11,7 @@ export type UpdaterPhase =
   | "current"
   | "available"
   | "downloading"
+  | "ready"
   | "error";
 
 export type UpdaterSnapshot = {
@@ -23,11 +24,45 @@ export type UpdaterSnapshot = {
   packageManaged?: PackageManagedInstall;
 };
 
-let pendingUpdate: Update | null = null;
+type AvailableUpdate = { version: string; body?: string | null };
 
-const RELEASES_URL = import.meta.env.VITE_MONOCODE_COMPANION_SPIKE === "1"
-  ? "https://github.com/foleykyle01/monocode-mobile/releases"
-  : "https://github.com/hardbeat920/monocode/releases/latest";
+let pendingUpdate: AvailableUpdate | null = null;
+let downloadedVersion: string | null = null;
+let restartPending = false;
+let ownerWorkInFlight = 0;
+
+/** Stops schedulers from claiming work while native update admission is closed. */
+export function isUpdateRestartPending(): boolean {
+  return restartPending;
+}
+
+export function setUpdateRestartPending(value: boolean): void {
+  restartPending = value;
+}
+
+/**
+ * Covers asynchronous owner preparation before it appears in a Session. A
+ * restart probe rejects while this is held, so claiming a scheduled habit can
+ * never silently consume its next run in the narrow pre-session gap.
+ */
+export function beginUpdateOwnerWork(): () => void {
+  ownerWorkInFlight += 1;
+  let finished = false;
+  return () => {
+    if (finished) return;
+    finished = true;
+    ownerWorkInFlight = Math.max(0, ownerWorkInFlight - 1);
+  };
+}
+
+export function hasUpdateOwnerWork(): boolean {
+  return ownerWorkInFlight !== 0;
+}
+
+const RELEASES_URL =
+  import.meta.env.VITE_MONOCODE_COMPANION_SPIKE === "1"
+    ? "https://github.com/foleykyle01/monocode-mobile/releases"
+    : "https://github.com/hardbeat920/monocode/releases/latest";
 
 /**
  * Linux `.deb` and `.rpm` installs belong to apt/dnf. The release feed only
@@ -58,7 +93,9 @@ export function packageManagerHint(kind: PackageManagedInstall): string {
 function isTargetMissingError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error);
   // tauri-plugin-updater Error::TargetsNotFound / Error::TargetNotFound.
-  return /none of the fallback platforms|the platform `[^`]*` was not found/i.test(text);
+  return /none of the fallback platforms|the platform `[^`]*` was not found/i.test(
+    text,
+  );
 }
 
 function isUpdaterNotConfiguredError(error: unknown): boolean {
@@ -74,12 +111,13 @@ export async function readAppVersion(): Promise<string> {
   }
 }
 
-export async function probeForUpdate(): Promise<Update | null> {
+export async function probeForUpdate(): Promise<AvailableUpdate | null> {
   if (await packageManagedInstall()) {
     pendingUpdate = null;
+    downloadedVersion = null;
     return null;
   }
-  const update = await check();
+  const update = await invoke<AvailableUpdate | null>("safe_update_check");
   pendingUpdate = update;
   if (update) announceUpdateAvailable(update.version);
   return update;
@@ -111,9 +149,10 @@ export async function runUpdateFlow(
   }
 
   try {
-    const update = await check();
+    const update = await invoke<AvailableUpdate | null>("safe_update_check");
     if (!update) {
       pendingUpdate = null;
+      downloadedVersion = null;
       const current: UpdaterSnapshot = { phase: "current", currentVersion };
       onProgress?.(current);
       if (manual) {
@@ -136,7 +175,7 @@ export async function runUpdateFlow(
     const notes = update.body?.trim();
     const detail = notes ? `\n\n${notes}` : "";
     const yes = await ask(
-      `MonoCode ${update.version} is available (you have ${currentVersion}).${detail}\n\nInstall now?`,
+      `MonoCode ${update.version} is available (you have ${currentVersion}).${detail}\n\nDownload it now?`,
       { title: "Update available", kind: "info" },
     );
     if (!yes) return available;
@@ -193,46 +232,84 @@ export async function installPendingUpdate(
     return idle;
   }
 
-  let downloaded = 0;
-  let contentLength = 0;
-
-  const downloading: UpdaterSnapshot = {
-    phase: "downloading",
-    currentVersion,
-    availableVersion: update.version,
-    progress: 0,
-  };
-  onProgress?.(downloading);
-
   try {
-    await update.downloadAndInstall((event: DownloadEvent) => {
-      if (event.event === "Started") {
-        contentLength = event.data.contentLength ?? 0;
-        downloaded = 0;
-      } else if (event.event === "Progress") {
-        downloaded += event.data.chunkLength;
-      }
-
-      const progress =
-        contentLength > 0
-          ? Math.min(100, Math.round((downloaded / contentLength) * 100))
-          : undefined;
-
+    if (downloadedVersion !== update.version) {
       onProgress?.({
         phase: "downloading",
         currentVersion,
         availableVersion: update.version,
-        progress,
+        progress: 0,
       });
-    });
+      let downloaded = 0;
+      const unlisten = await listen<{ chunk?: number; total?: number }>(
+        "monocode-update-download-progress",
+        ({ payload }) => {
+          downloaded += payload.chunk ?? 0;
+          if (payload.total && payload.total > 0)
+            onProgress?.({
+              phase: "downloading",
+              currentVersion,
+              availableVersion: update.version,
+              progress: Math.min(100, (100 * downloaded) / payload.total),
+            });
+        },
+      ).catch(() => () => undefined);
+      let result: { available: boolean; version?: string };
+      try {
+        result = await invoke<{ available: boolean; version?: string }>(
+          "safe_update_download",
+        );
+      } finally {
+        unlisten();
+      }
+      if (!result.available) {
+        pendingUpdate = null;
+        downloadedVersion = null;
+        const current: UpdaterSnapshot = { phase: "current", currentVersion };
+        onProgress?.(current);
+        return current;
+      }
+      if (!result.version)
+        throw new Error("The update download did not identify a version");
+      if (result.version !== update.version) {
+        // The feed changed after the initial check. Keep the new release
+        // visible rather than incorrectly saying the app is current.
+        pendingUpdate = { version: result.version };
+        downloadedVersion = null;
+        announceUpdateAvailable(result.version);
+        const available: UpdaterSnapshot = {
+          phase: "available",
+          currentVersion,
+          availableVersion: result.version,
+        };
+        onProgress?.(available);
+        return available;
+      }
+      downloadedVersion = result.version;
+    }
 
+    const ready: UpdaterSnapshot = {
+      phase: "ready",
+      currentVersion,
+      availableVersion: update.version,
+    };
+    onProgress?.(ready);
+    const restart = await ask(
+      `MonoCode ${update.version} is downloaded. Restart now to install it? You can choose Later and restart from this update row when work is clear.`,
+      {
+        title: "Update ready",
+        kind: "info",
+        okLabel: "Restart to update",
+        cancelLabel: "Later",
+      },
+    );
+    if (!restart) return ready;
+
+    await invoke("safe_update_install_and_restart");
     rememberInstalledUpdate(update.version);
     pendingUpdate = null;
-    await relaunch();
-    return {
-      phase: "current",
-      currentVersion: update.version,
-    };
+    downloadedVersion = null;
+    return { phase: "current", currentVersion: update.version };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     const failed: UpdaterSnapshot = {
@@ -242,7 +319,9 @@ export async function installPendingUpdate(
       error,
     };
     onProgress?.(failed);
-    await message(`Couldn't install the update.\n\n${error}`, { title: "MonoCode" });
+    await message(`Couldn't install the update.\n\n${error}`, {
+      title: "MonoCode",
+    });
     return failed;
   }
 }

@@ -45,6 +45,7 @@ mod rate_limits;
 mod reminders;
 mod remote;
 mod remote_ssh;
+mod safe_updater;
 mod search;
 mod session_store;
 mod skills;
@@ -262,6 +263,7 @@ pub fn run() {
         .manage(remote::RemoteConnections::default())
         .manage(window_transfer::WindowTransferState::new())
         .manage(companion_network::CompanionNetwork::default())
+        .manage(safe_updater::SafeUpdater::default())
         .setup(|app| {
             if cfg!(feature = "companion-spike")
                 && app.config().identifier != "com.monocode.companion-spike"
@@ -330,6 +332,10 @@ pub fn run() {
             control::control_attach_worker,
             control::control_authorize_turn,
             control::control_turn_finished,
+            safe_updater::safe_update_check,
+            safe_updater::safe_update_download,
+            safe_updater::safe_update_restart_ready,
+            safe_updater::safe_update_install_and_restart,
             control::app_cli_path,
             default_cwd,
             home_dir,
@@ -678,6 +684,12 @@ pub fn run() {
             }
         }
         tauri::RunEvent::ExitRequested { api, code, .. } => {
+            // `AppHandle::request_restart` uses Tauri's special restart exit
+            // code. It is already safe only after safe_updater persisted every
+            // workspace, and must not enter the ordinary quit prompt/kill path.
+            if code == Some(tauri::RESTART_EXIT_CODE) {
+                return;
+            }
             if window::allow_exit() {
                 return;
             }

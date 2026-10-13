@@ -34,7 +34,7 @@ The `mac` target requires these protected release variables:
 | `MONOCODE_COMPANION_UPDATE_HOST` | Expected hostname for that endpoint; it must match exactly. |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | Exported Developer ID certificate and its password, imported by Tauri into the CI keychain. |
 | `APPLE_SIGNING_IDENTITY` | Must begin with `Developer ID Application:`. |
-| `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH` | App Store Connect API credentials used by Tauri notarization. |
+| `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8` | App Store Connect API credentials; the workflow writes the key to a temporary private file for notarization. |
 
 The endpoint must be HTTPS, use the explicitly declared companion host, and may
 not reference the upstream `hardbeat920/monocode` releases. The checked-in
@@ -46,6 +46,50 @@ Do not enable an updater in a local development build.
 an Apple Distribution certificate is for the iPhone target. Tauri requires a
 separate updater signature in addition to Apple signing and notarization. Store
 the updater private key and its recovery copy outside source control.
+
+### Mac release workflow
+
+The **Companion Mac release** workflow builds only public `main` and uses the
+protected `companion-mac-release` environment. It requires maintainer review and
+the signing secrets above, plus `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` when the
+update key is password-protected. The initial installer targets **Apple Silicon**;
+Intel packages are not offered by this workflow.
+
+Use a fork beta version such as `1.0.0-beta.1`. The generated release overlay keeps
+the existing `com.monocode.companion-spike` identifier, app name and data location;
+normal source builds keep their updater disabled. It embeds only the public
+verification key and the dedicated GitHub beta feed.
+
+1. **prepare** builds, signs, notarizes and verifies the DMG/update archive, then
+   retains them as workflow artifacts for review. It publishes nothing.
+2. **publish-download** performs those checks and publishes a new immutable
+   `companion-mac-v<version>` prerelease. It refuses to replace an existing release.
+   It does not enable the update feed.
+3. **promote-feed** points the beta feed at an already published version. This
+   phase requires protected environment variable `COMPANION_MAC_UPDATE_VERIFIED`
+   to be exactly `true`, set only after the real bootstrap/upgrade checks below.
+
+Package verification checks the app identifier/version, Apple Silicon architecture,
+Developer ID team, embedded public key/feed, notarization and the signed app inside
+the DMG. The workflow independently verifies the updater archive's Minisign
+signature and checks anonymous download URLs before changing the feed. Private
+keys are excluded from uploaded artifacts.
+
+Before enabling feed promotion, test a backed-up existing Dev profile with the
+bootstrap, confirm chats/groups/Monos/settings and phone pairing, then install a
+higher signed version through the updater. Test active work in another window,
+pending questions/approvals, scheduled work, a cancelled restart and a failed
+download. Keep the gate off if any of these checks fail.
+
+### Installing the first signed Mac build
+
+Download the DMG and drag **MonoCode Dev** into Applications. Existing Dev users
+must first finish active work and quit the app, then replace their existing copy
+in its current location. If that copy lives in your personal `Applications`
+folder, replace it there rather than keeping two copies. Reopen Dev and verify
+your workspace and phone connection. Do not delete app data or re-import an older
+MonoCode profile as part of this update. Remote access may need to be re-enabled
+after relaunch; the pairing remains stored.
 
 ## TestFlight iPhone beta
 
@@ -106,11 +150,11 @@ Apple processing for build **1003** is complete: App Store Connect reports the
 build as **VALID** and **IN_BETA_TESTING** in the internal Owner testing group.
 The owner-only encryption declaration has been submitted. An external **Community
 beta** group exists with its public invitation disabled. The English beta
-description and build testing notes are saved. Public feedback/support contact,
-privacy URL, Apple's private review contact, and external beta review still
+description and build testing notes are saved. The owner has confirmed TestFlight
+operation and reconnection. Feedback email (`foley.kyle01@gmail.com`) and Apple's
+private review contact are configured. Privacy URL and external beta review still
 need completion before inviting community testers. Do not assert that the custom
-Iroh encrypted transport is exempt without checking Apple's questionnaire. Confirm
-an in-place TestFlight install keeps pairing before opening external testing.
+Iroh encrypted transport is exempt without checking Apple's questionnaire.
 
 The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
 packaged app, and generates opaque PNG icons without alpha channels. These guard
@@ -135,9 +179,9 @@ that review can use a hidden preview button or supply the maintainer's real Mac,
 provider credentials, or short-lived QR invitation. Complete the signed Mac
 download/reviewer path before submitting a beta that depends on it.
 
-The first encryption declaration covered owner testing without France
-distribution. Confirm intended external availability and the applicable Apple
-questionnaire/documentation before enabling an unrestricted public invitation.
+The owner has chosen worldwide public invitations. The first encryption declaration
+covered owner testing without France distribution; verify the applicable Apple
+questionnaire/documentation before enabling the worldwide invitation.
 TestFlight's device/OS eligibility criteria are not a country restriction.
 
 Once review, the compatible Mac download and owner upgrade check pass, add the

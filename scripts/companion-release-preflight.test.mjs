@@ -4,17 +4,18 @@ import { generateKeyPairSync } from "node:crypto";
 import { readReleaseConfig, validateReleasePreflight } from "./companion-release-preflight.mjs";
 
 const config = readReleaseConfig();
+const appleApiKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "pem" });
 const macEnvironment = {
   TAURI_SIGNING_PRIVATE_KEY: "private-key",
   TAURI_UPDATER_PUBKEY: "public-key",
-  TAURI_UPDATER_ENDPOINT: "https://updates.example.com/latest.json",
-  MONOCODE_COMPANION_UPDATE_HOST: "updates.example.com",
+  TAURI_UPDATER_ENDPOINT: "https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json",
+  MONOCODE_COMPANION_UPDATE_HOST: "github.com",
   APPLE_CERTIFICATE: "certificate",
   APPLE_CERTIFICATE_PASSWORD: "certificate-password",
-  APPLE_SIGNING_IDENTITY: "Developer ID Application: MonoCode (TEAMID)",
+  APPLE_SIGNING_IDENTITY: "Developer ID Application: MonoCode Dev (RBT45GBH6K)",
   APPLE_API_ISSUER: "issuer",
   APPLE_API_KEY: "key-id",
-  APPLE_API_KEY_PATH: "/tmp/key.p8",
+  APPLE_API_KEY_P8: appleApiKey,
 };
 const testflightEnvironment = {
   APPLE_DEVELOPMENT_TEAM: "TEAM123456",
@@ -38,7 +39,7 @@ test("reports missing variable names without printing secret values", () => {
 test("rejects upstream and non-owned updater endpoints", () => {
   const upstream = validateReleasePreflight({
     target: "mac",
-    env: { ...macEnvironment, TAURI_UPDATER_ENDPOINT: "https://github.com/hardbeat920/monocode/releases/latest/download/latest.json", MONOCODE_COMPANION_UPDATE_HOST: "github.com" },
+    env: { ...macEnvironment, TAURI_UPDATER_ENDPOINT: "https://github.com/hardbeat920/monocode/releases/latest/download/latest.json" },
     config,
   });
   assert.ok(upstream.includes("Invalid: TAURI_UPDATER_ENDPOINT"));
@@ -75,6 +76,16 @@ test("rejects invalid Apple build formats and credentials embedded in feed URLs"
   for (const build of ["0", "2026.1013.1", "1.2.3.4", "10000", "1.beta", "1;echo hello"]) {
     assert.ok(validateReleasePreflight({ target: "testflight", env: { ...testflightEnvironment, IOS_BUILD_NUMBER: build }, config }).includes("Invalid: IOS_BUILD_NUMBER"));
   }
-  const errors = validateReleasePreflight({ target: "mac", env: { ...macEnvironment, TAURI_UPDATER_ENDPOINT: "https://user:password@updates.example.com/latest.json" }, config });
+  const errors = validateReleasePreflight({ target: "mac", env: { ...macEnvironment, TAURI_UPDATER_ENDPOINT: "https://user:password@github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json" }, config });
   assert.ok(errors.includes("Invalid: TAURI_UPDATER_ENDPOINT"));
+});
+
+test("requires this developer team and a valid notarization API private key", () => {
+  const errors = validateReleasePreflight({
+    target: "mac",
+    env: { ...macEnvironment, APPLE_SIGNING_IDENTITY: "Developer ID Application: MonoCode Dev (OTHERTEAM1)", APPLE_API_KEY_P8: "not-a-key" },
+    config,
+  });
+  assert.ok(errors.includes("Invalid: APPLE_SIGNING_IDENTITY"));
+  assert.ok(errors.includes("Invalid: APPLE_API_KEY_P8"));
 });

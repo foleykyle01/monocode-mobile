@@ -9,12 +9,18 @@ import {
 import type { InstalledUpdate } from "../model/updateNotice";
 import { UpdateRailCard } from "./UpdateRailCard";
 
+const AUTO_UPDATE_PROBE_MS = 6 * 60 * 60 * 1000;
+
 // The sidebar row only earns its space when there is something to act on: an
 // update waiting to be installed, or one already downloading. Every other phase
 // — including a probe that failed — stays silent, because manual "Check for
 // updates" already lives in Settings and the app menu.
 export function isSidebarUpdateActionable(snapshot: UpdaterSnapshot): boolean {
-  return snapshot.phase === "available" || snapshot.phase === "downloading";
+  return (
+    snapshot.phase === "available" ||
+    snapshot.phase === "downloading" ||
+    snapshot.phase === "ready"
+  );
 }
 
 export function SidebarUpdateFooter({
@@ -30,6 +36,10 @@ export function SidebarUpdateFooter({
     phase: "idle",
     currentVersion: "…",
   });
+  const snapshotRef = useRef(snapshot);
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   // The automatic probe runs on mount whether or not it ends up rendering
   // anything, so a newly published version still surfaces on its own. The
@@ -37,32 +47,52 @@ export function SidebarUpdateFooter({
   // padding entirely when neither child has anything to show.
   useEffect(() => {
     let cancelled = false;
+    let checking = false;
 
-    (async () => {
+    const setNext = (next: UpdaterSnapshot) => {
+      snapshotRef.current = next;
+      setSnapshot(next);
+    };
+
+    const probe = async () => {
+      // Keep a downloaded/restart-ready update (and a surfaced error) stable;
+      // a periodic check must never overwrite the action the user is deciding.
+      if (
+        checking ||
+        ["downloading", "ready", "error"].includes(snapshotRef.current.phase)
+      )
+        return;
+      checking = true;
       const currentVersion = await readAppVersion();
       if (cancelled) return;
-      setSnapshot({ phase: "checking", currentVersion });
+      setNext({ phase: "checking", currentVersion });
 
       try {
         const update = await probeForUpdate();
         if (cancelled) return;
         if (update) {
-          setSnapshot({
+          setNext({
             phase: "available",
             currentVersion,
             availableVersion: update.version,
           });
           return;
         }
-        setSnapshot({ phase: "current", currentVersion });
+        setNext({ phase: "current", currentVersion });
       } catch {
         if (cancelled) return;
-        setSnapshot({ phase: "idle", currentVersion });
+        setNext({ phase: "idle", currentVersion });
+      } finally {
+        checking = false;
       }
-    })();
+    };
+
+    void probe();
+    const timer = window.setInterval(() => void probe(), AUTO_UPDATE_PROBE_MS);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -115,7 +145,9 @@ export function SidebarUpdate({
 
   const label = busy
     ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-    : `Update to ${snapshot.availableVersion}`;
+    : snapshot.phase === "ready"
+      ? `Restart to update to ${snapshot.availableVersion}`
+      : `Update to ${snapshot.availableVersion}`;
 
   return (
     <button

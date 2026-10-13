@@ -1,13 +1,22 @@
 import { sessionConversationPage } from "../features/agent-app/model/sessionConversation";
-import { createCompanionBridge, CompanionCommandUncertain } from "../features/companion/model/companionBridge";
+import {
+  createCompanionBridge,
+  CompanionCommandUncertain,
+} from "../features/companion/model/companionBridge";
 import { companionReview } from "../features/companion/model/companionReview";
 import { registerCompanionOwner } from "../features/companion/model/companionOwner";
 import { createCompanionInbox } from "../features/companion/model/companionInbox";
 import { createCompanionMonoReader } from "../features/companion/model/companionMono";
-import { createCompanionChanges, type CompanionChangesTarget } from "../features/companion/model/companionChanges";
+import {
+  createCompanionChanges,
+  type CompanionChangesTarget,
+} from "../features/companion/model/companionChanges";
 import { companionAppearance } from "../features/companion/model/companionAppearance";
 import { companionChatBackground } from "../features/companion/model/companionChatBackground";
-import { buildCompanionNavigation, companionProjectId } from "../features/companion/model/companionNavigation";
+import {
+  buildCompanionNavigation,
+  companionProjectId,
+} from "../features/companion/model/companionNavigation";
 import { readMonoConversation } from "../features/monos/model/monoConversation";
 import {
   resumeMonoUsageLimit,
@@ -173,7 +182,11 @@ import {
 } from "../features/settings/model/uiScale";
 import { resolveZoomKeybinding } from "../features/settings/model/zoomKeybinding";
 import { resolveAppShortcut } from "../features/settings/model/appShortcuts";
-import { runUpdateFlow } from "./model/updater";
+import {
+  hasUpdateOwnerWork,
+  runUpdateFlow,
+  setUpdateRestartPending,
+} from "./model/updater";
 import {
   displayAttachments,
   prepareAttachments,
@@ -1642,7 +1655,9 @@ function Workspace({
                 const events = batches.get(session.id);
                 return events ? applyHarnessEvents(session, events) : session;
               });
-              return updated.some((session, index) => session !== current[index])
+              return updated.some(
+                (session, index) => session !== current[index],
+              )
                 ? updated
                 : current;
             },
@@ -2665,7 +2680,8 @@ function Workspace({
         return;
       }
 
-      const currentId = current.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID;
+      const currentId =
+        current.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID;
       if (currentId === accountId) return;
 
       // Provider thread ids are account-owned. Keep the current conversation
@@ -10660,6 +10676,65 @@ function Workspace({
     orchestrator.sync();
   }, [sessions]);
 
+  useEffect(() => {
+    const readiness = listen<{ id: string }>(
+      "monocode-update-restart-check",
+      ({ payload }) => {
+        void (async () => {
+          try {
+            flushHarnessEvents();
+            // A habit can be between its atomic claim and the Session it adds
+            // below. Reject before closing the scheduler gate so that claim
+            // continues normally; setting it first could consume that run.
+            if (hasUpdateOwnerWork()) {
+              await invoke("safe_update_restart_ready", {
+                reply: { id: payload.id, safe: false },
+              });
+              return;
+            }
+            setUpdateRestartPending(true);
+            const unsafe = sessionsRef.current.some(
+              (session) =>
+                session.busy ||
+                session.ephemeral ||
+                session.worktreePreparing ||
+                session.pendingSwitch ||
+                !!session.pendingQuestion ||
+                !!session.backgroundTasks?.length ||
+                !!session.queuedMessages?.length ||
+                session.blocks.some(
+                  (block) => !!block.approval && !block.approval.decided,
+                ) ||
+                !!orchestrator.run(session.id),
+            );
+            if (!unsafe) {
+              // Avoid duplicating every loaded transcript in memory at once.
+              for (const session of sessionsRef.current) {
+                if (shouldPersistSession(session)) await upsertSession(session);
+              }
+              await flushSessionWrites();
+            }
+            await invoke("safe_update_restart_ready", {
+              reply: { id: payload.id, safe: !unsafe },
+            });
+          } catch {
+            await invoke("safe_update_restart_ready", {
+              reply: { id: payload.id, safe: false },
+            }).catch(() => undefined);
+          }
+        })();
+      },
+    );
+    const cancelled = listen("monocode-update-restart-cancelled", () => {
+      setUpdateRestartPending(false);
+    });
+    return () => {
+      void readiness.then((unlisten) => unlisten());
+      void cancelled.then((unlisten) => unlisten());
+      setUpdateRestartPending(false);
+    };
+  }, [flushHarnessEvents, orchestrator]);
+
   const stopSessionRef = useRef(onStop);
   stopSessionRef.current = onStop;
   const removeSessionRef = useRef(onRemoveHistorySession);
@@ -10675,85 +10750,129 @@ function Workspace({
       !orchestrator.run(session.id) &&
       !removingSessionIds.current.has(session.id) &&
       !switchingWorktrees.current.has(session.id);
-    const companionNavigation = () => buildCompanionNavigation({
-            projectPaths: projectRailItems(
-              recentsRef.current,
-              projectCwdRef.current,
-            ).map((project) => project.path),
-            groups: loadProjectGroups(),
-            assignments: loadProjectGroupAssignments(),
-            monos: listMonos(),
-            sessions: sessionsRef.current,
-            canChat: companionEligible,
-          });
-    const companionInbox = createCompanionInbox(() => companionNavigation().projects);
+    const companionNavigation = () =>
+      buildCompanionNavigation({
+        projectPaths: projectRailItems(
+          recentsRef.current,
+          projectCwdRef.current,
+        ).map((project) => project.path),
+        groups: loadProjectGroups(),
+        assignments: loadProjectGroupAssignments(),
+        monos: listMonos(),
+        sessions: sessionsRef.current,
+        canChat: companionEligible,
+      });
+    const companionInbox = createCompanionInbox(
+      () => companionNavigation().projects,
+    );
     const resolveCompanionWorkspace = (target: CompanionChangesTarget) => {
       const navigation = companionNavigation();
-      const project = navigation.projects.find(entry => entry.id === target.projectId);
+      const project = navigation.projects.find(
+        (entry) => entry.id === target.projectId,
+      );
       if (!project) throw new Error("Project is unavailable to this companion");
-      if (!target.sessionId) return worktreeFocus(project.path)?.path || project.path;
-      const session = sessionsRef.current.find(entry => entry.id === target.sessionId);
-      if (!session || !companionEligible(session) || companionProjectId(session.cwd, navigation) !== project.id || session.worktreePreparing || session.worktreeRemoved)
+      if (!target.sessionId)
+        return worktreeFocus(project.path)?.path || project.path;
+      const session = sessionsRef.current.find(
+        (entry) => entry.id === target.sessionId,
+      );
+      if (
+        !session ||
+        !companionEligible(session) ||
+        companionProjectId(session.cwd, navigation) !== project.id ||
+        session.worktreePreparing ||
+        session.worktreeRemoved
+      )
         throw new Error("Session workspace is unavailable to this companion");
       return sessionWorkCwd(session);
     };
     const companionChanges = createCompanionChanges(resolveCompanionWorkspace);
     const companionConfiguration = (session: Session) => ({
-      models: HARNESSES.filter(harness => isHarnessAvailable(harness) || harness === session.harness)
-        .flatMap(harness => modelsFor(harness).map(({ id, name }) => ({ harness, id, label: name }))),
-      accessModes: RUNTIME_MODES.map(id => ({ id, label: RUNTIME_MODE_LABEL[id], description: RUNTIME_MODE_HINT[id] })),
+      models: HARNESSES.filter(
+        (harness) => isHarnessAvailable(harness) || harness === session.harness,
+      ).flatMap((harness) =>
+        modelsFor(harness).map(({ id, name }) => ({
+          harness,
+          id,
+          label: name,
+        })),
+      ),
+      accessModes: RUNTIME_MODES.map((id) => ({
+        id,
+        label: RUNTIME_MODE_LABEL[id],
+        description: RUNTIME_MODE_HINT[id],
+      })),
     });
     const companionMonos = createCompanionMonoReader({
-      monos: listMonos, sessions: () => sessionsRef.current, navigation: companionNavigation,
-      canChat: companionEligible, configuration: companionConfiguration,
+      monos: listMonos,
+      sessions: () => sessionsRef.current,
+      navigation: companionNavigation,
+      canChat: companionEligible,
+      configuration: companionConfiguration,
     });
-    const companion = import.meta.env.VITE_MONOCODE_COMPANION_SPIKE === "1"
-      ? createCompanionBridge({
-          appearance: companionAppearance,
-          chatBackground: (session) => companionChatBackground(session, monoForSession(session.id)?.id),
-          navigation: companionNavigation,
-          inbox: companionInbox,
-          changes: companionChanges,
-          review: (session, relative) => companionReview(session.id, sessionWorkCwd(session), relative, sessionEditPaths(session.blocks)),
-          monoRead: companionMonos.read,
-          projectId: (session, navigation) => companionProjectId(session.cwd, navigation),
-          listable: (session) => !isMonoSession(session.id),
-          configuration: companionConfiguration,
-          configure: (id, input) => {
-            const current = sessionsRef.current.find((session) => session.id === id);
-            if (!current) throw new Error("Session is unavailable");
-            flushSync(() => {
-              if (input.model)
-                onModelChange(
-                  id,
-                  (input.harness ?? current.harness) as HarnessId,
-                  input.model,
-                );
-              if (input.runtimeMode) onRuntimeModeChange(id, input.runtimeMode as RuntimeMode);
-            });
-          },
-          createSession: (projectId, sessionId) =>
-            flushSync(() => companionCreateSessionRef.current(projectId, sessionId)),
-          flush: flushHarnessEvents,
-          sessions: () => sessionsRef.current,
-          eligible: companionEligible,
-          turn: (id) => turnGen.current.get(id) ?? 0,
-          send: async (id, prompt, appRequestId) => {
-            let accepted: SubmissionAcceptance = false;
-            flushSync(() => {
-              accepted = submitSessionRef.current(id, prompt, [], { appRequestId });
-            });
-            return await accepted;
-          },
-          approve: onApproval,
-          answer: onQuestionReply,
-          keepQuestionOpen: onQuestionInteraction,
-          stop: async (id) => {
-            await flushSync(() => stopSessionRef.current(id));
-            flushHarnessEvents();
-          },
-        })
-      : null;
+    const companion =
+      import.meta.env.VITE_MONOCODE_COMPANION_SPIKE === "1"
+        ? createCompanionBridge({
+            appearance: companionAppearance,
+            chatBackground: (session) =>
+              companionChatBackground(session, monoForSession(session.id)?.id),
+            navigation: companionNavigation,
+            inbox: companionInbox,
+            changes: companionChanges,
+            review: (session, relative) =>
+              companionReview(
+                session.id,
+                sessionWorkCwd(session),
+                relative,
+                sessionEditPaths(session.blocks),
+              ),
+            monoRead: companionMonos.read,
+            projectId: (session, navigation) =>
+              companionProjectId(session.cwd, navigation),
+            listable: (session) => !isMonoSession(session.id),
+            configuration: companionConfiguration,
+            configure: (id, input) => {
+              const current = sessionsRef.current.find(
+                (session) => session.id === id,
+              );
+              if (!current) throw new Error("Session is unavailable");
+              flushSync(() => {
+                if (input.model)
+                  onModelChange(
+                    id,
+                    (input.harness ?? current.harness) as HarnessId,
+                    input.model,
+                  );
+                if (input.runtimeMode)
+                  onRuntimeModeChange(id, input.runtimeMode as RuntimeMode);
+              });
+            },
+            createSession: (projectId, sessionId) =>
+              flushSync(() =>
+                companionCreateSessionRef.current(projectId, sessionId),
+              ),
+            flush: flushHarnessEvents,
+            sessions: () => sessionsRef.current,
+            eligible: companionEligible,
+            turn: (id) => turnGen.current.get(id) ?? 0,
+            send: async (id, prompt, appRequestId) => {
+              let accepted: SubmissionAcceptance = false;
+              flushSync(() => {
+                accepted = submitSessionRef.current(id, prompt, [], {
+                  appRequestId,
+                });
+              });
+              return await accepted;
+            },
+            approve: onApproval,
+            answer: onQuestionReply,
+            keepQuestionOpen: onQuestionInteraction,
+            stop: async (id) => {
+              await flushSync(() => stopSessionRef.current(id));
+              flushHarnessEvents();
+            },
+          })
+        : null;
     const listening = listen<{
       id: string;
       namespace: string;
@@ -10765,7 +10884,11 @@ function Workspace({
       const handle = async () => {
         if (payload.namespace === "companion") {
           if (!companion) throw new Error("Companion experiment is disabled");
-          return companion.handle(payload.requestId, payload.action, payload.input);
+          return companion.handle(
+            payload.requestId,
+            payload.action,
+            payload.input,
+          );
         }
         if (payload.namespace === "control") {
           return orchestrator.handle(
@@ -11228,13 +11351,18 @@ function Workspace({
               response: {
                 ok: false,
                 error: error instanceof Error ? error.message : String(error),
-                ...(payload.namespace === "companion" && error instanceof CompanionCommandUncertain ? { outcomeUnknown: true } : {}),
+                ...(payload.namespace === "companion" &&
+                error instanceof CompanionCommandUncertain
+                  ? { outcomeUnknown: true }
+                  : {}),
               },
             }),
         )
         .catch(console.error);
     });
-    const releaseCompanionOwner = companion ? registerCompanionOwner(listening) : undefined;
+    const releaseCompanionOwner = companion
+      ? registerCompanionOwner(listening)
+      : undefined;
     return () => {
       releaseCompanionOwner?.();
       void listening.then((unlisten) => unlisten());
@@ -12903,7 +13031,7 @@ function Workspace({
         monoCovers
           ? () => {
               setMonoActivity(null);
-                      setMonoOverviewOpen(!monoOverviewShown);
+              setMonoOverviewOpen(!monoOverviewShown);
             }
           : undefined
       }
