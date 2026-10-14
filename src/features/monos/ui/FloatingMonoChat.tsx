@@ -14,7 +14,7 @@ import { AgentTranscript } from "../../sessions/ui/AgentTranscript";
 import { QuestionForm } from "../../sessions/ui/QuestionForm";
 import { revokeAttachment } from "../../sessions/model/attachments";
 import { useMonoTranscript } from "../hooks/useMonoTranscript";
-import { monoState } from "../model/mono";
+import { MONO_STATUS_LABEL, monoState } from "../model/mono";
 import {
   monoMessageDeliveries,
   monoPendingTranscriptBlocks,
@@ -143,9 +143,14 @@ export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
     },
     [view.monoId],
   );
-  const state = view.session
+  const parentState = view.session
     ? monoState(view.session)
     : { status: "idle" as const };
+  const state =
+    parentState.status !== "needs-you" &&
+    mono?.status && mono.status !== "idle" && mono.status !== parentState.status
+      ? { status: mono.status }
+      : parentState;
   const failure = error ?? view.error;
   const loading = !mono || !view.session;
 
@@ -330,8 +335,9 @@ function MonoRail({
             />
             <button
               type="button"
-              title={mono.name}
+              title={`${mono.name}\n${MONO_STATUS_LABEL[mono.status ?? "idle"]}`}
               aria-label={mono.name}
+              aria-description={MONO_STATUS_LABEL[mono.status ?? "idle"]}
               aria-current={selected ? "true" : undefined}
               onClick={() => onSwitch(mono.id)}
               className={`grid size-8 place-items-center rounded-lg transition-opacity ${

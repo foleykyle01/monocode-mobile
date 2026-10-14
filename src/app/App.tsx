@@ -599,7 +599,6 @@ import {
   removeMono,
   saveOpenMono,
   subscribeMonos,
-  type MonoState,
 } from "../features/monos/model/mono";
 import {
   loadMonoFiles,
@@ -613,6 +612,7 @@ import {
 } from "../features/monos/model/monoFiles";
 import { useMonoHabits } from "./hooks/useMonoHabits";
 import { useFloatingMono } from "./hooks/useFloatingMono";
+import { useMonoActivityStates } from "../features/monos/hooks/useMonoActivityStates";
 import {
   dropRelays,
   habitPostsContext,
@@ -2152,6 +2152,12 @@ function Workspace({
     monoSessionIds,
     busySessionIds,
     activeSessionId,
+  );
+  const monoStates = useMonoActivityStates(
+    sessions,
+    monosSnap,
+    history,
+    monosEnabled,
   );
 
   const projectActivityRows = useMemo(
@@ -12682,7 +12688,7 @@ function Workspace({
     openFile: onOpenFile,
     resume: onUsageLimitResume,
     create: () => createMono().id,
-  });
+  }, monoStates);
 
   const sessionPaneProps = {
     workspaceSwitchingSessionId: workspaceNavigation.pending
@@ -12743,6 +12749,9 @@ function Workspace({
 
   // Renames, mascot picks and new projects show up on the rail.
   const monoViewMono = monoViewId ? monoForSession(monoViewId) : undefined;
+  const monoViewState =
+    monoStates.get(monoViewMono?.id ?? "") ??
+    (monoViewSession ? monoState(monoViewSession) : { status: "idle" as const });
   const selectedMonoActivity = resolveMonoActivity(
     monoActivity,
     monoViewSession,
@@ -12905,7 +12914,7 @@ function Workspace({
         monoId={monoViewMono.id}
         cwd={monoViewSession.cwd}
         agent={monoLook(monoViewMono)}
-        state={monoState(monoViewSession)}
+        state={monoViewState}
         launches={monoLaunches}
         sessions={sessions}
         history={history}
@@ -12950,7 +12959,7 @@ function Workspace({
         key={monoViewMono.id}
         monoId={monoViewMono.id}
         agent={monoLook(monoViewMono)}
-        status={monoState(monoViewSession).status}
+        status={monoViewState.status}
         cwd={monoViewSession.cwd}
         harness={monoViewSession.harness}
         model={monoViewSession.model}
@@ -12971,21 +12980,16 @@ function Workspace({
       />
     ) : null;
   const monoRailState = useMemo(() => {
-    const states = new Map<string, MonoState>();
     const unseen = new Map<string, number>();
     for (const mono of listMonos()) {
-      const session = mono.sessionId
-        ? sessions.find((entry) => entry.id === mono.sessionId)
-        : undefined;
-      if (session) states.set(mono.id, monoState(session));
       const count = mono.sessionId
         ? monoReplies.counts.get(mono.sessionId)
         : undefined;
       if (count) unseen.set(mono.id, count);
     }
-    return { states, unseen };
+    return { states: monoStates, unseen };
     // The roster is read through its snapshot.
-  }, [monosSnap, sessions, monoReplies.counts]);
+  }, [monosSnap, monoStates, monoReplies.counts]);
   const monoRail = useStableValue(monoRailState);
   const busyProjectPaths = useStableValue(
     promptableSessions.flatMap((session) =>
@@ -13044,7 +13048,7 @@ function Workspace({
       tabs={monoCovers ? NO_TITLE_TABS : titleTabs}
       mono={
         monoCovers && monoViewMono && monoViewSession
-          ? { look: monoLook(monoViewMono), state: monoState(monoViewSession) }
+          ? { look: monoLook(monoViewMono), state: monoViewState }
           : undefined
       }
       onToggleMonoOverview={

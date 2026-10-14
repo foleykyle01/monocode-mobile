@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { IS_MAC } from "../../platform/tauri/platform";
 import type { Session } from "../../features/sessions/model/session";
-import { findMono } from "../../features/monos/model/mono";
+import { findMono, type MonoState } from "../../features/monos/model/mono";
 import {
   loadMonoMenuBarIcon,
   subscribeMonoMenuBarIcon,
@@ -29,9 +29,10 @@ export function useFloatingMono(
   rosterKey: string,
   enabled: boolean,
   host: Host,
+  states?: ReadonlyMap<string, MonoState>,
 ) {
-  const current = useRef({ sessions, enabled, host });
-  current.current = { sessions, enabled, host };
+  const current = useRef({ sessions, enabled, host, states });
+  current.current = { sessions, enabled, host, states };
   const active = useRef(new Set<string>());
   const syncing = useRef(Promise.resolve());
   const refresh = useRef<() => void>(() => {});
@@ -110,6 +111,7 @@ export function useFloatingMono(
       const monos = floatingMonoRoster(
         current.current.enabled,
         current.current.sessions,
+        current.current.states,
       );
       const hosted = monos.flatMap((mono) => {
         const session = current.current.sessions.find(
@@ -160,7 +162,7 @@ export function useFloatingMono(
     };
   }, []);
 
-  const roster = floatingMonoRoster(enabled, sessions);
+  const roster = floatingMonoRoster(enabled, sessions, states);
   const hostedKey = roster
     .map((m) => {
       const session = sessions.find((s) => s.id === m.sessionId);

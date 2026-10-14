@@ -12,6 +12,7 @@ import type {
 } from "../../features/monos/model/floatingMono";
 import { useFloatingMono } from "./useFloatingMono";
 import { saveMonoMenuBarIcon } from "../../features/settings/model/settings";
+import type { MonoState } from "../../features/monos/model/mono";
 
 const native = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -44,11 +45,13 @@ let host: FloatingMonoHost;
 function Harness({
   sessions,
   enabled = true,
+  states,
 }: {
   sessions: Session[];
   enabled?: boolean;
+  states?: ReadonlyMap<string, MonoState>;
 }) {
-  useFloatingMono(sessions, "roster", enabled, host);
+  useFloatingMono(sessions, "roster", enabled, host, states);
   return null;
 }
 
@@ -199,4 +202,18 @@ it("shows or hides the menu bar icon to match the setting", async () => {
   expect(native.invoke).toHaveBeenLastCalledWith("mono_menu_bar_set_visible", {
     visible: false,
   });
+});
+
+it("syncs aggregate presentation without claiming the idle parent is busy", async () => {
+  sessions = sessions.map((session) => ({ ...session, busy: false }));
+  for (const status of ["working", "needs-you", "idle"] as const) {
+    native.invoke.mockClear();
+    await act(async () => root.render(createElement(Harness, {
+      sessions, states: new Map([["first", { status }]]),
+    })));
+    const sync = native.invoke.mock.calls.find(([command]) => command === "mono_chat_sync")?.[1];
+    expect(sync.monos[0].status).toBe(status);
+    expect(sync.hosted[0]).toEqual({ monoId: "first", busy: false });
+    expect(sessions[0].busy).toBe(false);
+  }
 });
