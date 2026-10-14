@@ -10,6 +10,35 @@ An independent, experimental iPhone companion for [MonoCode](https://github.com/
 
 This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **MonoCode Companion**, the native iPhone app. The ordinary upstream MonoCode app cannot host this companion. This is not an official MonoCode mobile release.
 
+## Quickstart
+
+**Current access:** invited internal TestFlight testers only; public Mac downloads and the external iPhone invitation are still pending. Contributors can [build from source](companion/README.md#build-requirements).
+
+1. **Open MonoCode Dev on your Mac.** Use the mobile-enabled build; regular MonoCode cannot connect to the phone app.
+2. **Open a project and start a chat.** Use your existing project folder and [provider login](docs/providers.md). Switching from regular MonoCode? See below.
+3. **Show the pairing code.** On the Mac, go to **Settings → Connections → Phone companion**, turn on **Remote access**, and select **Show QR code**.
+4. **Connect your iPhone.** Install **MonoCode Companion** through your TestFlight invitation, select **Scan QR ticket**, scan the code, and tap **Connect to Mac**.
+5. **Continue from your phone.** Open a session to message the agent, answer supported questions/approvals, or stop a turn. Keep the Mac awake and MonoCode Dev open; re-enable Remote access after restarting the Mac app.
+
+## Switch from regular MonoCode
+
+**MonoCode Dev is a separate app and profile.** Installing it keeps your original MonoCode data intact; it does not automatically bring over saved chats.
+
+| What you want to keep | How to move |
+| --- | --- |
+| Project files and Git worktrees | Open the same folders in Dev. No new clone or file move is needed. |
+| Provider accounts | Dev can reuse existing provider CLI installations/logins. Check provider and integration access; some may require signing in again. |
+| Saved chats, groups, Monos, and settings | These need a profile transfer. The migration tool used for the owner's move is not included in this public repository yet. |
+
+**To start fresh:** finish active work in regular MonoCode, pause its scheduled runs, then quit it. Open your project folders in Dev and start new chats. Your older conversations remain in the original app; avoid running both apps against the same work at once.
+
+**To carry over saved history:** use a maintainer-assisted transfer until the migration tool is published. It requires both apps closed, fresh backups of both profiles, compatible schemas, and a check that an existing conversation resumes correctly afterward. The transfer replaces Dev's profile rather than merging histories, keeps schedules paused for verification, and preserves existing Dev phone pairing. Do not manually copy a live database or repeat the transfer during ordinary app updates.
+
+[See the mobile interface](#screenshots) · [Troubleshooting](#updates-and-recovery) · [Developer setup](companion/README.md)
+
+<details>
+<summary><strong>Detailed setup, availability, usage, and technical notes</strong></summary>
+
 ## Availability
 
 Status as of **October 13, 2026**:
@@ -155,6 +184,8 @@ Pairing invitations are temporary enrollment credentials: do not share active QR
 Phone identity and pending commands use Keychain with synchronization disabled and `WhenUnlockedThisDeviceOnly` protection. Native code retains the identity; the host and bridge allowlist companion actions. Relay infrastructure carries encrypted traffic but can observe connection metadata and has its own availability/rate limits. There is no separate biometric app lock or independent security audit.
 
 Same-session messaging over cellular and after locking/reopening the phone has been verified on earlier physical builds; Allow/Deny and Stop were also tested on device. Build 1004 passed the phone UI suite, production UI build, CI, signing/upload, and Apple processing. Broader accessibility, keyboard/safe-area, long suspension, and network-handoff testing remains needed. Notifications, event replay, public external TestFlight access, public Mac installer delivery, and Android support are not included in the current release.
+
+</details>
 
 ## Screenshots
 
