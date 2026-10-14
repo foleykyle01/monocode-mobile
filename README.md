@@ -158,7 +158,7 @@ Same-session messaging over cellular and after locking/reopening the phone has b
 
 ## Screenshots
 
-These iPhone Simulator captures use a sample workspace on iOS 18.6. They illustrate the companion flow and predate the latest Settings/navigation changes. No live conversations, provider accounts, or pairing tickets are shown.
+Captured October 14, 2026, these unedited iPhone Simulator screenshots show the current mobile design using a sample workspace on iOS 18.6. Settings and pairing include sample-mode preview controls. No live conversations, provider accounts, or pairing tickets are shown.
 
 <table>
   <tr><th>Workspace and Monos</th><th>Chat and approvals</th></tr>
@@ -166,10 +166,15 @@ These iPhone Simulator captures use a sample workspace on iOS 18.6. They illustr
     <td><img src="docs/companion/screenshots/workspace.png" alt="iPhone workspace with Monos, grouped projects, and sessions" width="290" /></td>
     <td><img src="docs/companion/screenshots/chat-approval.png" alt="iPhone conversation with Allow, Deny, and Stop controls" width="290" /></td>
   </tr>
-  <tr><th>Read-only Inbox</th><th>QR pairing setup</th></tr>
+  <tr><th>Settings and connection</th><th>QR pairing setup</th></tr>
   <tr>
-    <td><img src="docs/companion/screenshots/inbox.png" alt="iPhone Inbox with sample items" width="290" /></td>
+    <td><img src="docs/companion/screenshots/settings.png" alt="Full-page iPhone Settings with icon-only Back, Connection first, appearance choices, and sample-mode preview controls" width="290" /></td>
     <td><img src="docs/companion/screenshots/pairing-setup.png" alt="iPhone connection setup and Scan QR ticket control" width="290" /></td>
+  </tr>
+  <tr><th>Read-only Inbox</th><th>Read-only file diff</th></tr>
+  <tr>
+    <td><img src="docs/companion/screenshots/inbox.png" alt="iPhone Inbox with sample GitHub and Linear items" width="290" /></td>
+    <td><img src="docs/companion/screenshots/changes.png" alt="iPhone read-only sample file diff with added and removed lines" width="290" /></td>
   </tr>
 </table>
 
