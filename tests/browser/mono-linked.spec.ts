@@ -43,6 +43,10 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(scout).toHaveText("ScoutWorking");
   await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "mono-working-spin");
   await page.screenshot({ path: testInfo.outputPath("home-working.png") });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(scout.locator(".mono-row__spinner")).toBeVisible();
+  await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "none");
+  await expect(scout).toHaveText("ScoutWorking");
 });
 
 for (const theme of ["dark", "light"]) test(`Needs you opens the next pending item with minimal ${theme} home cards`, async ({ page }, testInfo) => {
