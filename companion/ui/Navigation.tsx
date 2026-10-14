@@ -7,7 +7,31 @@ import type { CompanionMono, CompanionNavigation, CompanionProject, CompanionSes
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
 export const activityLabel = (item: { busy: boolean; needsApproval: boolean; needsQuestion?: boolean }) => item.needsQuestion ? "Needs an answer" : item.needsApproval ? "Needs approval" : item.busy ? "Working" : "Ready";
-export const monoStatusLabel = (mono: CompanionMono) => mono.statusLabel || activityLabel(mono);
+export const monoStatusLabel = (mono: CompanionMono) => mono.needsApproval || mono.status === "needs-you" ? "Needs you" : mono.busy || mono.status === "working" ? "Working" : "Idle";
+
+export function attentionTargets(sessions: CompanionSession[], navigation?: CompanionNavigation) {
+  const targets = new Map<string, { id: string; title: string }>();
+  for (const mono of navigation?.monos ?? []) {
+    if (mono.sessionId && mono.canChat !== false && mono.needsApproval)
+      targets.set(mono.sessionId, { id: mono.sessionId, title: mono.name });
+  }
+  for (const session of sessions) {
+    if ((session.needsApproval || session.needsQuestion) && !targets.has(session.id))
+      targets.set(session.id, { id: session.id, title: session.title || "Untitled session" });
+  }
+  return [...targets.values()];
+}
+
+export function NeedsYou({ targets, onOpen, disabled, label = "Needs you" }: {
+  targets: { id: string; title: string }[]; onOpen: (id: string) => void; disabled: boolean; label?: string;
+}) {
+  if (!targets.length) return null;
+  if (targets.length === 1) return <button className="needs-you" type="button" disabled={disabled} onClick={() => onOpen(targets[0].id)}>{label}<ChevronRight size={16} aria-hidden="true" /></button>;
+  return <details className="needs-you-chooser" onKeyDown={event => { if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}>
+    <summary className="needs-you">{label}<span>{targets.length}</span></summary>
+    <div role="group" aria-label="Waiting sessions">{targets.map(target => <button type="button" key={target.id} disabled={disabled} onClick={event => { const details = event.currentTarget.closest("details"); if (details) details.open = false; onOpen(target.id); }}>{target.title}<ChevronRight size={16} aria-hidden="true" /></button>)}</div>
+  </details>;
+}
 const collapsedKey = "companion.navigation.collapsed.v1";
 const readCollapsed = () => { try { return new Set<string>(JSON.parse(localStorage.getItem(collapsedKey) || "[]")); } catch { return new Set<string>(); } };
 const Chevron = ({ expanded }: { expanded: boolean }) => <ChevronRight className="nav-chevron" data-expanded={expanded} size={12} aria-hidden="true" />;
@@ -112,7 +136,7 @@ export function Navigation({ sessions, navigation, query, filter, selectedId, se
     {navigation && (!term && filter === "all" || monos.length > 0) ? <section id="companion-monos" className="mono-section" aria-label="Monos" hidden={!monosExpanded}>
       {monos.length ? <div className="mono-roster">{monos.map(mono => <div key={mono.id} className={`mono-card ${selectedMonoId === mono.id ? "mono-card--selected" : ""}`} style={{ "--mono-color": mono.color } as React.CSSProperties}>
         <button type="button" className={`mono-row ${selectedMonoId === mono.id ? "mono-row--selected" : ""}`} aria-current={selectedMonoId === mono.id ? "true" : undefined} onClick={() => onMono(mono.id)}>
-          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><small>{monoStatusLabel(mono)} · {mono.activity || `${mono.projectIds.length} ${mono.projectIds.length === 1 ? "project" : "projects"}`}</small></span>
+          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><small>{monoStatusLabel(mono)}</small></span>
         </button>
         {onMonoDetails ? <button className="mono-details-button" type="button" aria-label={`Details for ${mono.name}`} title={`Details for ${mono.name}`} onClick={() => onMonoDetails(mono.id)}><CircleHelp size={17} aria-hidden="true" /></button> : null}
       </div>)}</div> : <p className="nav-note">Your Monos will appear here when you add them on this Mac.</p>}

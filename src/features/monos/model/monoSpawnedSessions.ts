@@ -180,7 +180,12 @@ export function monoSpawnedSessions(
 
 /** Where a launched session stands, for its card in the Mono's chat. */
 export type LaunchedSessionState =
-  "working" | "input" | "draft" | "failed" | "stopped" | "done";
+  "working" | "input" | "draft" | "failed" | "stopped" | "done" | "unknown";
+
+export const LAUNCHED_SESSION_LABELS: Record<LaunchedSessionState, string> = {
+  working: "Working", input: "Needs input", draft: "Draft", failed: "Failed",
+  stopped: "Stopped", done: "Done", unknown: "Status unknown",
+};
 
 export type LaunchedSessionView = {
   state: LaunchedSessionState;
@@ -191,8 +196,15 @@ export function launchedSessionState(session: Session): LaunchedSessionState {
   if (sessionNeedsInput(session)) return "input";
   if (session.busy) return "working";
   if (sessionDraftBlock(session)) return "draft";
-  const notice = session.blocks[session.blocks.length - 1]?.notice;
+  // Only a settled turn is evidence of completion; idle restored chats may
+  // have incomplete output. Later status pings must not hide an interruption.
+  let start = -1;
+  for (let i = session.blocks.length - 1; i >= 0; i--) {
+    if (session.blocks[i].role === "user" && !session.blocks[i].sentAt) { start = i; break; }
+  }
+  const turn = session.blocks.slice(Math.max(0, start));
+  const notice = [...turn].reverse().find(block => block.notice)?.notice;
   if (notice === "error") return "failed";
   if (notice === "interrupt") return "stopped";
-  return "done";
+  return start >= 0 && session.blocks[start].durationMs !== undefined ? "done" : "unknown";
 }

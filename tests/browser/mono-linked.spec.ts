@@ -6,7 +6,7 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await page.locator(".mono-row").filter({ hasText: "Scout" }).click();
   const draft = page.getByRole("textbox", { name: "Message this session" });
   await draft.fill("Bring the results back here");
-  const card = page.getByRole("button", { name: "Build the companion window monocode · Needs approval", exact: true });
+  const card = page.getByRole("button", { name: "Build the companion window monocode · Needs input", exact: true });
   await expect(card).toBeVisible();
   await expect(page.locator(".spawned-session")).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -14,6 +14,19 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await card.click();
   await expect(page.locator(".conversation-title")).toHaveText("Build the companion window");
   await expect(page.getByRole("button", { name: "Stop agent", exact: true })).toBeEnabled();
+  await draft.fill("Keep working and check accessibility");
+  const send = page.getByRole("button", { name: "Send message", exact: true });
+  await expect(send).toBeEnabled();
+  const stopBounds = await page.getByRole("button", { name: "Stop agent", exact: true }).boundingBox();
+  const sendBounds = await send.boundingBox();
+  expect(stopBounds!.width).toBeGreaterThanOrEqual(44);
+  expect(stopBounds!.height).toBeGreaterThanOrEqual(44);
+  expect(sendBounds!.x).toBeGreaterThanOrEqual(stopBounds!.x + stopBounds!.width);
+  await send.click();
+  await expect(page.getByText("Follow-up queued on Mac", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Queued follow-ups" })).toContainText("Keep working and check accessibility");
+  await expect(page.getByRole("button", { name: "Stop agent", exact: true })).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath("send-and-stop.png") });
   await page.getByRole("button", { name: "Allow", exact: true }).click();
   await expect(page.getByRole("button", { name: "Allow", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
@@ -24,5 +37,23 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await page.getByRole("button", { name: "Back to Scout", exact: true }).click();
   await expect(page.locator(".conversation-title")).toHaveText("Scout");
   await expect(draft).toHaveValue("Bring the results back here");
-  await expect(page.locator(".spawned-session").first()).toContainText("Ready");
+  await expect(page.locator(".spawned-session").first()).toContainText("Done");
+});
+
+for (const theme of ["dark", "light"]) test(`Needs you opens the next pending item with minimal ${theme} home cards`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(value => localStorage.setItem("companion.preview.appearance.v1", value), theme);
+  await page.goto("/tests/browser/mono-linked.html?demo=1");
+  await expect(page.locator(".mono-card").first()).toHaveText("ScoutWorking");
+  await page.locator("summary.needs-you").click();
+  await page.screenshot({ path: testInfo.outputPath("needs-you.png") });
+  await page.getByRole("group", { name: "Waiting sessions" }).getByRole("button", { name: "Build the companion window" }).click();
+  await expect(page.locator("[data-pending-approval]")).toBeFocused();
+  await page.getByRole("button", { name: "Allow", exact: true }).click();
+  await page.getByRole("button", { name: "Next waiting session", exact: true }).click();
+  await expect(page.locator(".conversation-title")).toHaveText("Atlas");
+  await expect(page.locator("[data-pending-question]")).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.screenshot({ path: testInfo.outputPath("pending-question.png") });
 });

@@ -12,7 +12,7 @@ import {
 import { useLockOverscroll } from "../../../shared/hooks/useLockOverscroll";
 import { artifactLabel, type ArtifactCard } from "../../artifacts/artifacts";
 import type { SessionSummary } from "../../sessions/data/sessionStore";
-import type { MonoSpawnedSession, Session } from "../../sessions/model/session";
+import { sessionNeedsInput, type MonoSpawnedSession, type Session } from "../../sessions/model/session";
 import type { MonoLook, MonoState } from "../model/mono";
 import { HABITS_MAX } from "../model/monoHabits";
 import { HabitPage } from "./HabitPage";
@@ -124,6 +124,19 @@ export function MonoOverview({
   const actions = habitActions(monoId);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [query, setQuery] = useState("");
+  const [attentionSession, setAttentionSession] = useState<string>();
+  const [attentionError, setAttentionError] = useState<string>();
+  const waitingIds = [...new Set(launches.map(launch => launch.sessionId))].filter(id => {
+    const session = sessions.find(entry => entry.id === id);
+    return session && sessionNeedsInput(session);
+  });
+  const openWaiting = async (id: string) => {
+    setAttentionSession(id);
+    setAttentionError(undefined);
+    onTabChange("sessions");
+    try { await onOpenSession(id); }
+    catch (error) { setAttentionError(error instanceof Error ? error.message : "Could not open this session."); }
+  };
   const [filters, setFilters] = useState<SessionSidebarFilters>(
     DEFAULT_SESSION_SIDEBAR_FILTERS,
   );
@@ -135,6 +148,7 @@ export function MonoOverview({
   useEffect(() => {
     setRoutes([]);
     setQuery("");
+    setAttentionSession(undefined);
     setFilters(DEFAULT_SESSION_SIDEBAR_FILTERS);
   }, [monoId]);
   const push = (route: Route) => setRoutes((current) => [...current, route]);
@@ -180,12 +194,15 @@ export function MonoOverview({
       node: (
         <LaunchedSessionPage
           title={shownSession.title}
-          onBack={onBackFromSession}
+          reviewPending={attentionSession === shownSession.sessionId}
+          onBack={() => { setAttentionSession(undefined); onBackFromSession(); }}
           onOpenInWorkspace={() =>
             onOpenSessionInWorkspace(shownSession.sessionId)
           }
           onClose={onClose}
         >
+          {attentionError ? <p role="alert" className="px-4 text-xs text-red-400">{attentionError}</p> : null}
+          {attentionSession === shownSession.sessionId && !waitingIds.includes(shownSession.sessionId) && waitingIds.length ? <button type="button" className="min-h-9 px-4 text-left text-xs text-content/75 hover:bg-content/5" onClick={() => void openWaiting(waitingIds[0])}>Next waiting session</button> : null}
           {shownSession.pane}
         </LaunchedSessionPage>
       ),
@@ -250,6 +267,13 @@ export function MonoOverview({
             ) : null
           }
         />
+        {waitingIds.length ? <button type="button" className="mx-2 flex min-h-9 items-center justify-between rounded-md px-2 text-left text-xs text-content/75 hover:bg-content/5 focus-visible:outline-accent" onClick={() => {
+          if (waitingIds.length === 1) { void openWaiting(waitingIds[0]); return; }
+          onTabChange("sessions");
+          setQuery("");
+          setFilters({ ...DEFAULT_SESSION_SIDEBAR_FILTERS, status: { working: false, needsApproval: true, done: false } });
+        }}><span>Needs you</span><span>{waitingIds.length}</span></button> : null}
+        {attentionError ? <p role="alert" className="px-4 text-xs text-red-400">{attentionError}</p> : null}
         {tab === "sessions" && launches.length ? (
           <SessionSearchBar
             query={query}
@@ -299,7 +323,7 @@ export function MonoOverview({
                   history={history}
                   query={query}
                   filters={filters}
-                  onOpenSession={onOpenSession}
+                  onOpenSession={id => filters.status.needsApproval ? openWaiting(id) : onOpenSession(id)}
                 />
               </div>
             ) : (

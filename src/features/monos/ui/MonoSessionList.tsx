@@ -32,6 +32,7 @@ import {
   type Session,
 } from "../../sessions/model/session";
 import { SessionCard } from "../../../app/shell/Sidebar";
+import { launchedSessionState, LAUNCHED_SESSION_LABELS } from "../model/monoSpawnedSessions";
 import type { MonoLook } from "../model/mono";
 import { EmptyState, PageHeader } from "./monoPanelParts";
 
@@ -199,9 +200,9 @@ export function MonoSessionList({
   const doneIds = new Set<string>();
   for (const row of rows) {
     const live = sessions.find((entry) => entry.id === row.id);
-    if (live?.busy) busyIds.add(row.id);
-    else if (live && (hasPendingApproval(live.blocks) || live.pendingQuestion))
+    if (live && (hasPendingApproval(live.blocks) || live.pendingQuestion))
       approvalIds.add(row.id);
+    else if (live?.busy) busyIds.add(row.id);
     else if (live || row.createdAt) doneIds.add(row.id);
   }
   const filtered = filterSessionsByStatus(
@@ -301,6 +302,7 @@ export function MonoSessionList({
                 <SessionCard
                   session={summary}
                   modelInFooter
+                  statusLabel={live ? LAUNCHED_SESSION_LABELS[launchedSessionState(live)] : "Status unknown"}
                   isActive={false}
                   isSelected={false}
                   busy={!!live?.busy}
@@ -405,14 +407,32 @@ export function LaunchedSessionPage({
   onOpenInWorkspace,
   onClose,
   children,
+  reviewPending = false,
 }: {
   title: string;
   onBack: () => void;
   onOpenInWorkspace: () => void | Promise<void>;
   onClose: () => void;
   children: ReactNode;
+  reviewPending?: boolean;
 }) {
   const [error, setError] = useState<string>();
+  const pane = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!reviewPending || !pane.current) return;
+    const focus = () => {
+      const target = pane.current?.querySelector<HTMLElement>("[data-pending-approval], [data-question-form]");
+      if (!target) return false;
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      return true;
+    };
+    if (focus()) return;
+    const observer = new MutationObserver(() => { if (focus()) observer.disconnect(); });
+    observer.observe(pane.current, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [reviewPending]);
   return (
     <>
       <PageHeader title={title} onBack={onBack}>
@@ -442,6 +462,7 @@ export function LaunchedSessionPage({
       ) : null}
       <div
         data-mono-launched-session=""
+        ref={pane}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
         {children}

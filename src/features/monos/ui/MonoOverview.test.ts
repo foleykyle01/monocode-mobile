@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MonoOverview, type MonoOverviewTab } from "./MonoOverview";
+import { newSession } from "../../sessions/model/session";
 
 vi.mock("../model/monoHabits", async (original) => ({
   ...(await original<object>()),
@@ -99,6 +100,35 @@ async function render(
 function tabs() {
   return [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
 }
+
+it("opens one waiting launch, focuses its pending control and offers the next after resolution", async () => {
+  const open = vi.fn(); const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+  const waiting = (id: string) => ({ ...newSession("codex", "/p"), id, busy: true, blocks: [{ id: `approval-${id}`, role: "tool" as const, text: "Allow?", approval: { requestId: 1 } }] });
+  const a = waiting("a"); const b = waiting("b");
+  await render("sessions", vi.fn(), { sessions: [a], onOpenSession: open });
+  const needsYou = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.startsWith("Needs you"))!;
+  await act(async () => needsYou().click());
+  expect(open).toHaveBeenCalledExactlyOnceWith("a");
+  const shownSession = { sessionId: "a", title: "First", pane: createElement("div", { "data-pending-approval": "" }, "Pending action") };
+  await render("sessions", vi.fn(), { sessions: [a, b], onOpenSession: open, shownSession });
+  expect(scroll).toHaveBeenCalled();
+  expect(document.activeElement?.hasAttribute("data-pending-approval")).toBe(true);
+  await render("sessions", vi.fn(), { sessions: [{ ...a, blocks: [] }, b], onOpenSession: open, shownSession });
+  const next = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Next waiting session")!;
+  await act(async () => next.click());
+  expect(open).toHaveBeenLastCalledWith("b");
+  scroll.mockRestore();
+});
+
+it("filters multiple waiting launches using the existing list even while they are busy", async () => {
+  const a = { ...newSession("codex", "/p"), id: "a", busy: true, pendingQuestion: { requestId: 1, questions: [] } };
+  const b = { ...a, id: "b" };
+  const open = vi.fn();
+  await render("sessions", vi.fn(), { sessions: [a, b], onOpenSession: open });
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.startsWith("Needs you"))!.click());
+  expect(open).not.toHaveBeenCalled();
+  expect(container.querySelectorAll("[data-mono-session]")).toHaveLength(2);
+});
 
 it("names only the open tab, with its count, and switches tabs", async () => {
   const onTabChange = await render("sessions");

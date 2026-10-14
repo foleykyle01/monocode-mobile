@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MonoSpawnedSession, Session } from "../../sessions/model/session";
 import { createCompanionBridge, type CompanionOwner } from "./companionBridge";
 import { buildCompanionNavigation, companionProjectId } from "./companionNavigation";
+import { queueCompanionFollowUp } from "./companionFollowUp";
 
 function fixture() {
   const session: Session = {
@@ -26,6 +27,48 @@ function fixture() {
 }
 
 describe("desktop companion owner boundary", () => {
+  it("accepts queued follow-ups once during work, preserves existing messages and reports the actual queue", async () => {
+    const { bridge, session, owner, input } = fixture();
+    session.busy = true;
+    session.queuedMessages = [{ id: "desktop", text: "Existing", attachments: [] }];
+    session.blocks.push({ id: "approval", role: "tool", text: "Allow?", approval: { requestId: 2 } });
+    owner.queuedFollowUps = true;
+    owner.send = vi.fn(async (_id, prompt, requestId) => {
+      Object.assign(session, queueCompanionFollowUp(session, prompt, requestId));
+      return "queued" as const;
+    });
+    const command = { ...input(), text: "Next" };
+    const results = await Promise.all([bridge.handle("one", "sessions.send", command), bridge.handle("one", "sessions.send", command)]);
+    expect(results[0]).toMatchObject({ accepted: true, delivery: "queued", turn: 1 });
+    expect(results[1]).toEqual(results[0]);
+    await bridge.handle("two", "sessions.send", { ...input(), text: "Then this" });
+    expect(owner.send).toHaveBeenCalledTimes(2);
+    expect(owner.stop).not.toHaveBeenCalled();
+    expect(session.busy).toBe(true);
+    expect(session.blocks[1].approval?.decided).toBeUndefined();
+    expect(session.queuedMessages.map(message => message.text)).toEqual(["Existing", "Next", "Then this"]);
+    expect(await bridge.handle("read-queue", "sessions.read", { sessionId: session.id })).toMatchObject({ queuedMessages: [
+      { id: "desktop", state: "queued" }, { id: "companion_test-epoch_one", state: "queued" }, { id: "companion_test-epoch_two", state: "queued" },
+    ] });
+    await expect(bridge.handle("invalid", "sessions.send", { ...input(), turn: 0, text: "Stale" })).rejects.toThrow("turn changed");
+    await expect(bridge.handle("missing", "sessions.send", { ...input(), sessionId: "missing", text: "Wrong" })).rejects.toThrow("not available");
+    expect(owner.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not enable busy sends for an owner without queue support", async () => {
+    const { bridge, session, owner, input } = fixture();
+    session.busy = true;
+    await expect(bridge.handle("old-owner", "sessions.send", { ...input(), text: "Next" })).rejects.toThrow("update the Mac");
+    expect(owner.send).not.toHaveBeenCalled();
+  });
+
+  it.each(["failed", "stopped", "draft", "done", "unknown"] as const)("exports the authoritative %s outcome", async state => {
+    const { bridge, session } = fixture();
+    if (state === "draft") session.blocks[0].draft = true;
+    if (state === "done") session.blocks[0].durationMs = 5;
+    if (state === "failed" || state === "stopped") session.blocks.push({ id: "notice", role: "system", text: "Stopped", notice: state === "failed" ? "error" : "interrupt" });
+    expect(await bridge.handle("state", "sessions.read", { sessionId: session.id })).toMatchObject({ session: { lifecycle: state } });
+  });
   const launch: MonoSpawnedSession = {
     sessionId: "app-mono-child",
     cwd: "/tmp/companion-test",

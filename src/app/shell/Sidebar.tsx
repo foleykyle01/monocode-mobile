@@ -3299,7 +3299,7 @@ export const SessionCard = memo(function SessionCard({
         ? "text-emerald-400"
         : draft
           ? "text-content/55"
-          : "text-content/45";
+          : statusLabel ? "text-content/65" : "text-content/45";
   const status = (
     <span
       className={`flex shrink-0 items-center gap-1 text-[11px] tabular-nums ${statusClass}`}
@@ -3307,22 +3307,22 @@ export const SessionCard = memo(function SessionCard({
       {needsApproval ? (
         <>
           <CircleAlert className="size-3" strokeWidth={1.75} />
-          <span>{orchestration ? "Needs input" : "Need approval"}</span>
+          <span>{statusLabel ?? (orchestration ? "Needs input" : "Need approval")}</span>
         </>
       ) : busy ? (
         <>
           <TerminalSpinner className="inline-block w-3 select-none text-center text-[11px] leading-none text-accent" />
-          <span>Working...</span>
+          <span>{statusLabel ?? "Working..."}</span>
         </>
       ) : done ? (
         <>
           <Check className="size-3" strokeWidth={2.25} />
-          <span>Done</span>
+          <span>{statusLabel ?? "Done"}</span>
         </>
       ) : draft ? (
         <>
           <CircleDashed className="size-3" strokeWidth={1.75} />
-          <span>Draft</span>
+          <span>{statusLabel ?? "Draft"}</span>
         </>
       ) : (
         <span>{statusLabel ?? time}</span>

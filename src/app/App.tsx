@@ -1,4 +1,5 @@
 import { sessionConversationPage } from "../features/agent-app/model/sessionConversation";
+import { companionQueueId, queueCompanionFollowUp, shouldSteerCompanionFollowUp } from "../features/companion/model/companionFollowUp";
 import {
   createCompanionBridge,
   CompanionCommandUncertain,
@@ -876,6 +877,7 @@ type SubmitOptions = ComposerTurnOptions & {
   managed?: boolean;
   orchestrationRetry?: OrchestrationProposal;
   appRequestId?: string;
+  companionFollowUp?: boolean;
   monoSessionCompletion?: Block["monoSessionCompletion"];
   onSettled?: (outcome: ControlOutcome) => void;
   /** Generate a fresh title even when this is not the session's first turn. */
@@ -6891,7 +6893,7 @@ function Workspace({
       )
         return false;
       const storedCurrent = sessionsRef.current.find((s) => s.id === sessionId);
-      if (options?.appRequestId && storedCurrent?.busy) return false;
+      if (options?.appRequestId && storedCurrent?.busy && !options.companionFollowUp) return false;
       if (
         options?.ciRepair &&
         storedCurrent &&
@@ -6908,6 +6910,17 @@ function Workspace({
         )
       )
         return false;
+      if (options?.companionFollowUp && options.appRequestId) {
+        if (isPreparingHandoff(storedCurrent) || storedCurrent.worktreePreparing ||
+            storedCurrent.blocks.some(block => block.draft)) return false;
+        if (storedCurrent.busy || storedCurrent.queuedMessages?.length) {
+          const next = sessionsRef.current.map(session => session.id === sessionId
+            ? queueCompanionFollowUp(session, text, options.appRequestId!) : session);
+          sessionsRef.current = next;
+          setSessions(next);
+          return true;
+        }
+      }
       const draftBlock = options?.draftBlockId
         ? storedCurrent.blocks.find(
             (block) =>
@@ -7085,7 +7098,7 @@ function Workspace({
         return true;
       }
 
-      if (mono && current.busy && options?.queuedMessageId) {
+      if ((mono || current.queuedMessages?.[0]?.id.startsWith("companion_")) && current.busy && options?.queuedMessageId) {
         const message = current.queuedMessages?.find(
           (entry) => entry.id === options.queuedMessageId,
         );
@@ -8878,7 +8891,7 @@ function Workspace({
       if (
         !(
           canDispatchQueuedHead(session) ||
-          (monoForSession(session.id) &&
+          ((monoForSession(session.id) || shouldSteerCompanionFollowUp(session, loadFollowUpBehavior())) &&
             canSteerQueuedHead(session) &&
             canSteerHarness(session.harness) &&
             !consumeOperatorCommand(queued[0].text).matched)
@@ -8905,7 +8918,7 @@ function Workspace({
             head.id !== next.id ||
             !(
               canDispatchQueuedHead(latest) ||
-              (monoForSession(latest.id) &&
+              ((monoForSession(latest.id) || shouldSteerCompanionFollowUp(latest, loadFollowUpBehavior())) &&
                 canSteerQueuedHead(latest) &&
                 canSteerHarness(latest.harness) &&
                 !consumeOperatorCommand(head.text).matched)
@@ -8943,7 +8956,7 @@ function Workspace({
               },
             );
             // A preflight rejection must not repeatedly retry or hide the message.
-            if (!accepted && monoForSession(session.id)) {
+            if (!accepted && (monoForSession(session.id) || head.id.startsWith("companion_"))) {
               const current = sessionsRef.current.find(
                 (entry) => entry.id === session.id,
               );
@@ -10855,13 +10868,20 @@ function Workspace({
             sessions: () => sessionsRef.current,
             eligible: companionEligible,
             turn: (id) => turnGen.current.get(id) ?? 0,
+            queuedFollowUps: true,
             send: async (id, prompt, appRequestId) => {
               let accepted: SubmissionAcceptance = false;
               flushSync(() => {
                 accepted = submitSessionRef.current(id, prompt, [], {
                   appRequestId,
+                  companionFollowUp: true,
                 });
               });
+              const queued = sessionsRef.current.find(session => session.id === id);
+              if (accepted && queued?.queuedMessages?.some(message => message.id === companionQueueId(appRequestId))) {
+                if (!await upsertSession(queued)) throw new Error("Could not save the queued follow-up");
+                return "queued";
+              }
               return await accepted;
             },
             approve: onApproval,

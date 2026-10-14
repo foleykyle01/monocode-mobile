@@ -18,7 +18,7 @@ import type {
 import "./companion.css";
 import { Transcript } from "./Transcript";
 import { SessionChanges } from "./SessionChanges";
-import { MonoMascot, Navigation } from "./Navigation";
+import { attentionTargets, NeedsYou, MonoMascot, Navigation } from "./Navigation";
 import { MonoDetailsView } from "./MonoDetailsView";
 import { ConnectionNotice } from "./ConnectionNotice";
 import { SessionSettings } from "./SessionSettings";
@@ -149,6 +149,7 @@ function demoClient() {
   const epoch = DEMO_EPOCH;
   const sessions = DEMO_SESSIONS.map((session) => ({ ...session }));
   const blocks = structuredClone(DEMO_BLOCKS);
+  const queued: Record<string, NonNullable<SessionRead["queuedMessages"]>> = {};
   let question: SessionRead["pendingQuestion"] = { requestId: 7, title: "Section type", questions: [{ id: "section", header: "Section type", prompt: "What kind of section would you like to add?", multiSelect: false, allowCustom: true, options: [
     { id: "tasks", label: "New status column in tasks.json", description: "Add a category alongside the existing tasks." },
     { id: "docs", label: "New section in README.md", description: "Add a documentation section to the README." },
@@ -169,7 +170,7 @@ function demoClient() {
     if (command === "companion_request") {
       const action = args?.action;
       const input = (args?.input || {}) as Record<string, unknown>;
-      if (action === "sessions.list") return { ok: true, result: { epoch, sessions: sessions.map(session => ({ ...session })), navigation: navigation(), capabilities: { createSession: true, inbox: true, changes: true }, truncated: false } } as T;
+      if (action === "sessions.list") return { ok: true, result: { epoch, sessions: sessions.map(session => ({ ...session })), navigation: navigation(), capabilities: { createSession: true, inbox: true, changes: true, queuedFollowUps: true }, truncated: false } } as T;
       if (action === "monos.read") {
         const mono = navigation().monos.find(entry => entry.id === input.monoId);
         if (!mono) return { ok: false, error: "Sample Mono unavailable" } as T;
@@ -210,6 +211,7 @@ function demoClient() {
             configuration: DEMO_CONFIGURATION,
             pendingQuestion: session.id === "mono-atlas" ? question : undefined,
             reviewAvailable: true,
+            queuedMessages: queued[session.id],
             nextBefore: start || null,
             totalBlocks: (blocks[session.id] || []).length,
           },
@@ -228,13 +230,24 @@ function demoClient() {
         if (typeof input.harness === "string") session.harness = input.harness;
         if (typeof input.runtimeMode === "string") session.runtimeMode = input.runtimeMode;
       } else if (action === "sessions.send") {
+        if (session.busy) {
+          (queued[session.id] ??= []).push({ id: String(args?.requestId), text: String(input.text), state: "queued" });
+          return { ok: true, result: { epoch, sessionId: session.id, accepted: true, turn: session.turn, delivery: "queued" } } as T;
+        }
         blocks[session.id] ||= [];
         blocks[session.id].push({ id: crypto.randomUUID(), role: "user", text: String(input.text) }, { id: crypto.randomUUID(), role: "assistant", text: "Preview response — your message stays in this sample conversation. No agent was contacted." });
         session.turn += 1;
+        session.lifecycle = "done";
       } else if (action === "sessions.stop" || action === "sessions.approve") {
         for (const block of blocks[session.id] || []) if (block.approval && !block.approval.decided) block.approval.decided = action === "sessions.stop" ? "cancelled" : input.decision as "allow" | "deny";
         session.busy = false;
         session.needsApproval = false;
+        session.lifecycle = action === "sessions.stop" ? "stopped" : "done";
+        if (action === "sessions.stop") queued[session.id]?.forEach(message => { message.state = "paused"; });
+        else {
+          for (const message of queued[session.id] ?? []) blocks[session.id].push({ id: message.id, role: "user", text: message.text });
+          queued[session.id] = [];
+        }
       }
       return { ok: true, result: { epoch, sessionId: input.sessionId, accepted: true, turn: session.turn } } as T;
     }
@@ -326,7 +339,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [sessionEpoch, setSessionEpoch] = useState<string>();
   const [navigation, setNavigation] = useState<CompanionNavigation>();
   const [creationEpoch, setCreationEpoch] = useState<string>();
-  const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false });
+  const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false, queuedFollowUps: false });
   const [workspaceView, setWorkspaceView] = useState<{ kind: "inbox" } | { kind: "changes"; projectId: string } | { kind: "mono"; monoId: string }>();
   const availableSessionIds = useRef(new Set<string>());
   const notificationSelection = useRef<string | undefined>(undefined);
@@ -344,15 +357,23 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const selectedIdRef = useRef(selectedId);
   useLayoutEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   const [read, setRead] = useState<SessionRead>();
+  const readSnapshots = useRef(new Map<string, SessionRead>());
+  useLayoutEffect(() => { if (read) readSnapshots.current.set(read.session.id, read); }, [read]);
   const [linkedView, setLinkedView] = useState<{ session: CompanionSession; parent: { read: SessionRead; monoId: string; name: string; scrollTop: number } }>();
   const linkedViewRef = useRef(linkedView);
   useLayoutEffect(() => { linkedViewRef.current = linkedView; }, [linkedView]);
   const [restoredPosition, setRestoredPosition] = useState<{ sessionId: string; top: number }>();
+  const positions = useRef(new Map<string, number>());
+  const [attention, setAttention] = useState<{ id: string; token: number }>();
+  const [sendReceipt, setSendReceipt] = useState<{ id: string; label: string }>();
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
   const historySerial = useRef(0);
   const historyInFlight = useRef(false);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    const saved = client.pendingMutations().find(mutation => mutation.action === "sessions.send");
+    return saved?.input.text ? { [saved.input.sessionId]: saved.input.text } : {};
+  });
   const composer = selectedId ? drafts[selectedId] || "" : "";
   const setComposer = (text: string) => {
     if (selectedId) setDrafts((current) => ({ ...current, [selectedId]: text }));
@@ -419,7 +440,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
         setSessionEpoch(list.epoch);
         setNavigation(list.navigation);
         setCreationEpoch(list.capabilities?.createSession ? list.epoch : undefined);
-        setWorkspaceCapabilities({ inbox: !!list.capabilities?.inbox, changes: !!list.capabilities?.changes });
+        setWorkspaceCapabilities({ inbox: !!list.capabilities?.inbox, changes: !!list.capabilities?.changes, queuedFollowUps: !!list.capabilities?.queuedFollowUps });
         availableSessionIds.current = new Set(list.sessions.map(session => session.id));
         setLastSeen(Date.now());
         setAppearance(list.appearance);
@@ -459,7 +480,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     try {
       const result = await client.sessionRead(sessionId);
       if (serial === transcriptSerial.current && selectedIdRef.current === sessionId) {
-        setRead(previous => mergeLatest(previous, result));
+        setRead(previous => mergeLatest(previous?.session.id === sessionId ? previous : readSnapshots.current.get(sessionId), result));
         offlineRef.current = false;
         setOffline(false);
       }
@@ -524,6 +545,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
+    setAttention(previous => previous?.id === selectedId ? previous : undefined);
     setRead(previous => previous?.session.id === selectedId ? previous : undefined);
     setRestoredPosition(previous => previous?.sessionId === selectedId ? previous : undefined);
     if (linkedViewRef.current && linkedViewRef.current.session.id !== selectedId) setLinkedView(undefined);
@@ -571,8 +593,22 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const activeRead = read?.session.id === selectedId ? read : undefined;
   const unreadSessionIds = useSessionActivity(sessions, sessionEpoch, !mobileListOpen && !workspaceView && !settingsOpen && document.visibilityState === "visible" ? activeRead?.session : undefined);
   const selected = activeRead?.session || sessions.find((session) => session.id === selectedId) || (linkedView && linkedView.session.id === selectedId ? linkedView.session : undefined);
-  const mutationsDisabled = displayOffline || !networkOnline || reconnecting || !!pendingMutation || acting;
-  const canSend = !!selected && !!activeRead && !selected.busy && !!composer.trim() && !mutationsDisabled;
+  const listedSession = sessions.find(session => session.id === selectedId);
+  const staleRead = !!activeRead && (activeRead.epoch !== sessionEpoch || !!listedSession && activeRead.session.turn !== listedSession.turn);
+  const mutationsDisabled = displayOffline || !networkOnline || reconnecting || !!pendingMutation || acting || staleRead;
+  const canSend = !!selected && !!activeRead && (!selected.busy || workspaceCapabilities.queuedFollowUps) && !!composer.trim() && !mutationsDisabled;
+  const waiting = attentionTargets(sessions, navigation);
+  const openAttention = (id: string) => {
+    if (mutationsDisabled) return;
+    ++transcriptSerial.current;
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    setSelectedMonoId(navigation?.monos.find(mono => mono.sessionId === id)?.id);
+    if (id !== selectedId) setRead(undefined);
+    setWorkspaceView(undefined);
+    setMobileListOpen(false);
+    setAttention(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+  };
   const hostAppearance = demo ? { ...BASE_APPEARANCES.dark, transcriptLayout: previewLayout } : appearance;
   const displayedAppearance = resolveAppearance(appearanceMode, hostAppearance);
   const appearanceStyle = {
@@ -608,11 +644,11 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   }
 
   async function action(action: CompanionMutationAction, input: MutationInput) {
-    if (actingRef.current || pendingRef.current || offlineRef.current || displayOffline || !networkOnline || reconnecting) return;
+    if (actingRef.current || pendingRef.current || offlineRef.current || displayOffline || !networkOnline || reconnecting || (action !== "sessions.create" && staleRead)) return;
     if (action === "sessions.create") {
       if (!creationEpoch || input.epoch !== creationEpoch) return;
     } else if (!activeRead || activeRead.session.id !== selectedId || input.sessionId !== selectedIdRef.current) return;
-    if (action === "sessions.send" && (selected?.busy || !input.text?.trim() || input.text.length > 32_768)) return;
+    if (action === "sessions.send" && ((selected?.busy && !workspaceCapabilities.queuedFollowUps) || !input.text?.trim() || input.text.length > 32_768)) return;
     if (action === "sessions.approve") {
       const block = activeRead?.blocks.find((entry) => entry.id === input.blockId);
       if (!block?.approval || block.approval.decided || input.decision === undefined || (input.decision === "allow" && block.truncated)) return;
@@ -622,10 +658,13 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     if (action !== "sessions.question.keepOpen") setActing(true);
     setError(undefined);
     try {
-      await client.mutate(action, input);
+      const receipt = await client.mutate(action, input);
       pendingRef.current = undefined;
       setPendingMutation(undefined);
-      if (action === "sessions.send") setComposer("");
+      if (action === "sessions.send") {
+        setDrafts(current => current[input.sessionId]?.trim() === input.text ? { ...current, [input.sessionId]: "" } : current);
+        setSendReceipt({ id: input.sessionId, label: receipt.delivery === "queued" ? "Follow-up queued on Mac" : "Message accepted by Mac" });
+      }
       if (action === "sessions.create") await openCreatedSession(input.sessionId);
       else {
         await refresh();
@@ -667,9 +706,10 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     actingRef.current = true;
     setActing(true);
     try {
-      await client.retry(pendingMutation);
+      const receipt = await client.retry(pendingMutation);
       if (pendingMutation.action === "sessions.send") {
         const { sessionId, text } = pendingMutation.input;
+        setSendReceipt({ id: sessionId, label: receipt.delivery === "queued" ? "Follow-up queued on Mac" : "Message accepted by Mac" });
         setDrafts(current => current[sessionId]?.trim() === text
           ? { ...current, [sessionId]: "" }
           : current);
@@ -830,6 +870,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           {searchOpen ? <div className="session-search" onKeyDown={event => { if (event.key === "Escape") { setSearchOpen(false); setQuery("");  searchButton.current?.focus(); } }}><input type="search" aria-label="Search workspace" placeholder="Search workspace" autoFocus value={query} onChange={event => { setQuery(event.target.value); if (event.target.value.trim()) setMonosExpanded(true); }} /></div> : null}
           {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
           <div className="workspace-scroll">
+            <NeedsYou targets={waiting} onOpen={openAttention} disabled={mutationsDisabled} />
             {workspaceCapabilities.inbox ? <button className="inbox-navigation-button" type="button" onClick={() => { setWorkspaceView({ kind: "inbox" }); setMobileListOpen(false); }}><Inbox size={18} aria-hidden="true" /><strong>Inbox</strong><ChevronRight size={16} aria-hidden="true" /></button> : null}
             <div className="workspace-heading"><h2>{navigation ? <button className="monos-toggle" type="button" aria-expanded={monosExpanded} aria-controls="companion-monos" onClick={() => setMonosExpanded(expanded => !expanded)}><ChevronRight className="nav-chevron" data-expanded={monosExpanded} size={12} aria-hidden="true" /><span>Monos</span><span className="nav-count">{navigation.monos.length}</span></button> : "Projects"}</h2></div>
             {loading && !sessions.length && !navigation && !displayOffline ? <p className="nav-note" role="status">Loading workspace…</p> : null}<Navigation unreadSessionIds={unreadSessionIds} monosExpanded={monosExpanded} onMonoDetails={id => { setWorkspaceView({ kind: "mono", monoId: id }); setMobileListOpen(false); }} onChanges={workspaceCapabilities.changes ? project => { setWorkspaceView({ kind: "changes", projectId: project.id }); setMobileListOpen(false); } : undefined} onCreate={creationEpoch ? project => { void action("sessions.create", { epoch: creationEpoch, projectId: project.id, sessionId: crypto.randomUUID() }); } : undefined} createDisabled={mutationsDisabled} sessions={sessions} navigation={navigation} query={query} filter="all" selectedId={selectedId} selectedMonoId={selectedMonoId} onSession={id => { setWorkspaceView(undefined); setSelectedMonoId(undefined); if (id !== selectedId) setRead(undefined); setSelectedId(id); setMobileListOpen(false); }} onMono={id => { setWorkspaceView(undefined); const mono = navigation?.monos.find(entry => entry.id === id); setSelectedMonoId(id); if (mono?.sessionId) { if (mono.sessionId !== selectedId) setRead(undefined); setSelectedId(mono.sessionId); } setMobileListOpen(false); }} />
@@ -846,17 +887,21 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
             </header>
             {displayOffline ? <div className="chat-connection" role="status"><span className={connectionDot} aria-hidden="true" /><span>{!displayOnline ? "Offline" : displayReconnecting ? "Reconnecting…" : "Mac unavailable"}</span>{displayOnline && !displayReconnecting ? <button type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()}>Retry</button> : null}</div> : null}
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
+            {attention?.id === selected.id && activeRead && !selected.needsApproval && !selected.needsQuestion ? <NeedsYou label="Next waiting session" targets={waiting.filter(target => target.id !== selected.id)} onOpen={openAttention} disabled={mutationsDisabled} /> : null}
             {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
             <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
               onOpenSession={selectedMono && activeRead ? openLinkedSession : undefined}
-              initialScrollTop={restoredPosition?.sessionId === selected.id ? restoredPosition.top : undefined}
+              initialScrollTop={restoredPosition?.sessionId === selected.id ? restoredPosition.top : positions.current.get(selected.id)}
+              onPositionChange={top => positions.current.set(selected.id, top)}
+              attentionToken={attention?.id === selected.id ? attention.token : undefined}
+              queuedMessages={activeRead?.queuedMessages}
               pendingQuestion={activeRead?.pendingQuestion} questionUnavailable={activeRead?.questionUnavailable}
               questionKey={`${activeRead?.epoch}:${activeRead?.session.turn}`}
               changes={activeRead?.reviewAvailable ? <SessionChanges key={selected.id} client={client} sessionId={selected.id} epoch={activeRead.epoch} turn={activeRead.session.turn} busy={selected.busy} offline={displayOffline} /> : undefined}
               onQuestionInteraction={async questionId => { if (activeRead) return action("sessions.question.keepOpen", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId }); }}
               onAnswer={(questionId, reply) => { if (activeRead) void action("sessions.answer", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId, reply }); }}
               onApprove={(block, decision) => { if (block.approval && activeRead) void action("sessions.approve", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, blockId: block.id, decision }); }} />
-            <form className="composer" onSubmit={submit}><div className="composer-input"><div className="composer-field"><textarea value={composer} onChange={(event) => setComposer(event.target.value)} placeholder={selected.busy ? "Draft a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} /><div className="composer-measure" aria-hidden="true">{composer + " "}</div></div>{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button>}</div><SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
+            <form className="composer" onSubmit={submit}><div className="composer-input"><div className="composer-field"><textarea value={composer} onChange={(event) => { setComposer(event.target.value); setSendReceipt(undefined); }} placeholder={selected.busy ? "Send a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} /><div className="composer-measure" aria-hidden="true">{composer + " "}</div></div>{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : null}<button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button></div>{sendReceipt?.id === selected.id ? <p className="send-receipt" role="status">{sendReceipt.label}</p> : null}{selected.busy && !workspaceCapabilities.queuedFollowUps ? <p className="send-receipt">Update the Mac companion to send while working.</p> : null}<SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>

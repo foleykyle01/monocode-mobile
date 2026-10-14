@@ -3,8 +3,8 @@ import { Streamdown, type Components } from "streamdown";
 import type { CompanionBlock, CompanionSession, SessionRead } from "./types";
 import type { UserQuestionReply } from "../../src/features/sessions/model/userQuestion";
 import { QuestionCard } from "./QuestionCard";
-import { activityLabel } from "./Navigation";
-import { Check, ChevronRight, Terminal, File, Search, Wrench } from "../../src/shared/ui/icons";
+import { LAUNCHED_SESSION_LABELS } from "../../src/features/monos/model/monoSpawnedSessions";
+import { Check, ChevronRight, Terminal, File, Search, Wrench, Clock, CircleDashed, CircleAlert, CircleX, Loader } from "../../src/shared/ui/icons";
 import "./transcript.css";
 
 // The desktop uses Streamdown too. File/media actions stay on the Mac until
@@ -36,7 +36,7 @@ function actionSummary(text: string) {
   return text.trim().split("\n")[0].slice(0, 300) || "Action";
 }
 
-export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop }: {
+export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop, onPositionChange, attentionToken, queuedMessages }: {
   blocks: CompanionBlock[];
   loading: boolean;
   onApprove: (block: CompanionBlock, decision: "allow" | "deny") => void;
@@ -58,12 +58,16 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   changes?: ReactNode;
   onOpenSession?: (session: CompanionSession, scrollTop: number) => void;
   initialScrollTop?: number;
+  onPositionChange?: (top: number) => void;
+  attentionToken?: number;
+  queuedMessages?: SessionRead["queuedMessages"];
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const restoreTop = useRef(initialScrollTop);
   const snapshot = useRef<ScrollSnapshot | undefined>(undefined);
+  const reviewedAttention = useRef<number | undefined>(undefined);
   const [below, setBelow] = useState(false);
   const approval = blocks.find(block => block.approval && !block.approval.decided);
   const showWorking = busy && !needsApproval && !pendingQuestion && !questionUnavailable;
@@ -74,6 +78,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     const hasMore = element.scrollHeight - element.scrollTop - element.clientHeight > 64;
     following.current = !hasMore;
     snapshot.current = { ids: blocks.map(block => block.id), height: element.scrollHeight, top: element.scrollTop };
+    if (!loading) onPositionChange?.(element.scrollTop);
     setBelow(hasMore);
   }
 
@@ -101,6 +106,19 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     return () => observer.disconnect();
   }, [blocks, loading, loadingEarlier, showWorking]);
 
+  useLayoutEffect(() => {
+    if (attentionToken === undefined || reviewedAttention.current === attentionToken || loading) return;
+    const target = viewport.current?.querySelector<HTMLElement>("[data-pending-approval], [data-pending-question]");
+    if (target) {
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      target.focus({ preventScroll: true });
+      reviewedAttention.current = attentionToken;
+      measure();
+    } else if (needsApproval && onLoadEarlier && !loadingEarlier && !historyError) {
+      onLoadEarlier();
+    }
+  }, [attentionToken, blocks, loading, pendingQuestion, needsApproval, loadingEarlier, historyError]);
+
   function jump() {
     const element = viewport.current;
     if (!element) return;
@@ -124,11 +142,13 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     if (!onOpenSession || !block.spawnedSessions?.length) return null;
     return <div className="spawned-sessions" aria-label="Project sessions started by this Mono">
       {block.spawnedSessions.map(session => {
-        const state = activityLabel(session);
+        const state = session.needsApproval || session.needsQuestion ? "input" : session.busy ? "working" : session.lifecycle ?? "unknown";
+        const label = LAUNCHED_SESSION_LABELS[state] ?? LAUNCHED_SESSION_LABELS.unknown;
+        const Icon = { working: Loader, input: Clock, draft: CircleDashed, failed: CircleAlert, stopped: CircleX, done: Check, unknown: CircleDashed }[state] ?? CircleDashed;
         const project = session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd;
         return <button className="spawned-session" type="button" key={session.id} onClick={() => onOpenSession(session, viewport.current?.scrollTop ?? 0)}>
-          <span className={`project-activity ${session.needsApproval || session.needsQuestion ? "project-activity--attention" : session.busy ? "project-activity--running" : ""}`} aria-hidden="true" />
-          <span className="spawned-session__body"><strong>{session.title}</strong><small>{project} · {state}</small></span>
+          <span key={state} className="spawned-session__status" data-state={state} aria-hidden="true"><Icon size={16} /></span>
+          <span className="spawned-session__body"><strong>{session.title}</strong><small>{project} · {label}</small></span>
           <ChevronRight size={16} aria-hidden="true" />
         </button>;
       })}
@@ -155,7 +175,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
           const body = block.role === "assistant"
             ? <><Streamdown className="companion-markdown" mode="static" controls={false} components={markdownComponents}>{block.text || ""}</Streamdown>{shortened}</>
             : <p>{block.text || "(empty)"}{shortened}</p>;
-          return <Fragment key={block.id}><article className={`message message--${block.role} ${pending ? "message--pending" : ""}`} data-pending-approval={pending || undefined}>
+          return <Fragment key={block.id}><article tabIndex={pending ? -1 : undefined} className={`message message--${block.role} ${pending ? "message--pending" : ""}`} data-pending-approval={pending || undefined}>
             {tool && !pending ? <details className="action-details"><summary><span className="action-details__summary">{actionSummary(block.text)}</span><small>{actionStatus(block)}</small></summary>{body}</details> : <>
               {pending ? <div className="message__meta"><span className="approval-label">Needs approval</span></div> : null}
               {body}
@@ -166,8 +186,9 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
             </>}
           </article>{sessionCards(block)}</Fragment>;
         })}
-        {pendingQuestion && onAnswer && onQuestionInteraction ? <QuestionCard key={`${questionKey}:${pendingQuestion.requestId}`} prompt={pendingQuestion} disabled={mutationsDisabled || approvalBusy} onAnswer={onAnswer} onInteraction={onQuestionInteraction} /> : null}
-        {questionUnavailable ? <p className="truncated-note" role="status">The agent has a question. Open this session on your Mac to answer it.</p> : null}
+        {pendingQuestion && onAnswer && onQuestionInteraction ? <div data-pending-question tabIndex={-1}><QuestionCard key={`${questionKey}:${pendingQuestion.requestId}`} prompt={pendingQuestion} disabled={mutationsDisabled || approvalBusy} onAnswer={onAnswer} onInteraction={onQuestionInteraction} /></div> : null}
+        {queuedMessages?.length ? <section className="queued-follow-ups" aria-label="Queued follow-ups">{queuedMessages.map(message => <div key={message.id}><small>{message.state === "failed" ? "Delivery failed · review on Mac" : message.state === "paused" ? "Queue paused · review on Mac" : "Queued on Mac"}</small><p>{message.text}</p></div>)}</section> : null}
+        {questionUnavailable ? <p data-pending-question tabIndex={-1} className="truncated-note" role="status">The agent has a question. Open this session on your Mac to answer it.</p> : null}
         {changes}
         {showWorking ? <p className="transcript-working" role="status" data-transcript-working>
           <span className="transcript-working__shimmer">Working…</span>

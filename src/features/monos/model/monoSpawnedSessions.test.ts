@@ -249,7 +249,10 @@ it("reads a launched session's state for its card", () => {
       { id: "i", role: "system", text: "Stopped", notice: "interrupt" },
     ]),
   ).toBe("stopped");
-  expect(ran([prompt, { id: "r", role: "assistant", text: "Done." }])).toBe(
+  expect(ran([{ ...prompt, durationMs: 100 }, { id: "r", role: "assistant", text: "Done." }])).toBe(
     "done",
   );
+  expect(ran([])).toBe("unknown");
+  expect(ran([prompt, { id: "r", role: "assistant", text: "Partial output" }])).toBe("unknown");
+  expect(ran([prompt, { id: "stop", role: "system", text: "Stopped", notice: "interrupt" }, { id: "status", role: "system", text: "Connected" }])).toBe("stopped");
 });

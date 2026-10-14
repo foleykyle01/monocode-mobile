@@ -199,7 +199,7 @@ it("shows a draft and then an approval without treating either as completed", as
       ],
     },
   ]);
-  expect(container.textContent).toContain("Need approval");
+  expect(container.textContent).toContain("Needs input");
 });
 
 it("holds a loading card's place invisibly, and shows a known one at once when remounted", async () => {

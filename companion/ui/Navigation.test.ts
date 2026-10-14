@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Navigation, monoStatusLabel, navigationProjects } from "./Navigation";
+import { attentionTargets, NeedsYou, Navigation, monoStatusLabel, navigationProjects } from "./Navigation";
 import { connectionMessage } from "./ConnectionNotice";
 import type { CompanionNavigation, CompanionSession } from "./types";
 
@@ -18,6 +18,41 @@ const navigation: CompanionNavigation = {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("companion workspace navigation", () => {
+  it("deduplicates pending Mono/project entries and excludes unavailable Monos", () => {
+    expect(attentionTargets([sessions[0], sessions[0], { ...sessions[1], needsQuestion: true }], {
+      ...navigation, monos: [
+        { ...navigation.monos[0], sessionId: sessions[0].id, needsApproval: true, canChat: true },
+        { ...navigation.monos[0], sessionId: "unavailable", needsApproval: true, canChat: false },
+      ],
+    })).toEqual([{ id: "worktree", title: "Scout" }, { id: "other", title: "Notes" }]);
+  });
+
+  it("offers a compact chooser and opens a single target directly without changing the cards", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div"); document.body.append(container);
+    const root = createRoot(container); const open = vi.fn();
+    const targets = [{ id: "one", title: "First" }, { id: "two", title: "Second" }];
+    try {
+      await act(async () => root.render(createElement(NeedsYou, { targets, onOpen: open, disabled: false })));
+      expect(container.querySelector("summary")?.textContent).toBe("Needs you2");
+      await act(async () => container.querySelectorAll<HTMLButtonElement>("button")[1].click());
+      expect(open).toHaveBeenCalledExactlyOnceWith("two");
+      await act(async () => root.render(createElement(NeedsYou, { targets: targets.slice(0, 1), onOpen: open, disabled: false })));
+      expect(container.querySelector("details")).toBeNull();
+      await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+      expect(open).toHaveBeenLastCalledWith("one");
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  });
+
+  it("keeps home Mono cards to identity and basic state", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div"); const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(Navigation, { sessions, navigation: { ...navigation, monos: [{ ...navigation.monos[0], activity: "Reading private-file.ts", statusLabel: "Running a tool" }] }, query: "", filter: "all", onSession: vi.fn(), onMono: vi.fn() })));
+      expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutWorking");
+      expect(container.querySelectorAll(".mono-card button")).toHaveLength(1);
+    } finally { await act(async () => root.unmount()); }
+  });
   it("uses the project dots for running, attention and unread sessions, with no dot for idle or read sessions", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div"); document.body.append(container);

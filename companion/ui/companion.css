@@ -227,7 +227,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .project-toggle strong { font-size: calc(14px * var(--companion-ui-scale)); font-weight: 600; }
 .group-toggle strong, .project-toggle strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { margin-left: auto; }
-.nav-collapse { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 6px; color: var(--companion-dim); font-size: calc(11px * var(--companion-ui-scale)); }
+.nav-collapse { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 6px; color: var(--companion-muted); font-size: calc(11px * var(--companion-ui-scale)); }
 .nav-collapse button { min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--companion-muted); font: inherit; font-weight: 600; cursor: pointer; }
 .project-heading { display: flex; align-items: center; }
 .project-activity { display: inline-block; flex-shrink: 0; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; }
@@ -344,6 +344,19 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .send-button:disabled { opacity: 1; color: var(--companion-dim); }
 .send-button:disabled::before { background: var(--companion-raised); }
 .send-button--stop .stop-icon { position: relative; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+.composer:has(.send-button--stop) { grid-template-columns: minmax(0, 1fr) 44px 44px; }
+.composer:has(.send-button--stop) .send-button[type="submit"] { grid-column: 3; }
+.send-button--stop { color: var(--companion-content); }
+.send-button--stop::before { background: var(--companion-raised); }
+.send-receipt { grid-column: 1 / -1; margin: 4px 0; color: var(--companion-muted); font-size: 12px; }
+.needs-you { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 8px; background: var(--companion-panel); color: var(--companion-content); font: inherit; font-size: 13px; cursor: pointer; }
+.needs-you:disabled { opacity: .5; cursor: default; }
+.needs-you-chooser { margin-bottom: 4px; }
+.needs-you-chooser summary { list-style: none; }
+.needs-you-chooser summary::-webkit-details-marker { display: none; }
+.needs-you-chooser [role="group"] { display: grid; max-height: 240px; overflow: auto; }
+.needs-you-chooser button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 8px 12px; border: 0; background: transparent; color: var(--companion-content); text-align: left; font: inherit; font-size: 13px; }
+.needs-you:focus-visible, .needs-you-chooser button:focus-visible { outline: 2px solid var(--companion-accent); outline-offset: -2px; }
 .session-settings { grid-column: 1; grid-row: 2; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .setting-trigger { display: inline-flex; align-items: center; gap: 5px; max-width: 58%; min-width: 0; min-height: 44px; border: 0; border-radius: 6px; padding: 0 6px; background: transparent; color: var(--companion-muted); font-size: calc(12px * var(--companion-ui-scale)); text-align: left; cursor: pointer; }
 .setting-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

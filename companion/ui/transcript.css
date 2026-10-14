@@ -114,4 +114,12 @@
 .spawned-session > svg { flex-shrink: 0; color: var(--companion-muted); }
 .spawned-session:focus-visible { outline: 2px solid var(--companion-accent); outline-offset: 3px; }
 .spawned-session:active { background: var(--companion-raised); }
+.spawned-session__status { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; color: var(--companion-muted); animation: session-state-in 180ms ease-out; }
+.spawned-session__status[data-state="input"], .spawned-session__status[data-state="working"] { color: var(--companion-accent); }
+.spawned-session__status[data-state="failed"] { color: var(--companion-danger); }
+.queued-follow-ups { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--companion-stroke); border-radius: 10px; }
+.queued-follow-ups small { color: var(--companion-muted); }
+.queued-follow-ups p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@keyframes session-state-in { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .spawned-session__status { animation: none; } }
 .detail-heading .back-button--linked { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--companion-content); cursor: pointer; }

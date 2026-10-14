@@ -40,6 +40,32 @@ async function render(blocks: CompanionBlock[], onApprove = vi.fn(), options: Pa
 }
 
 describe("phone transcript controls", () => {
+  it.each(["working", "input", "draft", "failed", "stopped", "done", "unknown"] as const)("uses the host's %s lifecycle in a stable icon slot", async lifecycle => {
+    await render([{ id: "launch", role: "assistant", text: "Started", spawnedSessions: [{ id: "child", title: "Task", cwd: "/repo", harness: "codex", model: "model", busy: false, needsApproval: false, turn: 1, lifecycle }] }], vi.fn(), { onOpenSession: vi.fn() });
+    expect(container.querySelector(".spawned-session__status")?.getAttribute("data-state")).toBe(lifecycle);
+    expect(container.querySelectorAll(".spawned-session__status svg")).toHaveLength(1);
+  });
+
+  it("loads older pending actions and focuses them once without approving or pulling later reading", async () => {
+    const load = vi.fn(); const approve = vi.fn();
+    await render([{ id: "recent", role: "assistant", text: "Recent" }], approve, { needsApproval: true, attentionToken: 1, onLoadEarlier: load });
+    expect(load).toHaveBeenCalledOnce();
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
+    const blocks: CompanionBlock[] = [{ id: "pending", role: "tool", text: "Allow?", approval: { requestId: 7 } }, { id: "recent", role: "assistant", text: "Recent" }];
+    await render(blocks, approve, { needsApproval: true, attentionToken: 1 });
+    expect(document.activeElement).toBe(container.querySelector("[data-pending-approval]"));
+    expect(scroll).toHaveBeenCalledOnce();
+    expect(approve).not.toHaveBeenCalled();
+    await render([...blocks, { id: "later", role: "assistant", text: "Later" }], approve, { needsApproval: true, attentionToken: 1 });
+    expect(scroll).toHaveBeenCalledOnce();
+  });
+
+  it("shows queued, paused and failed follow-ups as undelivered", async () => {
+    await render([], vi.fn(), { queuedMessages: [{ id: "1", text: "Next", state: "queued" }, { id: "2", text: "Then", state: "paused" }, { id: "3", text: "Retry", state: "failed" }] });
+    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Queued on Mac");
+    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Queue paused");
+    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Delivery failed");
+  });
   it("opens a linked live project session with its current status and reading position", async () => {
     const session = { id: "child", title: "Check access", cwd: "/work/Power Platform", harness: "claude", model: "opus", busy: true, turn: 4, needsApproval: true };
     const open = vi.fn();
@@ -48,11 +74,11 @@ describe("phone transcript controls", () => {
     const viewport = container.querySelector<HTMLDivElement>(".transcript")!;
     viewport.scrollTop = 123;
     const card = container.querySelector<HTMLButtonElement>(".spawned-session")!;
-    expect(card.textContent).toContain("Power Platform · Needs approval");
+    expect(card.textContent).toContain("Power Platform · Needs input");
     await act(async () => card.click());
     expect(open).toHaveBeenCalledExactlyOnceWith(session, 123);
     await render([{ ...block, spawnedSessions: [{ ...session, busy: false, needsApproval: false }] }], vi.fn(), { onOpenSession: open });
-    expect(container.querySelector(".spawned-session")?.textContent).toContain("Ready");
+    expect(container.querySelector(".spawned-session")?.textContent).toContain("Status unknown");
   });
 
   it("restores the parent reading position once and preserves it through live updates", async () => {
