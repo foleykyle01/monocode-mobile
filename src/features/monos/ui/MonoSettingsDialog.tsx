@@ -32,6 +32,11 @@ import { ColorPicker, MascotPicker, SwitchRow } from "./monoPanelParts";
 
 export type MonoSettingsSection = "general" | "soul" | "memory";
 
+type RestartAction = {
+  disabledReason?: string;
+  onRestart: () => Promise<void>;
+};
+
 const SECTIONS: {
   id: MonoSettingsSection;
   label: string;
@@ -58,6 +63,7 @@ type Props = {
   onModelChange: (harness: HarnessId, model: string) => void;
   onModelSettingsChange: (settings: Record<string, string>) => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
+  restartAction?: RestartAction;
   onReset?: () => Promise<void>;
   onClose: () => void;
 };
@@ -142,6 +148,7 @@ function GeneralSection({
   onModelChange,
   onModelSettingsChange,
   onRuntimeModeChange,
+  restartAction,
   onReset,
 }: Omit<Props, "status" | "initialSection" | "onClose">) {
   const lock = useLockOverscroll<HTMLDivElement>();
@@ -179,6 +186,7 @@ function GeneralSection({
             hideSettings
             side="bottom"
             variant="plain"
+            restartAction={restartAction}
             onChange={onModelChange}
             onSettingsChange={onModelSettingsChange}
           />

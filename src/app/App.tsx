@@ -13026,6 +13026,17 @@ function Workspace({
         onRuntimeModeChange={(mode) =>
           onRuntimeModeChange(monoViewSession.id, mode)
         }
+        restartAction={
+          monoViewSession.harness === "claude"
+            ? {
+                disabledReason: monoModelRestartDisabledReason(
+                  monoViewSession,
+                  restartingMonoSessionSnapshot.has(monoViewSession.id),
+                ),
+                onRestart: () => onRestartMonoModelSession(monoViewSession.id),
+              }
+            : undefined
+        }
         onReset={() => onResetMono(monoViewSession.id)}
         onClose={() => setMonoSettingsFor(null)}
       />
