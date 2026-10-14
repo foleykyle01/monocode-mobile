@@ -352,7 +352,10 @@ export async function cancelClaudeTurn(sessionId: string): Promise<void> {
   ]);
 }
 
-export async function stopClaudeSession(sessionId: string): Promise<void> {
+async function disposeClaudeSession(
+  sessionId: string,
+  ignoreKillError: boolean,
+): Promise<void> {
   cancelledThreads.delete(sessionId);
   const live = liveByThread.get(sessionId);
   liveByThread.delete(sessionId);
@@ -371,7 +374,17 @@ export async function stopClaudeSession(sessionId: string): Promise<void> {
     live.initDone = null;
   }
   unwatchChild(sessionId);
-  await killChild(sessionId).catch(() => undefined);
+  if (ignoreKillError) await killChild(sessionId).catch(() => undefined);
+  else await killChild(sessionId);
+}
+
+export function stopClaudeSession(sessionId: string): Promise<void> {
+  return disposeClaudeSession(sessionId, true);
+}
+
+/** Drop the live process but retain Claude's resume and task identity. */
+export function restartClaudeSession(sessionId: string): Promise<void> {
+  return disposeClaudeSession(sessionId, false);
 }
 
 export async function forgetClaudeSession(sessionId: string): Promise<void> {

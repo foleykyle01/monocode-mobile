@@ -74,6 +74,11 @@ type Props = {
   variant?: Variant;
   /** Action label for recovery surfaces that open the same model chooser. */
   triggerLabel?: string;
+  /** Optional non-destructive runtime reset for one scoped conversation. */
+  restartAction?: {
+    disabledReason?: string;
+    onRestart: () => Promise<void>;
+  };
   onChange: (harness: HarnessId, model: string) => void;
   onSettingsChange: (settings: Record<string, string>) => void;
   onClose?: () => void;
@@ -283,6 +288,7 @@ export function ModelPicker({
   side = "top",
   variant = "pill",
   triggerLabel,
+  restartAction,
   onChange,
   onSettingsChange,
   onClose,
@@ -772,6 +778,7 @@ export function ModelPicker({
           onActive={setActiveModel}
           onPick={pickModel}
           onToggleFavorite={toggleFavorite}
+          restartAction={restartAction}
         />
       ) : null}
 
@@ -968,6 +975,7 @@ export function ModelPicker({
               onActive={setActiveModel}
               onPick={pickModel}
               onToggleFavorite={toggleFavorite}
+              restartAction={restartAction}
             />
           ) : null}
         </>
@@ -1432,6 +1440,7 @@ function ModelFlyout({
   onActive,
   onPick,
   onToggleFavorite,
+  restartAction,
 }: {
   anchor: HTMLButtonElement | { current: HTMLButtonElement | null };
   side?: "right" | "top" | "bottom";
@@ -1450,11 +1459,13 @@ function ModelFlyout({
   onActive: (index: number) => void;
   onPick: (model: AgentModel) => void;
   onToggleFavorite: (id: string) => void;
+  restartAction?: Props["restartAction"];
 }) {
   const source = useModelSource();
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const activeRef = useRef<HTMLButtonElement>(null);
   const groups = modelGroups(tab, models);
+  const menuHeight = MODEL_MENU_HEIGHT + (restartAction ? 60 : 0);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest" });
@@ -1503,8 +1514,8 @@ function ModelFlyout({
       side={side}
       gap={side === "right" ? SUBMENU_OVERLAP : undefined}
       width={MODEL_MENU_WIDTH}
-      minHeight={MODEL_MENU_FRAME_HEIGHT}
-      maxHeight={MODEL_MENU_FRAME_HEIGHT}
+      minHeight={MODEL_MENU_FRAME_HEIGHT + (restartAction ? 60 : 0)}
+      maxHeight={MODEL_MENU_FRAME_HEIGHT + (restartAction ? 60 : 0)}
       layer={LAYER.submenu}
       role="dialog"
       aria-label="Models"
@@ -1541,9 +1552,9 @@ function ModelFlyout({
       }}
       data-model-picker
       style={{
-        height: MODEL_MENU_HEIGHT,
-        minHeight: MODEL_MENU_HEIGHT,
-        maxHeight: MODEL_MENU_HEIGHT,
+        height: menuHeight,
+        minHeight: menuHeight,
+        maxHeight: menuHeight,
       }}
       className="flex min-h-0 overflow-hidden font-sans"
     >
@@ -1712,8 +1723,76 @@ function ModelFlyout({
             ))
           )}
         </div>
+        {restartAction ? (
+          <RestartModelSessionAction action={restartAction} />
+        ) : null}
       </div>
     </Popover>
+  );
+}
+
+function RestartModelSessionAction({
+  action,
+}: {
+  action: NonNullable<Props["restartAction"]>;
+}) {
+  const [restarting, setRestarting] = useState(false);
+  const [feedback, setFeedback] = useState<
+    { message: string; error: boolean } | undefined
+  >();
+  const disabledReason = restarting
+    ? "Restarting model session…"
+    : action.disabledReason;
+
+  const restart = () => {
+    if (disabledReason) return;
+    setRestarting(true);
+    setFeedback(undefined);
+    void action
+      .onRestart()
+      .then(() =>
+        setFeedback({
+          message:
+            "Claude Code will reload configuration on your next message.",
+          error: false,
+        }),
+      )
+      .catch((error: unknown) =>
+        setFeedback({
+          message: `Could not restart model session: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          error: true,
+        }),
+      )
+      .finally(() => setRestarting(false));
+  };
+
+  const note = feedback?.message ?? disabledReason;
+  return (
+    <div className="shrink-0 border-t border-stroke px-2 py-1.5">
+      <button
+        type="button"
+        aria-label="Restart model session"
+        disabled={!!disabledReason}
+        title={disabledReason}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={restart}
+        className="flex h-7 w-full items-center rounded-md px-1.5 text-left text-[12px] text-content/70 hover:bg-content/5 hover:text-content disabled:cursor-not-allowed disabled:text-content/35"
+      >
+        {restarting ? "Restarting model session…" : "Restart model session"}
+      </button>
+      {note ? (
+        <p
+          role={feedback?.error ? "alert" : "status"}
+          className={`px-1.5 pt-0.5 text-[10px] leading-3.5 ${
+            feedback?.error ? "text-red-400" : "text-content/45"
+          }`}
+        >
+          {note}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

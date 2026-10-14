@@ -301,6 +301,7 @@ import {
   bindHarnessSession,
   cancelHarnessTurn,
   canCompactHarnessContext,
+  canRestartHarnessSession,
   canRewindHarnessLastTurn,
   canSteerHarness,
   compactHarnessContext,
@@ -314,6 +315,7 @@ import {
   probeHarnessAvailability,
   refreshHarnessCatalogs,
   registerBuiltinHarnesses,
+  restartHarnessSession,
   promoteLastAssistantToPlan,
   respondHarnessApproval,
   respondHarnessQuestion,
@@ -635,6 +637,7 @@ import {
   ensureMonoSession,
   resetMonoSession,
 } from "../features/monos/model/monoWorkspace";
+import { monoModelRestartDisabledReason } from "../features/monos/model/monoModelRestart";
 import {
   warmNativeSkills,
   isNativeCommandPrompt,
@@ -1617,6 +1620,9 @@ function Workspace({
   const observedSessions = useRef(new Map<string, Session>());
   const pendingPersist = useRef(new Map<string, Session>());
   const removingSessionIds = useRef(new Set<string>());
+  const restartingMonoSessionIds = useRef(new Set<string>());
+  const [restartingMonoSessionSnapshot, setRestartingMonoSessionSnapshot] =
+    useState<ReadonlySet<string>>(() => new Set());
   const loadedSessionCache = useRef(new Map<string, Session>());
   const sessionLoads = useRef(new Map<string, Promise<Session | null>>());
   const sessionLoadEpochs = useRef(new Map<string, number>());
@@ -4835,6 +4841,8 @@ function Workspace({
         throw new Error("This Mono's conversation is no longer available.");
       if (removingSessionIds.current.has(sessionId))
         throw new Error("This conversation is already being reset.");
+      if (restartingMonoSessionIds.current.has(sessionId))
+        throw new Error("This model session is restarting.");
 
       removingSessionIds.current.add(sessionId);
       pendingPersist.current.delete(sessionId);
@@ -6755,6 +6763,46 @@ function Workspace({
     [],
   );
 
+  const onRestartMonoModelSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      const current = sessionsRef.current.find(
+        (session) => session.id === sessionId,
+      );
+      if (!current || !isMonoSession(sessionId)) {
+        throw new Error("This Mono's conversation is no longer available.");
+      }
+      if (removingSessionIds.current.has(sessionId)) {
+        throw new Error("This conversation is being removed.");
+      }
+      const reason = monoModelRestartDisabledReason(
+        current,
+        restartingMonoSessionIds.current.has(sessionId),
+      );
+      if (reason) throw new Error(reason);
+      if (!canRestartHarnessSession(current.harness)) {
+        throw new Error(
+          "Restarting model sessions is currently available for Claude Code only.",
+        );
+      }
+
+      restartingMonoSessionIds.current.add(sessionId);
+      setRestartingMonoSessionSnapshot(
+        new Set(restartingMonoSessionIds.current),
+      );
+      try {
+        // Do not touch the session record: Claude retains its provider resume
+        // identity, while the next send creates a child with current settings.
+        await restartHarnessSession(current.harness, sessionId);
+      } finally {
+        restartingMonoSessionIds.current.delete(sessionId);
+        setRestartingMonoSessionSnapshot(
+          new Set(restartingMonoSessionIds.current),
+        );
+      }
+    },
+    [],
+  );
+
   const onSaveDraft = useCallback(
     (
       sessionId: string,
@@ -6862,6 +6910,7 @@ function Workspace({
           attachments,
           options,
         );
+      if (restartingMonoSessionIds.current.has(sessionId)) return false;
       if (editedResends.isActive(sessionId)) return false;
       // Output already received belongs before the submitted user message.
       // Flush before reading the session too, since pending errors can settle it.
@@ -12708,6 +12757,8 @@ function Workspace({
     onModelChange,
     onModelSettingsChange,
     onRuntimeModeChange,
+    onRestartModelSession: onRestartMonoModelSession,
+    restartingModelSessionIds: restartingMonoSessionSnapshot,
     onSaveDraft,
     onRemoveDraft,
     onSubmit,

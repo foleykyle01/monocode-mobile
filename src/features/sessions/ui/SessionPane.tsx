@@ -113,6 +113,7 @@ import {
 } from "../../projects/model/projectChatBackground";
 import { useProjectBackgroundEffect } from "../../projects/ui/useProjectBackgroundEffect";
 import { monoChatBackground } from "../../monos/model/monoBackground";
+import { monoModelRestartDisabledReason } from "../../monos/model/monoModelRestart";
 import { GradientBlurBackground } from "../../settings/ui/GradientBlurBackground";
 import {
   loadChatBackgroundPath,
@@ -173,6 +174,10 @@ export type SessionPaneProps = {
     settings: Record<string, string>,
   ) => void;
   onRuntimeModeChange: (sessionId: string, mode: RuntimeMode) => void;
+  /** Discard this Mono's provider runtime without resetting its conversation. */
+  onRestartModelSession?: (sessionId: string) => Promise<void>;
+  /** Mono runtimes currently being discarded by this window. */
+  restartingModelSessionIds?: ReadonlySet<string>;
   onSubmit: (
     sessionId: string,
     text: string,
@@ -324,6 +329,8 @@ const LocalSessionPane = memo(function LocalSessionPane({
   onModelChange,
   onModelSettingsChange,
   onRuntimeModeChange,
+  onRestartModelSession,
+  restartingModelSessionIds,
   onSaveDraft,
   onRemoveDraft,
   onSubmit,
@@ -417,6 +424,16 @@ const LocalSessionPane = memo(function LocalSessionPane({
   useSyncExternalStore(subscribeMonos, monosSnapshot);
   const mono = monoForSession(session.id);
   const agent = mono ? monoLook(mono) : undefined;
+  const restartAction =
+    agent && session.harness === "claude" && onRestartModelSession
+      ? {
+          disabledReason: monoModelRestartDisabledReason(
+            session,
+            restartingModelSessionIds?.has(session.id),
+          ),
+          onRestart: () => onRestartModelSession(session.id),
+        }
+      : undefined;
   // A Mono shows only its own background, never the project's or the app's.
   const projectBackground = mono
     ? monoChatBackground(mono.id)
@@ -1222,6 +1239,7 @@ const LocalSessionPane = memo(function LocalSessionPane({
                           hideSettings
                           hotkeys={focused && !btw.open}
                           variant="text"
+                          restartAction={restartAction}
                           onChange={(harness, model) =>
                             onModelChange(session.id, harness, model)
                           }

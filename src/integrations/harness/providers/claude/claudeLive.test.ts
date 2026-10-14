@@ -12,6 +12,7 @@ const sent: string[] = [];
 const spawned: string[][] = [];
 let onLine: ((line: string) => void) | undefined;
 let onExit: ((code?: number | null) => void) | undefined;
+const killChild = vi.fn(async () => undefined);
 const writeChild = vi.fn(async (_id: string, line: string) => {
   sent.push(line);
 });
@@ -21,7 +22,7 @@ vi.mock("../../core/child", () => ({
   spawnChild: async (_id: string, _path: string, args: string[]) => {
     spawned.push(args);
   },
-  killChild: async () => undefined,
+  killChild,
   unwatchChild: () => undefined,
   watchChild: (
     _id: string,
@@ -40,6 +41,7 @@ const {
   compactClaudeContext,
   respondClaudeApproval,
   respondClaudeQuestion,
+  restartClaudeSession,
   restoreClaudeTaskLists,
   sendClaudeTurn,
   stopClaudeSession,
@@ -260,6 +262,7 @@ beforeEach(() => {
   spawned.length = 0;
   onLine = undefined;
   onExit = undefined;
+  killChild.mockClear();
   writeChild.mockClear();
   __claudeTestReset();
 });
@@ -517,6 +520,36 @@ describe("claude task tools", () => {
     return session.blocks.filter((block) => block.role === "tasks").at(-1)
       ?.taskList?.items;
   }
+
+  it("restarts a Claude runtime and resumes the same conversation on the next turn", async () => {
+    const first = await startTurn("s1");
+    emit({ type: "result", subtype: "success", session_id: "sess_1" });
+    await first.turn;
+    const transcript = [...first.events];
+
+    await restartClaudeSession("s1");
+
+    expect(killChild).toHaveBeenCalledWith("s1");
+    expect(first.events).toEqual(transcript);
+
+    const { turn } = await restartedTurn(first.events);
+    expect(spawned.at(-1)).toEqual(
+      expect.arrayContaining(["--resume", "sess_1"]),
+    );
+    emit({ type: "result", subtype: "success", session_id: "sess_1" });
+    await turn;
+  });
+
+  it("reports when Claude cannot discard the stale runtime", async () => {
+    const first = await startTurn("s1");
+    emit({ type: "result", subtype: "success", session_id: "sess_1" });
+    await first.turn;
+    killChild.mockRejectedValueOnce(new Error("could not stop Claude Code"));
+
+    await expect(restartClaudeSession("s1")).rejects.toThrow(
+      "could not stop Claude Code",
+    );
+  });
 
   it("shows a TaskUpdate subject rename in the panel", async () => {
     const { events, turn } = await startTurn("s1");

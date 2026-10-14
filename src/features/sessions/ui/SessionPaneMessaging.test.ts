@@ -11,18 +11,46 @@ const probes = vi.hoisted(() => ({
   runs: [],
 }));
 vi.mock("./Composer", () => ({ Composer: () => null }));
+vi.mock("./ModelPicker", () => ({
+  ModelPicker: (props: {
+    triggerLabel?: string;
+    restartAction?: { onRestart: () => Promise<void> };
+  }) => {
+    if (props.restartAction)
+      return createElement(
+        "button",
+        {
+          type: "button",
+          "aria-label": "Restart model session",
+          onClick: () => void props.restartAction!.onRestart(),
+        },
+        "Restart model session",
+      );
+    return props.triggerLabel
+      ? createElement("button", { "aria-label": props.triggerLabel })
+      : null;
+  },
+  ModelControlPills: () => null,
+}));
 vi.mock("../hooks/useFileDrop", () => ({ useFileDrop: () => false }));
 vi.mock("../model/attachments", async (original) => ({
   ...(await original<typeof import("../model/attachments")>()),
   pickAttachments: probes.pick,
 }));
 vi.mock("./AgentTranscript", () => ({
-  AgentTranscript: (props: { onAddToChat: (text: string) => void }) => {
+  AgentTranscript: (props: {
+    blocks: unknown[];
+    onAddToChat: (text: string) => void;
+  }) => {
     probes.transcript(props);
     return createElement(
-      "button",
-      { onClick: () => props.onAddToChat("Selected response") },
-      "Quote response",
+      "div",
+      { "data-transcript-block-count": props.blocks.length },
+      createElement(
+        "button",
+        { onClick: () => props.onAddToChat("Selected response") },
+        "Quote response",
+      ),
     );
   },
 }));
@@ -192,6 +220,36 @@ it("keeps the same input, current draft and attachments when a question appears 
   expect(pane.onSubmit).toHaveBeenCalledWith("chat", "Fresh draft", [
     expect.objectContaining({ id: "file" }),
   ]);
+});
+
+it("keeps a Mono transcript and draft while its model runtime restarts", async () => {
+  setComposerDraft("chat", "Keep this draft");
+  const pane = props();
+  pane.session = {
+    ...pane.session,
+    harness: "claude",
+    model: "claude:claude-sonnet-5",
+  };
+  const blocks = [...pane.session.blocks];
+  const onRestartModelSession = vi.fn(async () => undefined);
+  pane.onRestartModelSession = onRestartModelSession;
+  render(pane);
+
+  const input = field();
+  const restart = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Restart model session"]',
+  )!;
+  await act(async () => restart.click());
+
+  expect(onRestartModelSession).toHaveBeenCalledWith("chat");
+  expect(field()).toBe(input);
+  expect(field().value).toBe("Keep this draft");
+  expect(pane.session.blocks).toEqual(blocks);
+  expect(
+    container
+      .querySelector("[data-transcript-block-count]")
+      ?.getAttribute("data-transcript-block-count"),
+  ).toBe(String(blocks.length));
 });
 
 it("routes transcript quotes to the Mono draft", () => {

@@ -1215,4 +1215,96 @@ describe("model picker", () => {
       container.querySelector('[role="menu"][aria-label="Model and settings"]'),
     ).toBeNull();
   });
+
+  it("restarts a scoped model runtime and confirms the next message reload", async () => {
+    const onRestart = vi.fn(async () => undefined);
+    act(() =>
+      root.render(
+        createElement(ModelPicker, {
+          harness: "claude",
+          model: "claude:claude-sonnet-5",
+          values: {},
+          hideSettings: true,
+          restartAction: { onRestart },
+          onChange: vi.fn(),
+          onSettingsChange: vi.fn(),
+        }),
+      ),
+    );
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!
+        .click(),
+    );
+    const restart = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Restart model session"]',
+    )!;
+    await act(async () => restart.click());
+
+    expect(onRestart).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain(
+      "Claude Code will reload configuration on your next message.",
+    );
+  });
+
+  it("shows restart blockers and operation errors without selecting a model", async () => {
+    const onRestart = vi.fn(async () => {
+      throw new Error("Claude Code did not exit");
+    });
+    act(() =>
+      root.render(
+        createElement(ModelPicker, {
+          harness: "claude",
+          model: "claude:claude-sonnet-5",
+          values: {},
+          hideSettings: true,
+          restartAction: { onRestart },
+          onChange: vi.fn(),
+          onSettingsChange: vi.fn(),
+        }),
+      ),
+    );
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!
+        .click(),
+    );
+    const restart = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Restart model session"]',
+    )!;
+    await act(async () => restart.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      "Could not restart model session: Claude Code did not exit",
+    );
+
+    act(() => root.render(null));
+    act(() =>
+      root.render(
+        createElement(ModelPicker, {
+          harness: "claude",
+          model: "claude:claude-sonnet-5",
+          values: {},
+          hideSettings: true,
+          restartAction: {
+            disabledReason: "Finish the current reply first.",
+            onRestart,
+          },
+          onChange: vi.fn(),
+          onSettingsChange: vi.fn(),
+        }),
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')!
+        .click(),
+    );
+    const blocked = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Restart model session"]',
+    )!;
+    expect(blocked.disabled).toBe(true);
+    expect(container.textContent).toContain("Finish the current reply first.");
+  });
 });

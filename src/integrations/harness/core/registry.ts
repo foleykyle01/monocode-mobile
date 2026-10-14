@@ -77,6 +77,8 @@ export type HarnessAdapter = {
   keepQuestionOpen?(sessionId: string, requestId: number): void;
   /** Kill the child but keep resume state for later rebind. */
   stopSession(sessionId: string): Promise<void>;
+  /** Discard a stale runtime while retaining provider resume state. */
+  restartSession?(sessionId: string): Promise<void>;
   /** Drop resume state and kill the child (delete, harness switch, idle detach). */
   forgetSession(sessionId: string): Promise<void>;
   /** Seed resume state from a restored MonoCode session. */
@@ -414,6 +416,31 @@ export async function stopHarnessSession(
   const adapter = getHarness(harness);
   if (!adapter?.live) return;
   await adapter.stopSession(sessionId);
+}
+
+/** Whether a provider has explicitly opted into non-destructive runtime restart. */
+export function canRestartHarnessSession(harness: HarnessId): boolean {
+  const adapter = getHarness(harness);
+  return adapter?.live === true && adapter.restartSession != null;
+}
+
+/**
+ * Dispose one provider runtime without forgetting its conversation. This is
+ * deliberately separate from stop/forget: only providers that prove their
+ * resume semantics expose it.
+ */
+export function restartHarnessSession(
+  harness: HarnessId,
+  sessionId: string,
+): Promise<void> {
+  return queueSessionOperation(sessionId, async () => {
+    const adapter = requireHarness(harness);
+    if (!adapter.live || !adapter.restartSession) {
+      throw new Error(`${harness} does not support restarting this session`);
+    }
+    cancelIdlePark(sessionId);
+    await adapter.restartSession(sessionId);
+  });
 }
 
 export async function forgetHarnessSession(
