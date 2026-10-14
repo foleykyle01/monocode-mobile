@@ -12,9 +12,9 @@ This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **
 
 ## Quickstart
 
-**Current access:** invited internal TestFlight testers only; public Mac downloads and the external iPhone invitation are still pending. Contributors can [build from source](companion/README.md#build-requirements).
+**Download the Mac app:** [MonoCode Dev 1.0.0-beta.2 for Apple Silicon](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2). **iPhone access:** invited internal TestFlight testers only; external review and a public invitation are still pending. Contributors can [build from source](companion/README.md#build-requirements).
 
-1. **Open MonoCode Dev on your Mac.** Use the mobile-enabled build; regular MonoCode cannot connect to the phone app.
+1. **Install MonoCode Dev on your Mac.** Download the `.dmg` above, open it, and drag **MonoCode Dev** into Applications. Use this mobile-enabled build; regular MonoCode cannot connect to the phone app.
 2. **Open a project and start a chat.** Use your existing project folder and [provider login](docs/providers.md). Switching from regular MonoCode? See below.
 3. **Show the pairing code.** On the Mac, go to **Settings → Connections → Phone companion**, turn on **Remote access**, and select **Show QR code**.
 4. **Connect your iPhone.** Install **MonoCode Companion** through your TestFlight invitation, select **Scan QR ticket**, scan the code, and tap **Connect to Mac**.
@@ -41,19 +41,19 @@ This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **
 
 ## Availability
 
-Status as of **October 13, 2026**:
+Status as of **October 14, 2026**:
 
 | Component | Current status |
 | --- | --- |
 | iPhone | **0.1.1 (1004)** is processed and available in the internal **Owner testing** TestFlight group. External beta access and a public invitation are not available yet. |
-| Mac installer | **MonoCode Dev 1.0.0-beta.1**, based on MonoCode **0.13.0**, has been signed and notarized for Apple Silicon. It is staged in a draft release, not yet a public download. |
+| Mac installer | [**MonoCode Dev 1.0.0-beta.2**](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2), based on MonoCode **0.13.0**, is available as a signed and notarized Apple Silicon installer. |
 | Source | Available here for contributors who can build and sign the apps themselves. A GitHub source archive is not an app installer. |
 | Updates | Internal iPhone updates use TestFlight. The Mac update feed remains disabled pending installation and upgrade validation. |
 | Notifications | **Disabled in build 1004**, with notification settings hidden. Open the phone app to check activity; background alerts are not included. |
 
 Build 1004 also adds full-page Settings with Connection first, an icon-only back button, and improved group/project collapsing in workspace navigation. Physical upgrade and reconnection validation for this build remains pending; earlier builds have been exercised on a real iPhone.
 
-**For community testers:** there is no public install-and-pair path yet. A compatible Mac download and approved external TestFlight invitation will be linked here when ready. You do not need to join the maintainer's Apple developer team. For now, use the source-build instructions below if you have a development setup.
+**For community testers:** the Mac download is ready; the iPhone public invitation still awaits external TestFlight review and setup. You do not need to join the maintainer's Apple developer team. [Pairing and test instructions](docs/companion/beta-review.md) · [Privacy](docs/companion/privacy.md).
 
 ## Install and connect
 
@@ -165,7 +165,7 @@ The request path is **iPhone UI → native Iroh transport → embedded Mac host 
 
 On iPhone, use **TestFlight → MonoCode Companion → Update**. Keep the existing installation and pairing during ordinary updates. [TestFlight builds expire after 90 days](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/) and require replacement builds; this is a beta channel, not permanent production distribution.
 
-For the Mac, the first public signed installer will require a manual install. Finish active work, quit MonoCode Dev, and replace the app in its existing location. Preserve its data directory and pairing; do not re-import an old profile as part of an update. The guarded updater is implemented, but automatic delivery remains disabled until a real bootstrap and subsequent upgrade are verified. Its restart checks are designed to block installation while sessions, approvals, questions, queued work, or terminals are active.
+For the Mac, install the signed `.dmg` manually. Finish active work, quit MonoCode Dev, and replace the app in its existing location. Preserve its data directory and pairing; do not re-import an old profile as part of an update. The guarded updater is implemented, but automatic delivery remains disabled until a real bootstrap and subsequent upgrade are verified. Its restart checks are designed to block installation while sessions, approvals, questions, queued work, or terminals are active.
 
 | Problem | What to do |
 | --- | --- |

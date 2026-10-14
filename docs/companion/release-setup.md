@@ -168,9 +168,14 @@ against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
 processing. Candidate 1004 also passed the signed upload and Apple processing.
 Mac release CI and guarded installation/restart handling are implemented. The
-signed/notarized Apple Silicon 1.0.0-beta.1 installer is staged in a draft release;
-public download publication and real bootstrap-to-update validation remain
-pending. The Mac update feed stays disabled.
+signed/notarized Apple Silicon [1.0.0-beta.2 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
+is public and the owner's installed executable matches the verified package.
+Real bootstrap-to-update validation remains pending. The Mac update feed stays disabled.
+
+The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
+are published. Their URLs and review notes still need saving in App Store Connect;
+build 1004 has not been submitted for external review. The Community beta public
+invitation remains disabled.
 
 ## External TestFlight handoff
 

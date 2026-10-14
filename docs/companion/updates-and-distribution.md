@@ -217,10 +217,10 @@ The TestFlight and Mac workflows have separate protected GitHub environments.
 The Mac environment contains Developer ID/notarization credentials and a separate
 Tauri signing key; both workflows run only on public `main` after review. Candidate
 1003 passed iPhone processing and the owner confirmed operation/reconnection.
-The Apple Silicon 1.0.0-beta.1 Mac installer has been signed, notarized and
-verified, and is staged in a draft GitHub release. Remaining delivery gates
-include real bootstrap-to-update validation, public installer publication,
-privacy metadata and external beta approval. The Mac
+The Apple Silicon [1.0.0-beta.2 Mac installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
+is signed, notarized, verified and public. The owner installed the matching package.
+Remaining delivery gates include real bootstrap-to-update validation,
+App Store Connect privacy/review metadata and external beta approval. The Mac
 feed remains disabled through `COMPANION_MAC_UPDATE_VERIFIED=false`. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
