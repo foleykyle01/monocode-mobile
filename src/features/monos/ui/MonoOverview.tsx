@@ -469,7 +469,7 @@ function OverviewTabs({
             title={label}
             data-tauri-drag-region="false"
             onClick={() => onChange(id)}
-            className={`flex h-7 items-center rounded-lg px-2 text-[12px] transition-colors duration-200 ${
+            className={`flex h-7 items-center rounded-lg px-2 text-[12px] transition-colors ${
               selected
                 ? "bg-content/8 text-content"
                 : "text-content/45 hover:bg-content/5 hover:text-content/80"
@@ -494,7 +494,7 @@ function OverviewTabs({
             <span
               aria-hidden={!selected}
               data-tab-label={selected ? "open" : "closed"}
-              className={`grid transition-[grid-template-columns,opacity] duration-200 ease-out motion-reduce:transition-none ${
+              className={`grid transition-[grid-template-columns,opacity] duration-(--motion-navigation-duration) ease-(--motion-ease-out) motion-reduce:transition-none ${
                 selected
                   ? "grid-cols-[1fr] opacity-100"
                   : "grid-cols-[0fr] opacity-0"

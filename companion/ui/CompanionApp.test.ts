@@ -359,7 +359,7 @@ it("opens a waiting session from home and makes the next waiting session reachab
   } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
-it("keeps Stop in the busy composer without a duplicate run bar or footer", async () => {
+it.each([false, true])("keeps Stop in the busy composer and acknowledges only success (failure=%s)", async failure => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
   vi.useFakeTimers();
@@ -376,8 +376,10 @@ it("keeps Stop in the busy composer without a duplicate run bar or footer", asyn
     expect(container.querySelector(".run-controls")).toBeNull();
     expect(container.querySelector(".composer-hint")).toBeNull();
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')?.disabled).toBe(true);
+    if (failure) fake.mutate.mockRejectedValueOnce(new CompanionRequestError("Stop refused", false));
     await act(async () => container.querySelector<HTMLButtonElement>('.composer [aria-label="Stop agent"]')!.click());
     expect(fake.mutate).toHaveBeenCalledWith("sessions.stop", { epoch: "e", sessionId: "session", turn: 7 });
+    expect(container.querySelector(".send-receipt")?.textContent).toBe(failure ? "" : "Stop accepted by Mac");
   } finally {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   }

@@ -3644,7 +3644,7 @@ export const SessionCard = memo(function SessionCard({
         <span className="relative mt-1 flex items-center gap-2">
           {project && !gitLabel ? (
             <span
-              className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-content/45"
+              className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-content/65"
               title={session.cwd}
             >
               <Folder className="size-3 shrink-0" strokeWidth={1.75} />
@@ -3652,7 +3652,7 @@ export const SessionCard = memo(function SessionCard({
             </span>
           ) : gitLabel ? (
             <span
-              className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-content/45"
+              className="flex min-w-0 flex-1 items-center gap-1 text-[11px] text-content/65"
               title={session.worktreeCwd ? `${gitLabel}\n${session.worktreeCwd}` : gitLabel}
             >
               <GitBranch className="size-3 shrink-0" strokeWidth={1.75} />

@@ -125,6 +125,18 @@ describe("phone transcript controls", () => {
     expect(container.querySelector(".activity-tree ol")).toBeNull();
   });
 
+  it("keeps inspected activity open when its last step completes", async () => {
+    const block: CompanionBlock = { id: "task", role: "tool", text: "Output", activity: { label: "Read file", state: "pending", kind: "read" } };
+    await render([block]);
+    expect(container.querySelector(".activity-tree__heading")?.getAttribute("aria-expanded")).toBe("true");
+    await render([{ ...block, activity: { ...block.activity!, state: "accepted" } }]);
+    expect(container.querySelector(".activity-tree__heading")?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector(".activity-tree ol")).not.toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>(".activity-tree__heading")!.click());
+    await render([block]);
+    expect(container.querySelector(".activity-tree ol")).toBeNull();
+  });
+
   it("renders desktop-style Markdown replies without role-label chrome", async () => {
     await render([{ id: "md", role: "assistant", text: "## Next steps\n\n- **Review** the change\n- Run `npm test`" }]);
     expect(container.querySelector("h2")?.textContent).toBe("Next steps");

@@ -3555,7 +3555,7 @@ function ProviderAccountsSettings() {
                   type="button"
                   disabled={Boolean(working)}
                   onClick={() => startAdd(provider)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] text-content/70 transition-transform duration-150 hover:bg-content/10 hover:text-content active:scale-[0.97] disabled:cursor-default disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] text-content/70 transition-transform duration-(--motion-feedback-duration) hover:bg-content/10 hover:text-content active:scale-[0.97] disabled:cursor-default disabled:opacity-40"
                 >
                   <Plus className="size-3.5" strokeWidth={1.75} aria-hidden />
                   Add account
@@ -3629,7 +3629,7 @@ function ProviderAccountsSettings() {
                         aria-label={`Rename ${account.label}`}
                         title="Rename account"
                         onClick={() => startRename(account)}
-                        className="grid size-7 place-items-center rounded-md text-content/40 transition-transform duration-150 hover:bg-content/10 hover:text-content active:scale-[0.96] disabled:opacity-35"
+                        className="grid size-7 place-items-center rounded-md text-content/40 transition-transform duration-(--motion-feedback-duration) hover:bg-content/10 hover:text-content active:scale-[0.96] disabled:opacity-35"
                       >
                         <Pencil className="size-3.5" strokeWidth={1.75} />
                       </button>
@@ -3640,7 +3640,7 @@ function ProviderAccountsSettings() {
                           aria-label={`Remove ${account.label}`}
                           title="Remove account"
                           onClick={() => void removeAccount(account)}
-                          className="grid size-7 place-items-center rounded-md text-content/35 transition-transform duration-150 hover:bg-red-400/10 hover:text-red-400 active:scale-[0.96] disabled:opacity-35"
+                          className="grid size-7 place-items-center rounded-md text-content/35 transition-transform duration-(--motion-feedback-duration) hover:bg-red-400/10 hover:text-red-400 active:scale-[0.96] disabled:opacity-35"
                         >
                           {removing ? (
                             <Loader className="size-3.5 animate-spin" />
@@ -3723,14 +3723,14 @@ function ProviderAccountEditor({
           type="button"
           disabled={working}
           onClick={onCancel}
-          className="flex h-6 shrink-0 items-center rounded-[4.5px] bg-content/[0.05] px-2.5 text-[11px] text-content/45 transition-transform duration-150 hover:bg-content/10 hover:text-content active:scale-[0.97] disabled:opacity-40"
+          className="flex h-6 shrink-0 items-center rounded-[4.5px] bg-content/[0.05] px-2.5 text-[11px] text-content/45 transition-transform duration-(--motion-feedback-duration) hover:bg-content/10 hover:text-content active:scale-[0.97] disabled:opacity-40"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={working || !editor.label.trim()}
-          className="ml-1 flex h-6 shrink-0 items-center gap-1.5 rounded-[4.5px] bg-content px-2.5 text-[11px] font-medium text-background-base transition-transform duration-150 hover:bg-content/85 active:scale-[0.97] disabled:cursor-default disabled:opacity-40"
+          className="ml-1 flex h-6 shrink-0 items-center gap-1.5 rounded-[4.5px] bg-content px-2.5 text-[11px] font-medium text-background-base transition-transform duration-(--motion-feedback-duration) hover:bg-content/85 active:scale-[0.97] disabled:cursor-default disabled:opacity-40"
         >
           {working ? <Loader className="size-3 animate-spin" /> : null}
           {adding
@@ -4161,7 +4161,7 @@ function MonoRow({ mono }: { mono: Mono }) {
             title="Reset to defaults"
             aria-label={`Reset ${look.name} to defaults`}
             onClick={open}
-            className="grid size-7 place-items-center rounded-md text-content/40 transition-transform duration-150 hover:bg-content/10 hover:text-content active:scale-[0.96]"
+            className="grid size-7 place-items-center rounded-md text-content/40 transition-transform duration-(--motion-feedback-duration) hover:bg-content/10 hover:text-content active:scale-[0.96]"
           >
             <RotateCcw className="size-3.5" strokeWidth={1.75} />
           </button>

@@ -27,6 +27,30 @@ function read(revision = "revision-1") {
 }
 
 describe("ChangesView", () => {
+  it("retains the inspected diff during refresh and a failed refresh", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const changesList = vi.fn(async () => list());
+    const client = { changesList, changesRead: vi.fn(async () => read()) } as unknown as CompanionClient;
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(createElement(ChangesView, { client, project, sessions, disabled: false, onBack: vi.fn() })));
+      await act(async () => container.querySelector<HTMLButtonElement>(".changed-file")!.click());
+      const diff = container.querySelector(".changes-diff");
+      let reject!: (reason: Error) => void;
+      changesList.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+      await act(async () => container.querySelector<HTMLButtonElement>(".changes-toolbar button")!.click());
+      expect(container.querySelector(".changes-diff")).toBe(diff);
+      expect(container.querySelector('[role="status"]')?.textContent).toBe("Loading changes…");
+      await act(async () => reject(new Error("Connection interrupted")));
+      expect(container.querySelector(".changes-diff")).toBe(diff);
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe("Connection interrupted");
+    } finally {
+      await act(async () => root.unmount());
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each(["button", "swipe"])("lists project changes, reads a unified file diff, and returns with %s", async navigation => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);

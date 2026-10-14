@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Streamdown, type Components } from "streamdown";
 import {
   ChevronLeft,
@@ -99,6 +99,17 @@ export function InboxView({ client, projects, onBack }: Props) {
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const detailEpoch = useRef<string | undefined>(undefined);
+  const list = useRef<HTMLDivElement>(null);
+  const listPosition = useRef(0);
+  const lastOpened = useRef<string | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    if (selected || !list.current) return;
+    list.current.scrollTop = listPosition.current;
+    const row = [...list.current.querySelectorAll<HTMLButtonElement>("[data-inbox-key]")]
+      .find(button => button.dataset.inboxKey === lastOpened.current);
+    row?.focus({ preventScroll: true });
+  }, [selected]);
 
   const load = () => {
     const request = ++listRequest.current;
@@ -226,7 +237,7 @@ export function InboxView({ client, projects, onBack }: Props) {
         <h2>Inbox</h2>
         <button className="inbox-refresh" type="button" onClick={load} disabled={loading || refreshing} aria-label="Refresh Inbox"><RefreshCw className="inbox-action-icon" strokeWidth={1.8} aria-hidden="true" /></button>
       </header>
-      <div className="inbox-list inbox-list--enter">
+      <div ref={list} className="inbox-list inbox-list--enter">
         <label className="inbox-search"><span className="sr-only">Search Inbox</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Inbox" type="search" /></label>
         {listError ? <p className={`inbox-state ${items.length ? "inbox-state--stale" : "inbox-state--error"}`} role="alert">{items.length ? "Showing the last available Inbox while your Mac reconnects." : listError}</p> : null}
         {providerErrors.length ? <div className="inbox-provider-errors" role="status">{providerErrors.map((error, index) => <p key={`${error}:${index}`}>{error}</p>)}</div> : null}
@@ -234,7 +245,11 @@ export function InboxView({ client, projects, onBack }: Props) {
         {!loading && !visible.length && !listError ? <p className="inbox-state">No Inbox items match this search.</p> : null}
         <div className="inbox-rows">
           {visible.map((item) => (
-            <button className="inbox-row" type="button" key={item.key} onClick={() => setSelected(item)}>
+            <button className="inbox-row" type="button" key={item.key} data-inbox-key={item.key} onClick={() => {
+              listPosition.current = list.current?.scrollTop ?? 0;
+              lastOpened.current = item.key;
+              setSelected(item);
+            }}>
               <InboxProviderMark provider={item.provider} className="inbox-provider-mark" />
               <WorkItemIcon item={item} />
               <span className="inbox-row__body"><strong>{item.title}</strong><small>{item.reference} · {item.state}{item.projectId ? ` · ${projects.find((project) => project.id === item.projectId)?.name || "Project"}` : ""}</small></span>

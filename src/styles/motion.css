@@ -1,0 +1,30 @@
+/* Shared semantic timing; desktop and phone keep their own geometry. */
+:root {
+  --motion-reorder-duration: 160ms;
+  --motion-tab-close-duration: 200ms;
+  --motion-feedback-duration: 120ms;
+  --motion-surface-duration: 160ms;
+  --motion-navigation-duration: 220ms;
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-tab-ease-out: cubic-bezier(0.3333, 0.6667, 0.6667, 1);
+}
+
+/* Opacity only: receipts and status changes must not move the conversation. */
+@keyframes state-acknowledged {
+  from { opacity: .45; }
+  to { opacity: 1; }
+}
+.state-acknowledged {
+  animation: state-acknowledged var(--motion-surface-duration) var(--motion-ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-reorder-duration: 0ms;
+    --motion-tab-close-duration: 0ms;
+    --motion-feedback-duration: 0ms;
+    --motion-surface-duration: 0ms;
+    --motion-navigation-duration: 0ms;
+  }
+  .state-acknowledged { animation: none; }
+}

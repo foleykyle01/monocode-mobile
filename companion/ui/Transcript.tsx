@@ -212,8 +212,8 @@ function transcriptRows(blocks: CompanionBlock[]): (CompanionBlock | CompanionBl
 
 function ActivityTree({ blocks }: { blocks: CompanionBlock[] }) {
   const working = blocks.some(block => block.activity?.state === "pending");
-  const [expanded, setExpanded] = useState<boolean>();
-  const open = expanded ?? working;
+  // Completion must not collapse activity the reader is inspecting.
+  const [open, setExpanded] = useState(working);
   return <section className="activity-tree" aria-label="Agent activity">
     <button type="button" className="activity-tree__heading" aria-expanded={open} onClick={() => setExpanded(!open)}>
       <span className={open ? "activity-tree__chevron--open" : ""}><ChevronRight size={14} /></span>
