@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Session } from "../../sessions/model/session";
+import type { MonoSpawnedSession, Session } from "../../sessions/model/session";
 import { createCompanionBridge, type CompanionOwner } from "./companionBridge";
 import { buildCompanionNavigation, companionProjectId } from "./companionNavigation";
 
@@ -26,6 +26,99 @@ function fixture() {
 }
 
 describe("desktop companion owner boundary", () => {
+  const launch: MonoSpawnedSession = {
+    sessionId: "app-mono-child",
+    cwd: "/tmp/companion-test",
+    title: "Child task",
+    harness: "codex",
+    model: "child-model",
+  };
+
+  function readBlocks(result: unknown) {
+    return (result as { blocks: Array<Record<string, unknown>> }).blocks;
+  }
+
+  it("exports live summaries for Mono-launched sessions and refreshes them on each read", async () => {
+    const { bridge, session, sessions, owner } = fixture();
+    const child: Session = {
+      ...session,
+      id: launch.sessionId,
+      title: launch.title,
+      cwd: launch.cwd,
+      model: launch.model,
+      blocks: [{ id: "child-output", role: "assistant", text: "Working" }],
+      busy: false,
+    };
+    sessions.push(child);
+    session.blocks = [
+      { id: "prompt", role: "user", text: "Delegate", monoSpawnedSessions: [launch] },
+      { id: "reply", role: "assistant", text: "Started" },
+    ];
+    owner.turn = vi.fn((id) => id === child.id ? 4 : 1);
+
+    const first = readBlocks(await bridge.handle("first", "sessions.read", { sessionId: session.id }));
+    expect(first[1]).toMatchObject({ spawnedSessions: [{ id: child.id, busy: false, turn: 4 }] });
+
+    child.busy = true;
+    child.blocks.push({ id: "approval", role: "approval", text: "Allow?", approval: { requestId: 2 } });
+    owner.turn = vi.fn((id) => id === child.id ? 5 : 1);
+    const second = readBlocks(await bridge.handle("second", "sessions.read", { sessionId: session.id }));
+    expect(second[1]).toMatchObject({ spawnedSessions: [{ id: child.id, busy: true, turn: 5, needsApproval: true }] });
+  });
+
+  it("omits self, unavailable, unlistable, and deleted Mono targets without leaking their metadata", async () => {
+    const { bridge, session, sessions, owner } = fixture();
+    const targets = [launch, { ...launch, sessionId: "excluded", title: "Private" }, { ...launch, sessionId: "hidden", title: "Hidden" }, { ...launch, sessionId: "deleted", title: "Gone" }];
+    session.blocks = [{
+      id: "prompt", role: "user", text: "Delegate",
+      monoSpawnedSessions: [...targets, { ...launch, sessionId: session.id }],
+    }];
+    sessions.push(
+      ...targets.slice(0, 2).map((entry) => ({ ...session, ...entry, id: entry.sessionId, blocks: [] })),
+    );
+    owner.eligible = (entry) => entry.id !== "excluded";
+    owner.listable = (entry) => entry.id !== "hidden";
+
+    const first = await bridge.handle("filtered", "sessions.read", { sessionId: session.id });
+    expect(JSON.stringify(first)).not.toContain("Private");
+    expect(JSON.stringify(first)).not.toContain("Hidden");
+    expect(JSON.stringify(first)).not.toContain("Gone");
+    expect(readBlocks(first)[0]).toMatchObject({ spawnedSessions: [{ id: launch.sessionId }] });
+
+    sessions.splice(sessions.findIndex((entry) => entry.id === launch.sessionId), 1);
+    const second = readBlocks(await bridge.handle("deleted", "sessions.read", { sessionId: session.id }));
+    expect(second[0]).not.toHaveProperty("spawnedSessions");
+  });
+
+  it("deduplicates launch records and anchors an old launch to the latest page's turn tail", async () => {
+    const { bridge, session, sessions } = fixture();
+    sessions.push({ ...session, id: launch.sessionId, title: launch.title, blocks: [] });
+    session.blocks = [
+      { id: "old-prompt", role: "user", text: "Delegate", monoSpawnedSessions: [launch, launch] },
+      ...Array.from({ length: 120 }, (_, index) => ({ id: `reply-${index}`, role: "assistant" as const, text: "Output" })),
+    ];
+
+    const result = readBlocks(await bridge.handle("paged", "sessions.read", { sessionId: session.id }));
+    expect(result).toHaveLength(100);
+    expect(result[0]).not.toHaveProperty("spawnedSessions");
+    expect(result[99]).toMatchObject({ id: "reply-119", spawnedSessions: [{ id: launch.sessionId }] });
+  });
+
+  it("allows the same child to be linked once in each Mono turn", async () => {
+    const { bridge, session, sessions } = fixture();
+    sessions.push({ ...session, id: launch.sessionId, title: launch.title, blocks: [] });
+    session.blocks = [
+      { id: "first-prompt", role: "user", text: "Start", monoSpawnedSessions: [launch, launch] },
+      { id: "first-reply", role: "assistant", text: "Started" },
+      { id: "second-prompt", role: "user", text: "Continue", monoSpawnedSessions: [launch] },
+      { id: "second-reply", role: "assistant", text: "Continuing" },
+    ];
+
+    const blocks = readBlocks(await bridge.handle("repeat", "sessions.read", { sessionId: session.id }));
+    expect(blocks[1]).toMatchObject({ spawnedSessions: [{ id: launch.sessionId }] });
+    expect(blocks[3]).toMatchObject({ spawnedSessions: [{ id: launch.sessionId }] });
+  });
+
   function questionFixture() {
     const f = fixture();
     f.session.busy = true;

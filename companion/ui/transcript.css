@@ -104,3 +104,14 @@
   .activity-tree__heading > span:first-child { transition: none; }
   .transcript-working__shimmer { background-image: none; color: var(--companion-muted); animation: none; }
 }
+.spawned-sessions { display: grid; gap: 8px; margin: 8px 0 16px; }
+.spawned-session { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px 14px; border: 1px solid var(--companion-stroke); border-radius: 14px; background: var(--companion-panel); color: var(--companion-content); text-align: left; font: inherit; cursor: pointer; }
+.spawned-session > .project-activity { margin: 0; }
+.spawned-session > .project-activity:not(.project-activity--running):not(.project-activity--attention) { background: var(--companion-dim); }
+.spawned-session__body { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.spawned-session__body strong { font-size: calc(14px * var(--companion-ui-scale)); font-weight: 500; overflow-wrap: anywhere; }
+.spawned-session__body small { color: var(--companion-muted); font-size: calc(12px * var(--companion-ui-scale)); overflow-wrap: anywhere; }
+.spawned-session > svg { flex-shrink: 0; color: var(--companion-muted); }
+.spawned-session:focus-visible { outline: 2px solid var(--companion-accent); outline-offset: 3px; }
+.spawned-session:active { background: var(--companion-raised); }
+.detail-heading .back-button--linked { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--companion-content); cursor: pointer; }

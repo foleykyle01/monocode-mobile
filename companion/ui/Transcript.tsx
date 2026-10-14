@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Streamdown, type Components } from "streamdown";
-import type { CompanionBlock, SessionRead } from "./types";
+import type { CompanionBlock, CompanionSession, SessionRead } from "./types";
 import type { UserQuestionReply } from "../../src/features/sessions/model/userQuestion";
 import { QuestionCard } from "./QuestionCard";
+import { activityLabel } from "./Navigation";
 import { Check, ChevronRight, Terminal, File, Search, Wrench } from "../../src/shared/ui/icons";
 import "./transcript.css";
 
@@ -35,7 +36,7 @@ function actionSummary(text: string) {
   return text.trim().split("\n")[0].slice(0, 300) || "Action";
 }
 
-export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes }: {
+export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop }: {
   blocks: CompanionBlock[];
   loading: boolean;
   onApprove: (block: CompanionBlock, decision: "allow" | "deny") => void;
@@ -55,10 +56,13 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   onAnswer?: (requestId: number, reply: UserQuestionReply) => void;
   onQuestionInteraction?: (requestId: number) => Promise<unknown>;
   changes?: ReactNode;
+  onOpenSession?: (session: CompanionSession, scrollTop: number) => void;
+  initialScrollTop?: number;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
+  const restoreTop = useRef(initialScrollTop);
   const snapshot = useRef<ScrollSnapshot | undefined>(undefined);
   const [below, setBelow] = useState(false);
   const approval = blocks.find(block => block.approval && !block.approval.decided);
@@ -78,7 +82,11 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     if (!element) return;
     const update = () => {
       const previous = snapshot.current;
-      if (previous && prependedBlocks(previous, blocks)) {
+      if (restoreTop.current !== undefined && !loading) {
+        element.scrollTop = restoreTop.current;
+        restoreTop.current = undefined;
+        following.current = false;
+      } else if (previous && prependedBlocks(previous, blocks)) {
         element.scrollTop = previous.top + element.scrollHeight - previous.height;
         following.current = false;
       } else if (following.current) {
@@ -91,7 +99,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     observer.observe(element);
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
-  }, [blocks, loadingEarlier, showWorking]);
+  }, [blocks, loading, loadingEarlier, showWorking]);
 
   function jump() {
     const element = viewport.current;
@@ -112,6 +120,21 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     onLoadEarlier();
   }
 
+  function sessionCards(block: CompanionBlock) {
+    if (!onOpenSession || !block.spawnedSessions?.length) return null;
+    return <div className="spawned-sessions" aria-label="Project sessions started by this Mono">
+      {block.spawnedSessions.map(session => {
+        const state = activityLabel(session);
+        const project = session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd;
+        return <button className="spawned-session" type="button" key={session.id} onClick={() => onOpenSession(session, viewport.current?.scrollTop ?? 0)}>
+          <span className={`project-activity ${session.needsApproval || session.needsQuestion ? "project-activity--attention" : session.busy ? "project-activity--running" : ""}`} aria-hidden="true" />
+          <span className="spawned-session__body"><strong>{session.title}</strong><small>{project} · {state}</small></span>
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>;
+      })}
+    </div>;
+  }
+
   return <div className="transcript-region">
     <div ref={viewport} className={`transcript transcript--${layout} ${mono ? "transcript--mono" : ""}`} onScroll={measure} aria-label="Conversation" tabIndex={0}>
       <div ref={content}>
@@ -124,7 +147,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
         {loading && blocks.length === 0 ? <p className="empty-transcript" role="status">Loading conversation…</p> : null}
         {!loading && !busy && blocks.length === 0 ? <div className="empty-transcript"><span className="empty-line" aria-hidden="true" /><p>No messages yet. Send a message to begin.</p></div> : null}
         {transcriptRows(blocks).map(row => {
-          if (Array.isArray(row)) return <ActivityTree key={row[0].id} blocks={row} />;
+          if (Array.isArray(row)) return <Fragment key={row[0].id}><ActivityTree blocks={row} />{row.map(block => <Fragment key={block.id}>{sessionCards(block)}</Fragment>)}</Fragment>;
           const block = row;
           const tool = block.role === "tool" || block.role === "approval";
           const pending = !!block.approval && !block.approval.decided;
@@ -132,7 +155,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
           const body = block.role === "assistant"
             ? <><Streamdown className="companion-markdown" mode="static" controls={false} components={markdownComponents}>{block.text || ""}</Streamdown>{shortened}</>
             : <p>{block.text || "(empty)"}{shortened}</p>;
-          return <article className={`message message--${block.role} ${pending ? "message--pending" : ""}`} key={block.id} data-pending-approval={pending || undefined}>
+          return <Fragment key={block.id}><article className={`message message--${block.role} ${pending ? "message--pending" : ""}`} data-pending-approval={pending || undefined}>
             {tool && !pending ? <details className="action-details"><summary><span className="action-details__summary">{actionSummary(block.text)}</span><small>{actionStatus(block)}</small></summary>{body}</details> : <>
               {pending ? <div className="message__meta"><span className="approval-label">Needs approval</span></div> : null}
               {body}
@@ -141,7 +164,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
                 <button className="button button--quiet" type="button" onClick={() => onApprove(block, "deny")} disabled={mutationsDisabled || approvalBusy}>Deny</button>
               </div></div> : null}
             </>}
-          </article>;
+          </article>{sessionCards(block)}</Fragment>;
         })}
         {pendingQuestion && onAnswer && onQuestionInteraction ? <QuestionCard key={`${questionKey}:${pendingQuestion.requestId}`} prompt={pendingQuestion} disabled={mutationsDisabled || approvalBusy} onAnswer={onAnswer} onInteraction={onQuestionInteraction} /> : null}
         {questionUnavailable ? <p className="truncated-note" role="status">The agent has a question. Open this session on your Mac to answer it.</p> : null}

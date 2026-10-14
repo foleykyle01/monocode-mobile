@@ -40,6 +40,32 @@ async function render(blocks: CompanionBlock[], onApprove = vi.fn(), options: Pa
 }
 
 describe("phone transcript controls", () => {
+  it("opens a linked live project session with its current status and reading position", async () => {
+    const session = { id: "child", title: "Check access", cwd: "/work/Power Platform", harness: "claude", model: "opus", busy: true, turn: 4, needsApproval: true };
+    const open = vi.fn();
+    const block: CompanionBlock = { id: "launch", role: "tool", text: "Started session", spawnedSessions: [session] };
+    await render([block], vi.fn(), { mono: true, onOpenSession: open });
+    const viewport = container.querySelector<HTMLDivElement>(".transcript")!;
+    viewport.scrollTop = 123;
+    const card = container.querySelector<HTMLButtonElement>(".spawned-session")!;
+    expect(card.textContent).toContain("Power Platform · Needs approval");
+    await act(async () => card.click());
+    expect(open).toHaveBeenCalledExactlyOnceWith(session, 123);
+    await render([{ ...block, spawnedSessions: [{ ...session, busy: false, needsApproval: false }] }], vi.fn(), { onOpenSession: open });
+    expect(container.querySelector(".spawned-session")?.textContent).toContain("Ready");
+  });
+
+  it("restores the parent reading position once and preserves it through live updates", async () => {
+    await render([], vi.fn(), { loading: true, initialScrollTop: 123 });
+    await render([{ id: "parent", role: "assistant", text: "Mono response" }], vi.fn(), { initialScrollTop: 123 });
+    const viewport = container.querySelector<HTMLDivElement>(".transcript")!;
+    expect(viewport.scrollTop).toBe(123);
+    await act(async () => { viewport.scrollTop = 200; viewport.dispatchEvent(new Event("scroll")); });
+    height = 1400;
+    await render([{ id: "parent", role: "assistant", text: "Mono response updated" }], vi.fn(), { initialScrollTop: 123 });
+    expect(viewport.scrollTop).toBe(200);
+  });
+
   it("answers desktop questions and waits for the keep-open request before submitting", async () => {
     let release!: () => void;
     const hold = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));

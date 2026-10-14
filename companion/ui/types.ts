@@ -77,6 +77,7 @@ export type CompanionBlock = {
   text: string;
   truncated?: boolean;
   approval?: CompanionApproval;
+  spawnedSessions?: CompanionSession[];
   activity?: { label: string; state: "pending" | "accepted" | "rejected"; kind?: string; name?: string;
     steps?: { id: string; label: string; state: "pending" | "accepted" | "rejected" }[]; stepsTruncated?: boolean };
 };

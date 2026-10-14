@@ -104,7 +104,10 @@ const DEMO_SESSIONS: CompanionSession[] = [
   },
 ];
 const DEMO_BLOCKS: Record<string, CompanionBlock[]> = {
-  "mono-scout": [{ id: "scout-1", role: "assistant", text: "What would you like to work on? I can help across MonoCode and Companion Lab." }],
+  "mono-scout": [
+    { id: "scout-1", role: "user", text: "Build the companion window and review the release notes." },
+    { id: "scout-2", role: "assistant", text: "I’ve started two sessions in MonoCode. Open either one to follow its progress, answer approvals, or send a message. I’ll bring the results back here.", spawnedSessions: DEMO_SESSIONS.filter(session => session.id === "demo-shipyard" || session.id === "demo-docs") },
+  ],
   "mono-atlas": [{ id: "atlas-1", role: "assistant", text: "Ready to help with your notes." }],
   "demo-shipyard": [
     { id: "d1", role: "user", text: "Build the smallest useful companion client." },
@@ -203,7 +206,7 @@ function demoClient() {
           result: {
             epoch,
             session: { ...session },
-            blocks: transcript.slice(start, end),
+            blocks: transcript.slice(start, end).map(block => block.spawnedSessions ? { ...block, spawnedSessions: block.spawnedSessions.flatMap(link => sessions.filter(target => target.id === link.id).map(target => ({ ...target }))) } : block),
             configuration: DEMO_CONFIGURATION,
             pendingQuestion: session.id === "mono-atlas" ? question : undefined,
             reviewAvailable: true,
@@ -341,6 +344,10 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const selectedIdRef = useRef(selectedId);
   useLayoutEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   const [read, setRead] = useState<SessionRead>();
+  const [linkedView, setLinkedView] = useState<{ session: CompanionSession; parent: { read: SessionRead; monoId: string; name: string; scrollTop: number } }>();
+  const linkedViewRef = useRef(linkedView);
+  useLayoutEffect(() => { linkedViewRef.current = linkedView; }, [linkedView]);
+  const [restoredPosition, setRestoredPosition] = useState<{ sessionId: string; top: number }>();
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
   const historySerial = useRef(0);
@@ -424,7 +431,8 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
         notificationSelection.current = undefined;
         setSelectedId((current) => {
           const preferred = notified ?? selectId ?? current ?? initialPendingRef.current?.input.sessionId;
-          const available = preferred && (list.sessions.some(entry => entry.id === preferred) || list.navigation?.monos.some(mono => mono.canChat && mono.sessionId === preferred));
+          // A direct Mono link may point beyond the bounded workspace list.
+          const available = preferred && (linkedViewRef.current?.session.id === preferred || list.sessions.some(entry => entry.id === preferred) || list.navigation?.monos.some(mono => mono.canChat && mono.sessionId === preferred));
           return available ? preferred : list.sessions[0]?.id;
         });
         offlineRef.current = false;
@@ -450,13 +458,13 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     const serial = ++transcriptSerial.current;
     try {
       const result = await client.sessionRead(sessionId);
-      if (serial === transcriptSerial.current) {
+      if (serial === transcriptSerial.current && selectedIdRef.current === sessionId) {
         setRead(previous => mergeLatest(previous, result));
         offlineRef.current = false;
         setOffline(false);
       }
     } catch (reason) {
-      if (serial === transcriptSerial.current) {
+      if (serial === transcriptSerial.current && selectedIdRef.current === sessionId) {
         offlineRef.current = true;
         setOffline(true);
         setConnectionError(reason instanceof Error ? reason.message : "Could not read this session");
@@ -516,7 +524,9 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    setRead(undefined);
+    setRead(previous => previous?.session.id === selectedId ? previous : undefined);
+    setRestoredPosition(previous => previous?.sessionId === selectedId ? previous : undefined);
+    if (linkedViewRef.current && linkedViewRef.current.session.id !== selectedId) setLinkedView(undefined);
     setError(undefined);
     ++historySerial.current;
     historyInFlight.current = false;
@@ -560,7 +570,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const displayOnline = demo ? previewConnection !== "offline" : networkOnline;
   const activeRead = read?.session.id === selectedId ? read : undefined;
   const unreadSessionIds = useSessionActivity(sessions, sessionEpoch, !mobileListOpen && !workspaceView && !settingsOpen && document.visibilityState === "visible" ? activeRead?.session : undefined);
-  const selected = activeRead?.session || sessions.find((session) => session.id === selectedId);
+  const selected = activeRead?.session || sessions.find((session) => session.id === selectedId) || (linkedView && linkedView.session.id === selectedId ? linkedView.session : undefined);
   const mutationsDisabled = displayOffline || !networkOnline || reconnecting || !!pendingMutation || acting;
   const canSend = !!selected && !!activeRead && !selected.busy && !!composer.trim() && !mutationsDisabled;
   const hostAppearance = demo ? { ...BASE_APPEARANCES.dark, transcriptLayout: previewLayout } : appearance;
@@ -754,7 +764,33 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const detailMono = workspaceView?.kind === "mono" ? navigation?.monos.find(mono => mono.id === workspaceView.monoId) : !workspaceView && selectedMono && !selectedMono.canChat ? selectedMono : undefined;
   const workspaceProject = workspaceView?.kind === "changes" ? navigation?.projects.find(project => project.id === workspaceView.projectId) : undefined;
   const backToWorkspace = () => { setWorkspaceView(undefined); setMobileListOpen(true); };
-  const swipeSurface = useEdgeSwipeBack(backToWorkspace, !mobileListOpen && !settingsOpen && workspaceView?.kind !== "inbox" && workspaceView?.kind !== "changes", detailMono?.id || selectedId);
+  const linkedParent = linkedView && linkedView.session.id === selectedId && !workspaceView ? linkedView.parent : undefined;
+  const openLinkedSession = (session: CompanionSession, scrollTop: number) => {
+    if (!selectedMono || !activeRead || session.id === selectedId || actingRef.current) return;
+    const next = { session, parent: { read: activeRead, monoId: selectedMono.id, name: selectedMono.name, scrollTop } };
+    linkedViewRef.current = next;
+    setLinkedView(next);
+    setRestoredPosition(undefined);
+    ++transcriptSerial.current;
+    selectedIdRef.current = session.id;
+    setSelectedMonoId(undefined);
+    setSelectedId(session.id);
+    setRead(undefined);
+    setWorkspaceView(undefined);
+    setMobileListOpen(false);
+  };
+  const backToConversation = () => {
+    if (!linkedParent) { backToWorkspace(); return; }
+    ++transcriptSerial.current;
+    selectedIdRef.current = linkedParent.read.session.id;
+    setSelectedId(linkedParent.read.session.id);
+    setSelectedMonoId(linkedParent.monoId);
+    setRead(linkedParent.read);
+    setRestoredPosition({ sessionId: linkedParent.read.session.id, top: linkedParent.scrollTop });
+    linkedViewRef.current = undefined;
+    setLinkedView(undefined);
+  };
+  const swipeSurface = useEdgeSwipeBack(backToConversation, !mobileListOpen && !settingsOpen && workspaceView?.kind !== "inbox" && workspaceView?.kind !== "changes", detailMono?.id || selectedId);
   const recoveryBanner = pendingMutation ? <div className="recovery-banner" role="alert"><strong>Command status is uncertain.</strong><span>{pendingMutation.action.replace("sessions.", "")} may have reached the Mac.</span>{error ? <p className="recovery-banner__error">{error}</p> : null}<div><button className="button button--small button--primary" type="button" onClick={() => void retryPending()} disabled={acting || offline}>Retry same command</button><button className="button button--small button--quiet" type="button" onClick={() => void refreshPendingConversation()} disabled={acting}>{pendingMutation.action === "sessions.create" ? "Review project" : "Refresh conversation"}</button><button className="button button--small button--quiet" type="button" onClick={() => void clearPendingAfterReview()} disabled={acting || offline}>I checked — clear</button></div><small>{pendingMutation.action === "sessions.create" ? "A new session may already exist. Review this project on the Mac before clearing; retry uses the same session ID." : "We refresh the original session before removing this saved command. New commands stay blocked until then."}</small></div> : null;
 
   const connectionLabel = !displayOnline ? "This device is offline" : displayReconnecting ? "Reconnecting to your Mac" : displayOffline ? "Can’t reach your Mac" : "Connected to your Mac";
@@ -804,7 +840,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           {appearanceMode === "host" && activeRead && !workspaceView ? <ChatBackground background={activeRead.chatBackground} empty={activeRead.totalBlocks === 0} /> : null}
           {detailMono ? <MonoDetailsView key={detailMono.id} client={client} mono={detailMono} projects={navigation?.projects || []} onBack={backToWorkspace} /> : workspaceView?.kind === "inbox" ? <InboxView client={client} projects={navigation?.projects || []} onBack={backToWorkspace} /> : workspaceView?.kind === "changes" ? workspaceProject ? <ChangesView key={workspaceView.projectId} client={client} project={workspaceProject} sessions={sessions.filter(session => session.projectId === workspaceProject.id)} disabled={displayOffline} onBack={backToWorkspace} /> : <div className="empty-panel"><p>This project is no longer available.</p><button className="button button--quiet" onClick={backToWorkspace}>Back to workspace</button></div> : selected ? <>
             <header className="detail-heading">
-              <button className="back-button" type="button" aria-label="Back to workspace" onClick={backToWorkspace}><ChevronLeft size={20} aria-hidden="true" /></button>
+              <button className={`back-button ${linkedParent ? "back-button--linked" : ""}`} type="button" aria-label={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} title={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} onClick={backToConversation}><ChevronLeft size={20} aria-hidden="true" /></button>
               {selectedMono ? <MonoMascot mono={selectedMono} /> : null}
               <h2 className="conversation-title" title={selectedMono?.name || selected.title || "Untitled session"}>{selectedMono?.name || selected.title || "Untitled session"}</h2>
             </header>
@@ -812,6 +848,8 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
             {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
             <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
+              onOpenSession={selectedMono && activeRead ? openLinkedSession : undefined}
+              initialScrollTop={restoredPosition?.sessionId === selected.id ? restoredPosition.top : undefined}
               pendingQuestion={activeRead?.pendingQuestion} questionUnavailable={activeRead?.questionUnavailable}
               questionKey={`${activeRead?.epoch}:${activeRead?.session.turn}`}
               changes={activeRead?.reviewAvailable ? <SessionChanges key={selected.id} client={client} sessionId={selected.id} epoch={activeRead.epoch} turn={activeRead.session.turn} busy={selected.busy} offline={displayOffline} /> : undefined}

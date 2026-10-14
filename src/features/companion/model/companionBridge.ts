@@ -10,6 +10,7 @@ import type { createCompanionChanges } from "./companionChanges";
 import { companionQuestion, validateQuestionReply } from "./companionQuestion";
 import type { UserQuestionReply } from "../../sessions/model/userQuestion";
 import { toolCallLabel, toolCallState } from "../../sessions/model/transcriptActivity";
+import { monoSpawnedSessions } from "../../monos/model/monoSpawnedSessions";
 
 export type CompanionConfiguration = {
   models: { harness: string; id: string; label: string }[];
@@ -48,6 +49,7 @@ export type CompanionOwner = {
 const READ_LIMIT = 100;
 const TEXT_LIMIT = 8_192;
 const RECEIPT_LIMIT = 512;
+const SPAWNED_SESSION_LIMIT = 20;
 const MUTATIONS = new Set([
   "sessions.send",
   "sessions.approve",
@@ -149,6 +151,50 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     };
   }
 
+  /**
+   * Resolve Mono launch cards against the live owner session list. The launch
+   * receipt can be older than the transcript page currently being returned,
+   * so anchor each card to the end of its full user turn before slicing.
+   */
+  function spawnedSessionCards(session: Session, start: number, end: number, navigation?: CompanionNavigation) {
+    const knownLaunches = monoSpawnedSessions(session.blocks);
+    if (knownLaunches.length === 0) return new Map<number, ReturnType<typeof summary>[]>();
+
+    const liveTargets = new Map(
+      owner.sessions()
+        .filter((target) => target.id !== session.id && owner.eligible(target) && (owner.listable?.(target) ?? true))
+        .map((target) => [target.id, target]),
+    );
+    if (liveTargets.size === 0) return new Map<number, ReturnType<typeof summary>[]>();
+
+    const anchors = new Map<number, ReturnType<typeof summary>[]>();
+    let turnStart: number | undefined;
+    const finishTurn = (turnEnd: number) => {
+      if (turnStart === undefined) return;
+      const anchor = turnEnd - 1;
+      // A card belongs to the final block of its turn. If that block is not
+      // in this page, leave it to the page that contains the anchor.
+      if (anchor < start || anchor >= end) return;
+      const launches = monoSpawnedSessions(session.blocks.slice(turnStart, turnEnd), knownLaunches);
+      const cards: ReturnType<typeof summary>[] = [];
+      for (const launch of launches) {
+        const target = liveTargets.get(launch.sessionId);
+        if (!target) continue;
+        cards.push(summary(target, navigation));
+        if (cards.length >= SPAWNED_SESSION_LIMIT) break;
+      }
+      if (cards.length > 0) anchors.set(anchor, cards);
+    };
+
+    session.blocks.forEach((block, index) => {
+      if (block.role !== "user") return;
+      finishTurn(index);
+      turnStart = index;
+    });
+    finishTurn(session.blocks.length);
+    return anchors;
+  }
+
   function read(action: string, input: Record<string, unknown>) {
     owner.flush();
     if (action === "sessions.review.list" || action === "sessions.review.read") {
@@ -220,6 +266,8 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       throw new Error("Invalid transcript cursor; refresh the session");
     const end = before as number;
     const start = Math.max(0, end - READ_LIMIT);
+    const navigation = owner.navigation?.();
+    const spawnedCards = spawnedSessionCards(session, start, end, navigation);
     let chatBackground: CompanionChatBackground | null = null;
     try {
       chatBackground = owner.chatBackground?.(session) ?? null;
@@ -229,11 +277,15 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     return {
       epoch,
       session: {
-        ...summary(session, owner.navigation?.()),
+        ...summary(session, navigation),
       },
       ...(owner.configuration ? { configuration: owner.configuration(session) } : {}),
       // Deliberately bounded text-only snapshots for the feasibility client.
-      blocks: session.blocks.slice(start, end).map(snapshotBlock),
+      blocks: session.blocks.slice(start, end).map((block, offset) => {
+        const snapshot = snapshotBlock(block);
+        const spawnedSessions = spawnedCards.get(start + offset);
+        return spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot;
+      }),
       nextBefore: start || null,
       totalBlocks: session.blocks.length,
       chatBackground,
