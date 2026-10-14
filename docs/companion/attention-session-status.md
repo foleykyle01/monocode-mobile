@@ -1,6 +1,6 @@
-# Attention, linked-session status, and follow-ups (next build)
+# Attention, linked-session status, and follow-ups
 
-This local source slice requires matching Mac and phone builds. It is not included in Mac beta.2 or TestFlight 1004. No app installation, profile change, release, or publication is part of this change.
+Published in [PR #13](https://github.com/foleykyle01/monocode-mobile/pull/13). This source slice requires matching Mac and phone builds and is not included in Mac beta.2 or TestFlight 1004. See [release setup](release-setup.md) for delivery status. A phone update alone cannot enable missing host capabilities; app installation and profile changes remain a separate handoff.
 
 ## Attention and home
 

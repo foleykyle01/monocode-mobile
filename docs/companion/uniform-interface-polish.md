@@ -1,6 +1,6 @@
 # Uniform interface polish
 
-Local implementation on top of `fcdb90c`. No protocol changes, dependencies, native effects or new actions. The attention and queued-follow-up features still require matching future desktop and phone builds; installed beta.2 and TestFlight 1004 are unchanged.
+Published in [PR #13](https://github.com/foleykyle01/monocode-mobile/pull/13), on top of the attention/session implementation. No protocol changes, dependencies, native effects or new actions. The attention and queued-follow-up features require matching desktop and phone builds; beta.2 and TestFlight 1004 do not include them. See [release setup](release-setup.md) for delivery status. Installed apps are not changed by source publication.
 
 ## Shared rules
 
