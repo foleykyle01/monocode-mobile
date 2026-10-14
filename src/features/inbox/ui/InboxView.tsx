@@ -1652,7 +1652,7 @@ const GITHUB_PR_MERGE_OPTIONS: Array<{
 ];
 
 const PR_ACTION_PRESS =
-  "transition-transform duration-[120ms] ease-[var(--motion-ease-out)] active:scale-[0.97] motion-reduce:transition-none";
+  "transition-transform duration-(--motion-feedback-duration) ease-[var(--motion-ease-out)] active:scale-[0.97] motion-reduce:transition-none";
 
 function githubPrActionCopy(
   action: GithubPrAction,

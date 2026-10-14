@@ -26,7 +26,11 @@ const fake = vi.hoisted(() => {
   };
 });
 vi.mock("./client", async importOriginal => ({ ...await importOriginal<typeof import("./client")>(), createCompanionClient: () => fake }));
-vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier }: { blocks: { id: string; text: string }[]; onLoadEarlier?: () => void; loadingEarlier?: boolean }) => createElement("div", { className: "test-transcript" }, blocks.map(block => createElement("p", { key: block.id }, block.text)), onLoadEarlier ? createElement("button", { onClick: onLoadEarlier, disabled: loadingEarlier }, "Load earlier messages") : null) }));
+vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier, onOpenSession, initialScrollTop, onApprove, mutationsDisabled, attentionToken }: Parameters<typeof import("./Transcript").Transcript>[0]) => createElement("div", { className: "test-transcript", "data-scroll-top": initialScrollTop, "data-attention": attentionToken }, blocks.map(block => createElement("div", { key: block.id },
+  createElement("p", null, block.text),
+  block.spawnedSessions?.map(session => createElement("button", { key: session.id, className: "spawned-session", onClick: () => onOpenSession?.(session, 123) }, session.title)),
+  block.approval && !block.approval.decided ? createElement("button", { className: "test-allow", disabled: mutationsDisabled, onClick: () => onApprove(block, "allow") }, "Allow") : null,
+)), onLoadEarlier ? createElement("button", { onClick: onLoadEarlier, disabled: loadingEarlier }, "Load earlier messages") : null) }));
 import CompanionApp from "./CompanionApp";
 import { CompanionRequestError } from "./client";
 
@@ -58,6 +62,72 @@ beforeEach(() => {
   fake.pendingMutations.mockReset().mockReturnValue([]);
   fake.retry.mockReset().mockResolvedValue({ accepted: true });
   fake.reconnect.mockReset().mockResolvedValue(undefined);
+});
+
+it("uses full controls for a linked session outside the list and restores the Mono draft on Back", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({ matches: query === "(max-width: 700px)", media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true }));
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  vi.useFakeTimers();
+  const child = { ...await defaultRead("session"), session: { ...(await defaultRead("session")).session, id: "child", title: "Check access", busy: true, needsApproval: true, turn: 7 }, blocks: [{ id: "approve", role: "tool", text: "Run check", approval: { requestId: 9 } }], totalBlocks: 1 };
+  const parent = { ...await defaultRead("mono-session"), blocks: [{ id: "launch", role: "assistant", text: "Started the check", spawnedSessions: [child.session] }], totalBlocks: 1 };
+  fake.sessionRead.mockImplementation(async id => id === "child" ? structuredClone(child) : id === "mono-session" ? parent : defaultRead(id));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const enter = async (text: string) => act(async () => {
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, text);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
+    await enter("My Mono draft");
+    await act(async () => container.querySelector<HTMLButtonElement>(".spawned-session")!.click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Check access");
+    await act(async () => vi.advanceTimersByTimeAsync(4000));
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Check access");
+    await act(async () => container.querySelector<HTMLButtonElement>(".test-allow")!.click());
+    expect(fake.mutate).toHaveBeenLastCalledWith("sessions.approve", { epoch: "e", sessionId: "child", turn: 7, blockId: "approve", decision: "allow" });
+    child.session.busy = false; child.session.needsApproval = false; child.blocks = [];
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Stop agent"]')!.click());
+    expect(fake.mutate).toHaveBeenLastCalledWith("sessions.stop", { epoch: "e", sessionId: "child", turn: 7 });
+    await enter("Continue this check");
+    await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(fake.mutate).toHaveBeenLastCalledWith("sessions.send", { epoch: "e", sessionId: "child", turn: 7, text: "Continue this check" });
+    await enter("Child draft");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to Scout"]')!.click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("My Mono draft");
+    expect(container.querySelector(".test-transcript")?.getAttribute("data-scroll-top")).toBe("123");
+    await act(async () => container.querySelector<HTMLButtonElement>(".spawned-session")!.click());
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Child draft");
+    await act(async () => swipeBack(container.querySelector(".session-detail")!));
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
+  } finally { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it("ignores a late linked-session read after returning to the Mono", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const child = { ...await defaultRead("session"), session: { ...(await defaultRead("session")).session, id: "child", title: "Check access" } };
+  let resolve!: (read: SessionRead) => void;
+  const pending = new Promise<SessionRead>(done => { resolve = done; });
+  fake.sessionRead.mockImplementation(async id => id === "child" ? pending : id === "mono-session" ? { ...await defaultRead(id), blocks: [{ id: "launch", role: "assistant", text: "Started", spawnedSessions: [child.session] }], totalBlocks: 1 } : defaultRead(id));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>(".spawned-session")!.click());
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to Scout"]')!.click());
+    await act(async () => resolve(child));
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
+    expect(container.querySelector(".test-transcript")?.textContent).toContain("Started");
+    expect(fake.mutate).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
 it.each([false, true])("reconciles a retried send without deleting a follow-up draft (follow-up: %s)", async followUp => {
@@ -95,6 +165,41 @@ it.each([false, true])("reconciles a retried send without deleting a follow-up d
   } finally {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   }
+});
+
+it("restores an unconfirmed send's text after relaunch and retries its original receipt", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const pending: PendingMutation = { requestId: "saved", action: "sessions.send", input: { epoch: "e", sessionId: "session", turn: 0, text: "Saved follow-up" }, error: "Unconfirmed" };
+  fake.pendingMutations.mockReturnValue([pending]);
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Saved follow-up");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled).toBe(true);
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Retry same command")!.click());
+    expect(fake.retry).toHaveBeenCalledExactlyOnceWith(pending);
+    expect(fake.mutate).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it.each(["epoch", "turn"])("disables both actions for a stale %s and retains the draft", async field => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const base = await defaultList(); const read = await defaultRead("session");
+  fake.sessionsList.mockResolvedValue({ ...base, sessions: [{ ...read.session, busy: true, turn: 2 }], capabilities: { queuedFollowUps: true } } as typeof base);
+  fake.sessionRead.mockResolvedValue({ ...read, epoch: field === "epoch" ? "old" : "e", session: { ...read.session, busy: true, turn: field === "turn" ? 1 : 2 } });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    const textarea = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Keep draft"); textarea.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop agent"]')!.disabled).toBe(true);
+    await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(fake.mutate).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("Keep draft");
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
 it("follows host appearance by default, persists local overrides, and restores the latest host theme", async () => {
@@ -183,7 +288,78 @@ it("retries a startup failure without treating a saved connection as unpaired", 
   } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
-it("keeps Stop in the busy composer without a duplicate run bar or footer", async () => {
+it("queues a busy follow-up with Send and Stop together, blocks rapid duplicates and preserves another session's draft", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const base = await defaultList(); const read = await defaultRead("session");
+  const session = { ...read.session, busy: true, needsApproval: true, turn: 7 };
+  fake.sessionsList.mockResolvedValue({ ...base, sessions: [session], capabilities: { queuedFollowUps: true } } as typeof base);
+  fake.sessionRead.mockImplementation(async id => id === "session" ? { ...read, session } : defaultRead(id));
+  let acknowledge!: (value: { accepted: boolean; delivery: "queued" }) => void;
+  fake.mutate.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const enter = async (text: string) => act(async () => {
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, text);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
+    await enter("Other draft");
+    await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
+    await enter("Follow up without stopping");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop agent"]')!.disabled).toBe(false);
+    await act(async () => {
+      const form = container.querySelector("form.composer")!;
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(fake.mutate).toHaveBeenCalledExactlyOnceWith("sessions.send", { epoch: "e", sessionId: "session", turn: 7, text: "Follow up without stopping" });
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.disabled).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
+    await act(async () => acknowledge({ accepted: true, delivery: "queued" }));
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Other draft");
+    await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("");
+    expect(container.querySelector(".send-receipt")?.textContent).toBe("Follow-up queued on Mac");
+    await enter("Keep on failure");
+    fake.mutate.mockRejectedValueOnce(new CompanionRequestError("The session turn changed; refresh before acting", false));
+    await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Keep on failure");
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it("opens a waiting session from home and makes the next waiting session reachable after resolution", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const base = await defaultList(); const read = await defaultRead("session");
+  const session = { ...read.session, busy: true, needsApproval: true };
+  const monos = base.navigation.monos.map(mono => ({ ...mono, needsApproval: true }));
+  fake.sessionsList.mockImplementation(async () => ({ ...base, sessions: [{ ...session }], navigation: { ...base.navigation, monos } }));
+  fake.sessionRead.mockImplementation(async id => id === "session" ? { ...read, session: { ...session }, blocks: session.needsApproval ? [{ id: "pending", role: "tool", text: "Review", approval: { requestId: 1 } }] : [] } : defaultRead(id));
+  fake.mutate.mockImplementation(async () => { session.needsApproval = false; return { accepted: true }; });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    const chooser = container.querySelector(".needs-you-chooser")!;
+    await act(async () => [...chooser.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("Project work"))!.click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Project work");
+    expect(container.querySelector(".test-transcript")?.getAttribute("data-attention")).toBe("1");
+    expect(fake.mutate).not.toHaveBeenCalled();
+    await act(async () => container.querySelector<HTMLButtonElement>(".test-allow")!.click());
+    const next = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Next waiting session")!;
+    expect(next).toBeDefined();
+    await act(async () => next.click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
+    expect(fake.mutate).toHaveBeenCalledTimes(1);
+    await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
+    expect(container.querySelector(".test-transcript")?.hasAttribute("data-attention")).toBe(false);
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it.each([false, true])("keeps Stop in the busy composer and acknowledges only success (failure=%s)", async failure => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
   vi.useFakeTimers();
@@ -199,9 +375,11 @@ it("keeps Stop in the busy composer without a duplicate run bar or footer", asyn
     await act(async () => root.render(createElement(CompanionApp)));
     expect(container.querySelector(".run-controls")).toBeNull();
     expect(container.querySelector(".composer-hint")).toBeNull();
-    expect(container.querySelector('[aria-label="Send message"]')).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send message"]')?.disabled).toBe(true);
+    if (failure) fake.mutate.mockRejectedValueOnce(new CompanionRequestError("Stop refused", false));
     await act(async () => container.querySelector<HTMLButtonElement>('.composer [aria-label="Stop agent"]')!.click());
     expect(fake.mutate).toHaveBeenCalledWith("sessions.stop", { epoch: "e", sessionId: "session", turn: 7 });
+    expect(container.querySelector(".send-receipt")?.textContent).toBe(failure ? "" : "Stop accepted by Mac");
   } finally {
     await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   }

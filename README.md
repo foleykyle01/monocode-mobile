@@ -147,6 +147,8 @@ Open the generated **MonoCode Phone Preview.app** reported by the build. Its wor
 
 Available actions depend on the Mac host and provider. Remote projects, habit runs, ephemeral/Inbox-ask sessions, orchestration-controlled sessions, and sessions undergoing removal/workspace changes are excluded. This is not full desktop feature parity.
 
+**Next build — Mono project sessions:** when a Mono starts work in a project, its conversation shows a linked session card with current activity. Tap it to follow the live session, send messages, answer approvals, or Stop. Back returns to the Mono with your draft and reading position preserved. Requires updated Mac and phone builds; this is not included in TestFlight 1004 or Mac beta.2.
+
 ## Approach and stack
 
 The current direction is a **native iPhone client plus a companion-enabled Mac app**, delivered through TestFlight and signed Mac releases. A PWA remains a possible future client; it would require a browser-compatible transport and credential-storage design. It is not the current installation path.

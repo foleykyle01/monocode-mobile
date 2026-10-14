@@ -4929,7 +4929,7 @@ function ApprovalControls({
   const approval = block.approval;
   if (!approval || approval.decided || !onApproval) return null;
   return (
-    <div className="mt-1.5 flex gap-2">
+    <div data-pending-approval className="mt-1.5 flex gap-2">
       <button
         type="button"
         className="rounded-md bg-content px-2.5 py-0.5 text-[11px] hover:bg-content/80     text-background-base"

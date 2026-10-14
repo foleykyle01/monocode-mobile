@@ -10,6 +10,7 @@ import type { createCompanionChanges } from "./companionChanges";
 import { companionQuestion, validateQuestionReply } from "./companionQuestion";
 import type { UserQuestionReply } from "../../sessions/model/userQuestion";
 import { toolCallLabel, toolCallState } from "../../sessions/model/transcriptActivity";
+import { launchedSessionState, monoSpawnedSessions } from "../../monos/model/monoSpawnedSessions";
 
 export type CompanionConfiguration = {
   models: { harness: string; id: string; label: string }[];
@@ -22,7 +23,8 @@ export type CompanionOwner = {
   sessions(): readonly Session[];
   eligible(session: Session): boolean;
   turn(sessionId: string): number;
-  send(sessionId: string, text: string, requestId: string): Promise<boolean>;
+  send(sessionId: string, text: string, requestId: string): Promise<boolean | "queued">;
+  queuedFollowUps?: boolean;
   approve(sessionId: string, requestId: number, decision: "allow" | "deny"): void;
   answer?(sessionId: string, requestId: number, reply: UserQuestionReply): void;
   keepQuestionOpen?(sessionId: string, requestId: number): void;
@@ -48,6 +50,7 @@ export type CompanionOwner = {
 const READ_LIMIT = 100;
 const TEXT_LIMIT = 8_192;
 const RECEIPT_LIMIT = 512;
+const SPAWNED_SESSION_LIMIT = 20;
 const MUTATIONS = new Set([
   "sessions.send",
   "sessions.approve",
@@ -146,7 +149,52 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       turn: owner.turn(session.id),
       needsApproval: !!session.pendingQuestion || session.blocks.some((block) => block.approval && !block.approval.decided),
       needsQuestion: !!session.pendingQuestion,
+      lifecycle: launchedSessionState(session),
     };
+  }
+
+  /**
+   * Resolve Mono launch cards against the live owner session list. The launch
+   * receipt can be older than the transcript page currently being returned,
+   * so anchor each card to the end of its full user turn before slicing.
+   */
+  function spawnedSessionCards(session: Session, start: number, end: number, navigation?: CompanionNavigation) {
+    const knownLaunches = monoSpawnedSessions(session.blocks);
+    if (knownLaunches.length === 0) return new Map<number, ReturnType<typeof summary>[]>();
+
+    const liveTargets = new Map(
+      owner.sessions()
+        .filter((target) => target.id !== session.id && owner.eligible(target) && (owner.listable?.(target) ?? true))
+        .map((target) => [target.id, target]),
+    );
+    if (liveTargets.size === 0) return new Map<number, ReturnType<typeof summary>[]>();
+
+    const anchors = new Map<number, ReturnType<typeof summary>[]>();
+    let turnStart: number | undefined;
+    const finishTurn = (turnEnd: number) => {
+      if (turnStart === undefined) return;
+      const anchor = turnEnd - 1;
+      // A card belongs to the final block of its turn. If that block is not
+      // in this page, leave it to the page that contains the anchor.
+      if (anchor < start || anchor >= end) return;
+      const launches = monoSpawnedSessions(session.blocks.slice(turnStart, turnEnd), knownLaunches);
+      const cards: ReturnType<typeof summary>[] = [];
+      for (const launch of launches) {
+        const target = liveTargets.get(launch.sessionId);
+        if (!target) continue;
+        cards.push(summary(target, navigation));
+        if (cards.length >= SPAWNED_SESSION_LIMIT) break;
+      }
+      if (cards.length > 0) anchors.set(anchor, cards);
+    };
+
+    session.blocks.forEach((block, index) => {
+      if (block.role !== "user") return;
+      finishTurn(index);
+      turnStart = index;
+    });
+    finishTurn(session.blocks.length);
+    return anchors;
   }
 
   function read(action: string, input: Record<string, unknown>) {
@@ -208,7 +256,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
         sessions: sessions.slice(0, 200).map((session) => summary(session, navigation)),
         truncated: sessions.length > 200,
         appearance: owner.appearance?.(),
-        capabilities: { createSession: !!owner.createSession, inbox: !!owner.inbox, changes: !!owner.changes },
+        capabilities: { createSession: !!owner.createSession, inbox: !!owner.inbox, changes: !!owner.changes, queuedFollowUps: !!owner.queuedFollowUps },
         ...(navigation ? { navigation } : {}),
       };
     }
@@ -220,6 +268,8 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       throw new Error("Invalid transcript cursor; refresh the session");
     const end = before as number;
     const start = Math.max(0, end - READ_LIMIT);
+    const navigation = owner.navigation?.();
+    const spawnedCards = spawnedSessionCards(session, start, end, navigation);
     let chatBackground: CompanionChatBackground | null = null;
     try {
       chatBackground = owner.chatBackground?.(session) ?? null;
@@ -229,17 +279,25 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     return {
       epoch,
       session: {
-        ...summary(session, owner.navigation?.()),
+        ...summary(session, navigation),
       },
       ...(owner.configuration ? { configuration: owner.configuration(session) } : {}),
       // Deliberately bounded text-only snapshots for the feasibility client.
-      blocks: session.blocks.slice(start, end).map(snapshotBlock),
+      blocks: session.blocks.slice(start, end).map((block, offset) => {
+        const snapshot = snapshotBlock(block);
+        const spawnedSessions = spawnedCards.get(start + offset);
+        return spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot;
+      }),
       nextBefore: start || null,
       totalBlocks: session.blocks.length,
       chatBackground,
       pendingQuestion: owner.answer ? companionQuestion(session.pendingQuestion) : undefined,
       questionUnavailable: !!session.pendingQuestion && (!owner.answer || !companionQuestion(session.pendingQuestion)),
       reviewAvailable: !!owner.review,
+      queuedMessages: session.queuedMessages?.filter(message => !message.monoSessionCompletion).map(message => ({
+        id: message.id, text: message.text.slice(0, TEXT_LIMIT),
+        state: message.error ? "failed" : session.queueStatus === "paused" ? "paused" : "queued",
+      })),
     };
   }
 
@@ -270,14 +328,16 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     if (action === "sessions.send") {
       fields(input, ["epoch", "sessionId", "turn", "text"]);
       const prompt = text(input, "text", 32_768);
-      if (session.busy) throw new Error("Session is busy; wait before sending a follow-up");
-      if (session.blocks.some((block) => block.draft) || session.queuedMessages?.length)
+      if (!owner.queuedFollowUps && (session.busy || session.queuedMessages?.length))
+        throw new Error("Queued follow-ups are unavailable; update the Mac companion");
+      if (session.blocks.some((block) => block.draft))
         throw new Error("Resolve this session's existing draft or queued messages first");
-      let accepted: boolean;
+      let accepted: boolean | "queued";
       try { accepted = await owner.send(id, prompt, `companion:${epoch}:${requestId}`); }
       catch (error) { throw new CompanionCommandUncertain(error); }
       if (!accepted)
         throw new Error("Desktop did not accept the follow-up");
+      return { epoch, sessionId: id, accepted: true, turn: owner.turn(id), delivery: accepted === "queued" ? "queued" : "accepted" };
     } else if (action === "sessions.approve") {
       fields(input, ["epoch", "sessionId", "turn", "blockId", "decision"]);
       const blockId = text(input, "blockId");

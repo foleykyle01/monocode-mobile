@@ -72,6 +72,10 @@ const STATUS: Record<LaunchedSessionState, { label: string; icon: ReactNode }> =
         />
       ),
     },
+    unknown: {
+      label: "Status unknown",
+      icon: <CircleDashed className="size-4 shrink-0 text-content/45" strokeWidth={1.75} />,
+    },
   };
 
 /**
@@ -116,6 +120,7 @@ export function LaunchedSessionCard({
         />
       )}
       <span className="min-w-0 truncate text-[13px] text-content">{title}</span>
+      {status ? <span key={view?.state} className="shrink-0 text-[12px] text-content/65 state-acknowledged">{status.label}</span> : null}
       {/* Squeezed, the title gives way first and the project after it. */}
       <span
         className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded-full border border-content/10 bg-content/5 px-2 py-0.5 text-[12px] text-content/65"

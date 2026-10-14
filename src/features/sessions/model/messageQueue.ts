@@ -1,5 +1,5 @@
 import { isPreparingHandoff } from "./handoff";
-import type { QueuedMessage, Session } from "./session";
+import { hasPendingApproval, type QueuedMessage, type Session } from "./session";
 
 export function queuedHead(session: Session): QueuedMessage | undefined {
   return session.queuedMessages?.[0];
@@ -60,6 +60,7 @@ export function canSteerQueuedHead(session: Session): boolean {
     !session.worktreeRemoved &&
     !session.pendingSwitch &&
     !session.usageLimit &&
+    !hasPendingApproval(session.blocks) &&
     !(
       session.pendingQuestion && session.pendingQuestion.autoResolveAt == null
     ) &&

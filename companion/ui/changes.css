@@ -1,4 +1,6 @@
 .changes-view { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
+.changes-diff summary { min-height: 44px; align-content: center; }
+.session-changes header > svg { flex-shrink: 0; width: 20px; height: 20px; stroke-width: 1.75; }
 .changes-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .changes-toolbar > div { display: grid; min-width: 0; gap: 5px; }
 .changes-toolbar strong { overflow-wrap: anywhere; font-size: calc(14px * var(--companion-ui-scale)); }

@@ -31,14 +31,13 @@ export function ChangesView({ client, project, sessions, sessionId, disabled, on
     const request = ++serial.current;
     setLoading(true);
     setError(undefined);
-    setFile(undefined);
     try {
       const result = await client.changesList(target);
       if (request !== serial.current) return;
       setData(result);
+      setFile(undefined);
     } catch (reason) {
       if (request !== serial.current) return;
-      setData(undefined);
       setError(reason instanceof Error ? reason.message : "Could not load changes");
     } finally {
       if (request === serial.current) setLoading(false);
@@ -47,6 +46,7 @@ export function ChangesView({ client, project, sessions, sessionId, disabled, on
 
   useEffect(() => {
     setData(undefined);
+    setFile(undefined);
     void refresh();
     return () => { serial.current += 1; };
   }, [refresh]);
@@ -99,7 +99,7 @@ export function ChangesView({ client, project, sessions, sessionId, disabled, on
       {!file ? <details className="changes-workspaces"><summary>Workspace · {currentSession?.title || "Project workspace"}</summary><div><button type="button" aria-pressed={!workspace} disabled={blocked} onClick={() => setWorkspace(undefined)}>Project workspace</button>{sessions.map((session) => <button key={session.id} type="button" aria-pressed={workspace === session.id} disabled={blocked} onClick={() => setWorkspace(session.id)}>{session.title || "Untitled session"}</button>)}</div></details> : <p className="changes-path">{file.relative} · {file.kind === "staged" ? "Staged" : "Changes"}</p>}
       {disabled ? <p className="settings-note">Reconnect to refresh these changes.</p> : null}
       {error ? <p className="error-copy" role="alert">{error}</p> : null}
-      {loading ? <p className="settings-note" role="status">Loading changes…</p> : null}
+      <p className="settings-note changes-loading" role="status">{loading ? "Loading changes…" : ""}</p>
       {file ? (file.binary || file.tooLarge || file.truncated ? <p className="settings-note">This file needs review on your Mac.</p> : <div className="changes-diff" aria-label="File diff">{diff?.blocks.map((block, index) => block.kind === "fold" ? <details key={index}><summary>{block.lines.length} unchanged lines</summary><pre>{block.lines.map((line) => line.text).join("\n")}</pre></details> : <pre key={index}>{block.lines.map((line, lineIndex) => <span key={lineIndex} className={`diff-line diff-line--${line.kind}`}><span className="diff-number" aria-hidden="true">{line.oldNumber ?? ""}</span><span className="diff-number" aria-hidden="true">{line.newNumber ?? ""}</span><code>{line.kind === "add" ? "+" : line.kind === "del" ? "−" : " "}{line.text || " "}</code></span>)}</pre>)}</div>) : data ? <>{!data.files.length ? <p className="changes-empty">No uncommitted changes.</p> : (["staged", "unstaged"] as const).map((kind) => {
         const files = data.files.filter((entry) => entry[kind]);
         return files.length ? <section className="changes-section" key={kind}><h3>{kind === "staged" ? "Staged" : "Changes"}<span>{files.length}</span></h3>{files.map((entry) => <button className="changed-file" key={entry.relative} type="button" disabled={blocked} onClick={() => void openFile(entry.relative, kind)}><span><strong>{entry.relative}</strong><small>{entry.status}</small></span><span className="changed-file__counts">+{entry.additions} −{entry.deletions}</span><span aria-hidden="true">›</span></button>)}</section> : null;

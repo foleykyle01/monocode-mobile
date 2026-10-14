@@ -101,6 +101,7 @@ describe("InboxView", () => {
       await act(async () => {});
       expect(container.textContent).toContain("Fix mobile reconnect");
       expect(container.textContent).toContain("GitHub needs attention");
+      container.querySelector(".inbox-list")!.scrollTop = 240;
       await act(async () =>
         [
           ...container.querySelectorAll<HTMLButtonElement>(".inbox-row"),
@@ -128,6 +129,9 @@ describe("InboxView", () => {
         42,
       );
       expect(container.querySelector(".inbox-start")).toBeNull();
+      await act(async () => container.querySelector<HTMLButtonElement>(".inbox-back")!.click());
+      expect(container.querySelector(".inbox-list")!.scrollTop).toBe(240);
+      expect(document.activeElement).toBe(container.querySelector(".inbox-row"));
     } finally {
       await act(async () => root.unmount());
       container.remove();

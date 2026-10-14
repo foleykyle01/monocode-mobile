@@ -16,7 +16,7 @@ export function GlassBackdrop({
     <div
       ref={ref}
       aria-hidden="true"
-      className={`pointer-events-none absolute inset-0 z-0 rounded-[inherit] backdrop-blur-xl ${className}`}
+      className={`glass-backdrop pointer-events-none absolute inset-0 z-0 rounded-[inherit] backdrop-blur-xl ${className}`}
     />
   );
 }

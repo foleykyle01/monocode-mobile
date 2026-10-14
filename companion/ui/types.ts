@@ -64,6 +64,7 @@ export type CompanionSession = {
   turn: number;
   needsApproval: boolean;
   needsQuestion?: boolean;
+  lifecycle?: import("../../src/features/monos/model/monoSpawnedSessions").LaunchedSessionState;
 };
 
 export type CompanionApproval = {
@@ -77,6 +78,7 @@ export type CompanionBlock = {
   text: string;
   truncated?: boolean;
   approval?: CompanionApproval;
+  spawnedSessions?: CompanionSession[];
   activity?: { label: string; state: "pending" | "accepted" | "rejected"; kind?: string; name?: string;
     steps?: { id: string; label: string; state: "pending" | "accepted" | "rejected" }[]; stepsTruncated?: boolean };
 };
@@ -87,7 +89,7 @@ export type SessionsList = {
   truncated: boolean;
   appearance?: CompanionAppearance;
   navigation?: CompanionNavigation;
-  capabilities?: { createSession?: boolean; inbox?: boolean; changes?: boolean };
+  capabilities?: { createSession?: boolean; inbox?: boolean; changes?: boolean; queuedFollowUps?: boolean };
 };
 
 export type CompanionProject = { id: string; name: string; path: string; groupId?: string; mascot?: string; color?: string; logo?: string };
@@ -115,6 +117,7 @@ export type SessionRead = {
   pendingQuestion?: import("../../src/features/sessions/model/userQuestion").UserQuestionPrompt;
   questionUnavailable?: boolean;
   reviewAvailable?: boolean;
+  queuedMessages?: { id: string; text: string; state: "queued" | "paused" | "failed" }[];
 };
 
 export type SessionConfiguration = {

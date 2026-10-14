@@ -142,7 +142,7 @@ export function MonoRailSection({
           const status =
             state.status === "idle"
               ? undefined
-              : (state.activity ?? MONO_STATUS_LABEL[state.status]);
+              : MONO_STATUS_LABEL[state.status];
           return (
             <div
               key={mono.id}

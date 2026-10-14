@@ -182,7 +182,7 @@ export function createCompanionClient(
       }
     }
     try {
-      const result = await request<{ accepted: boolean }>(action, safeInput, requestId);
+      const result = await request<{ accepted: boolean; delivery?: "queued" | "accepted" }>(action, safeInput, requestId);
       if (result?.accepted !== true) {
         throw new CompanionRequestError(
           "Desktop did not confirm this command; keep the same request ID when retrying",
