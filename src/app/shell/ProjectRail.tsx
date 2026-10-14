@@ -723,6 +723,7 @@ function ProjectGroupSection({
   const countLabel = `${items.length} ${items.length === 1 ? "project" : "projects"}`;
   const activityLabel = projectActivityLabel(useProjectActivity(items.map(item => item.path)));
   const expanded = !group.collapsed;
+  const showActivity = !expanded && Boolean(activityLabel);
   const openMenu = (target: HTMLElement, x?: number, y?: number) => {
     const rect = target.getBoundingClientRect();
     onOpenGroupMenu(x ?? rect.left, y ?? rect.bottom);
@@ -738,6 +739,7 @@ function ProjectGroupSection({
       aria-label={group.name}
     >
       <div
+        data-project-activity={showActivity || undefined}
         className="project-reorder-item group relative flex h-8 items-stretch rounded-md px-2 opacity-65 cursor-default"
         onContextMenu={(event) => {
           event.preventDefault();
@@ -751,7 +753,7 @@ function ProjectGroupSection({
           aria-label={`${group.name}, ${countLabel}${!expanded && activityLabel ? `, ${activityLabel}` : ""}`}
           title={`${group.name} · ${countLabel}${!expanded && activityLabel ? ` · ${activityLabel}` : ""}`}
           onClick={onToggleCollapsed}
-          className="flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none group-hover:pr-6 group-has-[:focus-visible]:pr-6"
+          className={`flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none ${showActivity ? "pr-4 group-hover:pr-10 group-has-[:focus-visible]:pr-10" : "group-hover:pr-6 group-has-[:focus-visible]:pr-6"}`}
         >
           <div className="grid size-4 shrink-0 place-items-center">
             {group.collapsed ? (
@@ -782,7 +784,11 @@ function ProjectGroupSection({
             )}
           </div>
           <span className={nameClassName}>{group.name}</span>
-          {!expanded ? <ProjectActivityBadge path={items.map(item => item.path)} /> : null}
+          {showActivity ? (
+            <span className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2">
+              <ProjectActivityBadge path={items.map(item => item.path)} />
+            </span>
+          ) : null}
         </button>
         <button
           type="button"
@@ -795,7 +801,7 @@ function ProjectGroupSection({
             event.stopPropagation();
             openMenu(event.currentTarget);
           }}
-          className="absolute right-1 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid"
+          className={`absolute ${showActivity ? "right-5" : "right-1"} top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid`}
         >
           <MoreHorizontal className="size-4" strokeWidth={1.75} />
         </button>
@@ -916,6 +922,7 @@ function ProjectCard({
     <div
       ref={(el) => sortable.setItemRef(item.path, el)}
       data-selected={selected || undefined}
+      data-project-activity={Boolean(activityLabel) || undefined}
       className={`reorder-item project-reorder-item group relative flex touch-none items-stretch rounded-md px-2 h-8 ${
         selected
           ? "bg-selection-strong text-content"
@@ -952,7 +959,7 @@ function ProjectCard({
         title={[cardTitle, activityLabel, muteStatus].filter(Boolean).join("\n")}
         aria-label={[cardAriaLabel, activityLabel, muteStatus].filter(Boolean).join(", ")}
         aria-current={selected ? "true" : undefined}
-        className="flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none group-hover:pr-6 group-has-[:focus-visible]:pr-6"
+        className={`flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none ${activityLabel ? "pr-4 group-hover:pr-10 group-has-[:focus-visible]:pr-10" : "group-hover:pr-6 group-has-[:focus-visible]:pr-6"}`}
       >
         <div className="project-card-logo grid size-4 shrink-0 place-items-center transition-opacity group-hover:opacity-0">
           {logoPath && !busy ? (
@@ -983,7 +990,11 @@ function ProjectCard({
             {machine.name}
           </span>
         ) : null}
-        <ProjectActivityBadge path={item.path} />
+        {activityLabel ? (
+          <span className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2">
+            <ProjectActivityBadge path={item.path} />
+          </span>
+        ) : null}
         {hasChanges ? (
           <span className="project-card-stats shrink-0 group-hover:hidden group-has-[:focus-visible]:hidden">
             <ProjectDiffStat additions={additions} deletions={deletions} />
@@ -1031,7 +1042,7 @@ function ProjectCard({
             event.detail === 0 ? rect.bottom : event.clientY,
           );
         }}
-        className="absolute right-1 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid"
+        className={`absolute ${activityLabel ? "right-5" : "right-1"} top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid`}
       >
         <MoreHorizontal className="size-4" strokeWidth={1.75} />
       </button>

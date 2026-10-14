@@ -3,8 +3,8 @@
 The intended normal-user path is a direct signed Mac download with verified
 in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
 now live for internal Owner testing: build **0.1.1 (1004)** is valid in App Store
-Connect and in beta testing. The public external beta and signed Mac download are
-still pending, so do not publish an installer or invitation yet. The eventual
+Connect and in beta testing. The signed Mac beta.2 download is public; external
+TestFlight review and the iPhone public invitation remain pending. The
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
 USB. See [Updates and distribution](updates-and-distribution.md)
 for the broader delivery and rollback plan.
@@ -168,9 +168,14 @@ against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
 processing. Candidate 1004 also passed the signed upload and Apple processing.
 Mac release CI and guarded installation/restart handling are implemented. The
-signed/notarized Apple Silicon 1.0.0-beta.1 installer is staged in a draft release;
-public download publication and real bootstrap-to-update validation remain
-pending. The Mac update feed stays disabled.
+signed/notarized Apple Silicon [1.0.0-beta.2 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
+is public and the owner's installed executable matches the verified package.
+Real bootstrap-to-update validation remains pending. The Mac update feed stays disabled.
+
+The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
+are published. Their URLs and review notes still need saving in App Store Connect;
+build 1004 has not been submitted for external review. The Community beta public
+invitation remains disabled.
 
 ## External TestFlight handoff
 

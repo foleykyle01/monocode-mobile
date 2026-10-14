@@ -347,6 +347,10 @@ html.has-native-glass:not(.theme-light) #root {
   padding-right: 0;
 }
 
+.project-reorder-item[data-reordering][data-project-activity] > button:first-of-type {
+  padding-right: 1rem;
+}
+
 .project-reorder-item[data-reordering] .project-card-logo {
   opacity: 1;
 }
