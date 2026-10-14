@@ -2,12 +2,19 @@
 
 The intended normal-user path is a direct signed Mac download with verified
 in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
-now live for internal Owner testing: build **0.1.1 (1004)** is valid in App Store
-Connect and in beta testing. The signed Mac beta.2 download is public; external
-TestFlight review and the iPhone public invitation remain pending. The
+now live for internal Owner testing: build **0.1.1 (1005)** is VALID in App Store
+Connect and IN_BETA_TESTING in the existing Owner testing group. Its testing notes
+are saved. Build 1004 remains in Community beta, waiting for external review;
+the existing public invitation is configured with a 100-person cap. The signed
+Mac beta.2 download is public but lacks 1005's new linked-session and queued-send
+host capabilities. A matching local Mac package is staged for a separate manual
+handoff; it has not been installed or published. The
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
 USB. See [Updates and distribution](updates-and-distribution.md)
 for the broader delivery and rollback plan.
+
+The [1005 release record](release-1005.md) links source/CI/upload evidence and
+documents compatibility and remaining physical-device verification.
 
 Before an expensive signed archive or upload, run one of these in the protected
 release environment:
@@ -93,7 +100,7 @@ after relaunch; the pairing remains stored.
 
 ## TestFlight iPhone beta
 
-Build 1004 keeps `PHONE_NOTIFICATIONS_ENABLED` false in
+Builds 1004 and 1005 keep `PHONE_NOTIFICATIONS_ENABLED` false in
 `companion/ui/features.ts`. Notification settings, polling, permission requests,
 and tap routing remain inactive. The native push plugin and relay integration
 are not included in this release. Enable the flag only with the native integration
@@ -139,11 +146,13 @@ supports those operations. Do not put a signing key in repository variables.
 Before setting `COMPANION_TESTFLIGHT_READY=true` in that environment, verify the
 App Store Connect app record owns `dev.monocode.companion`, agreements are current,
 and the account can distribute the app. Select an unused build number greater than
-the last uploaded build (1004 at this milestone). The workflow writes it directly
+the last uploaded build (1005 at this milestone; check Apple before the next release). The workflow writes it directly
 to `bundle.iOS.bundleVersion`, not the CLI flag that appends a number to the
 marketing version.
 
-For a new release, leave **upload** unchecked for the first packaging check. The
+For a new signing/release configuration, leave **upload** unchecked for its first
+packaging check. For the established identity, an explicitly authorized upload can
+use the same workflow's verification gate before upload, as build 1005 did. The
 workflow builds the UI, uses automatic signing with the `app-store-connect` export
 method, and verifies the packaged bundle ID, marketing/build versions, team,
 signature and distribution profile. It rejects development/ad hoc provisioning. A
@@ -152,30 +161,30 @@ submits it to Apple for processing; it does not submit a public App Store releas
 or automatically invite testers. No signing key is retained in artifacts; the
 temporary key is removed on exit.
 
-Apple processing and export compliance for build **1004** are complete; it is
-**Testing** in the internal Owner testing group. Its physical upgrade and
-reconnection check remains pending. The owner confirmed TestFlight operation
-and reconnection on the previous build, 1003. An external **Community
-beta** group exists with its public invitation disabled. The English beta
-description and build testing notes are saved. Feedback email (`foley.kyle01@gmail.com`) and Apple's
-private review contact are configured. Privacy URL and external beta review still
-need completion before inviting community testers. Do not assert that the custom
-Iroh encrypted transport is exempt without checking Apple's questionnaire.
+Apple processing and export compliance for build **1005** are complete; it is
+**IN_BETA_TESTING** in Owner testing, with updated testing notes. Its physical
+upgrade and reconnection check remains pending. Build 1004 remains
+**WAITING_FOR_BETA_REVIEW** in Community beta. The existing public invitation is
+enabled with a 100-person cap; availability to external testers still requires
+Apple approval. Privacy URL, reviewer instructions, feedback email and private
+review contact are configured. Build 1005 reused the verified 1004
+`usesNonExemptEncryption=false` metadata for unchanged encryption; this is not a
+new encryption classification or authorization for changed encryption.
 
 The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
 packaged app, and generates opaque PNG icons without alpha channels. These guard
 against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
-processing. Candidate 1004 also passed the signed upload and Apple processing.
+processing. Candidates 1004 and 1005 also passed signed upload and Apple processing.
 Mac release CI and guarded installation/restart handling are implemented. The
 signed/notarized Apple Silicon [1.0.0-beta.2 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
 is public and the owner's installed executable matches the verified package.
 Real bootstrap-to-update validation remains pending. The Mac update feed stays disabled.
 
 The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
-are published. Their URLs and review notes still need saving in App Store Connect;
-build 1004 has not been submitted for external review. The Community beta public
-invitation remains disabled.
+are published and saved in App Store Connect. Build 1004 is waiting for external
+review; this 1005 Owner release did not cancel or replace that submission or
+change the Community invitation.
 
 ## External TestFlight handoff
 
@@ -192,12 +201,13 @@ that review can use a hidden preview button or supply the maintainer's real Mac,
 provider credentials, or short-lived QR invitation. Complete the signed Mac
 download/reviewer path before submitting a beta that depends on it.
 
-The owner has chosen worldwide public invitations. The first encryption declaration
-covered owner testing without France distribution; verify the applicable Apple
-questionnaire/documentation before enabling the worldwide invitation.
-TestFlight's device/OS eligibility criteria are not a country restriction.
+The owner has configured the existing public invitation. The initial encryption
+declaration was for owner testing; this release only reuses verified metadata for
+the unchanged 1005 internal build. Any new encryption or legal questionnaire
+requires its own review. TestFlight's device/OS eligibility criteria are not a
+country restriction.
 
 Once review, the compatible Mac download and owner upgrade check pass, add the
-approved build to Community beta, enable a bounded public invitation and put its
+approved build to Community beta, retain the bounded public invitation and put its
 actual TestFlight URL in the README. Keep source-build steps under contributor
 instructions. Never substitute a workflow IPA download for the invitation.
