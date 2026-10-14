@@ -3,8 +3,8 @@
 The intended normal-user path is a direct signed Mac download with verified
 in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
 now live for internal Owner testing: build **0.1.1 (1004)** is valid in App Store
-Connect and in beta testing. The public external beta and signed Mac download are
-still pending, so do not publish an installer or invitation yet. The eventual
+Connect and in beta testing. The signed Mac beta.2 download is public; external
+TestFlight review and the iPhone public invitation remain pending. The
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
 USB. See [Updates and distribution](updates-and-distribution.md)
 for the broader delivery and rollback plan.
