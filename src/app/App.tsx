@@ -301,6 +301,7 @@ import {
   bindHarnessSession,
   cancelHarnessTurn,
   canCompactHarnessContext,
+  canRestartHarnessSession,
   canRewindHarnessLastTurn,
   canSteerHarness,
   compactHarnessContext,
@@ -314,6 +315,7 @@ import {
   probeHarnessAvailability,
   refreshHarnessCatalogs,
   registerBuiltinHarnesses,
+  restartHarnessSession,
   promoteLastAssistantToPlan,
   respondHarnessApproval,
   respondHarnessQuestion,
@@ -599,7 +601,6 @@ import {
   removeMono,
   saveOpenMono,
   subscribeMonos,
-  type MonoState,
 } from "../features/monos/model/mono";
 import {
   loadMonoFiles,
@@ -613,6 +614,7 @@ import {
 } from "../features/monos/model/monoFiles";
 import { useMonoHabits } from "./hooks/useMonoHabits";
 import { useFloatingMono } from "./hooks/useFloatingMono";
+import { useMonoActivityStates } from "../features/monos/hooks/useMonoActivityStates";
 import {
   dropRelays,
   habitPostsContext,
@@ -635,6 +637,7 @@ import {
   ensureMonoSession,
   resetMonoSession,
 } from "../features/monos/model/monoWorkspace";
+import { monoModelRestartDisabledReason } from "../features/monos/model/monoModelRestart";
 import {
   warmNativeSkills,
   isNativeCommandPrompt,
@@ -1617,6 +1620,9 @@ function Workspace({
   const observedSessions = useRef(new Map<string, Session>());
   const pendingPersist = useRef(new Map<string, Session>());
   const removingSessionIds = useRef(new Set<string>());
+  const restartingMonoSessionIds = useRef(new Set<string>());
+  const [restartingMonoSessionSnapshot, setRestartingMonoSessionSnapshot] =
+    useState<ReadonlySet<string>>(() => new Set());
   const loadedSessionCache = useRef(new Map<string, Session>());
   const sessionLoads = useRef(new Map<string, Promise<Session | null>>());
   const sessionLoadEpochs = useRef(new Map<string, number>());
@@ -2153,6 +2159,16 @@ function Workspace({
     busySessionIds,
     activeSessionId,
   );
+  const monoStates = useMonoActivityStates(
+    sessions,
+    monosSnap,
+    history,
+    monosEnabled,
+  );
+  // Companion requests arrive outside React. Keeping this current avoids
+  // rebuilding its bridge for streamed activity while retaining all owners.
+  const companionMonoStatesRef = useRef(monoStates);
+  companionMonoStatesRef.current = monoStates;
 
   const projectActivityRows = useMemo(
     () =>
@@ -4829,6 +4845,8 @@ function Workspace({
         throw new Error("This Mono's conversation is no longer available.");
       if (removingSessionIds.current.has(sessionId))
         throw new Error("This conversation is already being reset.");
+      if (restartingMonoSessionIds.current.has(sessionId))
+        throw new Error("This model session is restarting.");
 
       removingSessionIds.current.add(sessionId);
       pendingPersist.current.delete(sessionId);
@@ -6749,6 +6767,46 @@ function Workspace({
     [],
   );
 
+  const onRestartMonoModelSession = useCallback(
+    async (sessionId: string): Promise<void> => {
+      const current = sessionsRef.current.find(
+        (session) => session.id === sessionId,
+      );
+      if (!current || !isMonoSession(sessionId)) {
+        throw new Error("This Mono's conversation is no longer available.");
+      }
+      if (removingSessionIds.current.has(sessionId)) {
+        throw new Error("This conversation is being removed.");
+      }
+      const reason = monoModelRestartDisabledReason(
+        current,
+        restartingMonoSessionIds.current.has(sessionId),
+      );
+      if (reason) throw new Error(reason);
+      if (!canRestartHarnessSession(current.harness)) {
+        throw new Error(
+          "Restarting model sessions is currently available for Claude Code only.",
+        );
+      }
+
+      restartingMonoSessionIds.current.add(sessionId);
+      setRestartingMonoSessionSnapshot(
+        new Set(restartingMonoSessionIds.current),
+      );
+      try {
+        // Do not touch the session record: Claude retains its provider resume
+        // identity, while the next send creates a child with current settings.
+        await restartHarnessSession(current.harness, sessionId);
+      } finally {
+        restartingMonoSessionIds.current.delete(sessionId);
+        setRestartingMonoSessionSnapshot(
+          new Set(restartingMonoSessionIds.current),
+        );
+      }
+    },
+    [],
+  );
+
   const onSaveDraft = useCallback(
     (
       sessionId: string,
@@ -6856,6 +6914,7 @@ function Workspace({
           attachments,
           options,
         );
+      if (restartingMonoSessionIds.current.has(sessionId)) return false;
       if (editedResends.isActive(sessionId)) return false;
       // Output already received belongs before the submitted user message.
       // Flush before reading the session too, since pending errors can settle it.
@@ -10774,6 +10833,7 @@ function Workspace({
         monos: listMonos(),
         sessions: sessionsRef.current,
         canChat: companionEligible,
+        activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       });
     const companionInbox = createCompanionInbox(
       () => companionNavigation().projects,
@@ -10821,6 +10881,7 @@ function Workspace({
       sessions: () => sessionsRef.current,
       navigation: companionNavigation,
       canChat: companionEligible,
+      activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       configuration: companionConfiguration,
     });
     const companion =
@@ -12682,7 +12743,7 @@ function Workspace({
     openFile: onOpenFile,
     resume: onUsageLimitResume,
     create: () => createMono().id,
-  });
+  }, monoStates);
 
   const sessionPaneProps = {
     workspaceSwitchingSessionId: workspaceNavigation.pending
@@ -12702,6 +12763,8 @@ function Workspace({
     onModelChange,
     onModelSettingsChange,
     onRuntimeModeChange,
+    onRestartModelSession: onRestartMonoModelSession,
+    restartingModelSessionIds: restartingMonoSessionSnapshot,
     onSaveDraft,
     onRemoveDraft,
     onSubmit,
@@ -12743,6 +12806,9 @@ function Workspace({
 
   // Renames, mascot picks and new projects show up on the rail.
   const monoViewMono = monoViewId ? monoForSession(monoViewId) : undefined;
+  const monoViewState =
+    monoStates.get(monoViewMono?.id ?? "") ??
+    (monoViewSession ? monoState(monoViewSession) : { status: "idle" as const });
   const selectedMonoActivity = resolveMonoActivity(
     monoActivity,
     monoViewSession,
@@ -12905,7 +12971,7 @@ function Workspace({
         monoId={monoViewMono.id}
         cwd={monoViewSession.cwd}
         agent={monoLook(monoViewMono)}
-        state={monoState(monoViewSession)}
+        state={monoViewState}
         launches={monoLaunches}
         sessions={sessions}
         history={history}
@@ -12950,7 +13016,7 @@ function Workspace({
         key={monoViewMono.id}
         monoId={monoViewMono.id}
         agent={monoLook(monoViewMono)}
-        status={monoState(monoViewSession).status}
+        status={monoViewState.status}
         cwd={monoViewSession.cwd}
         harness={monoViewSession.harness}
         model={monoViewSession.model}
@@ -12966,26 +13032,32 @@ function Workspace({
         onRuntimeModeChange={(mode) =>
           onRuntimeModeChange(monoViewSession.id, mode)
         }
+        restartAction={
+          monoViewSession.harness === "claude"
+            ? {
+                disabledReason: monoModelRestartDisabledReason(
+                  monoViewSession,
+                  restartingMonoSessionSnapshot.has(monoViewSession.id),
+                ),
+                onRestart: () => onRestartMonoModelSession(monoViewSession.id),
+              }
+            : undefined
+        }
         onReset={() => onResetMono(monoViewSession.id)}
         onClose={() => setMonoSettingsFor(null)}
       />
     ) : null;
   const monoRailState = useMemo(() => {
-    const states = new Map<string, MonoState>();
     const unseen = new Map<string, number>();
     for (const mono of listMonos()) {
-      const session = mono.sessionId
-        ? sessions.find((entry) => entry.id === mono.sessionId)
-        : undefined;
-      if (session) states.set(mono.id, monoState(session));
       const count = mono.sessionId
         ? monoReplies.counts.get(mono.sessionId)
         : undefined;
       if (count) unseen.set(mono.id, count);
     }
-    return { states, unseen };
+    return { states: monoStates, unseen };
     // The roster is read through its snapshot.
-  }, [monosSnap, sessions, monoReplies.counts]);
+  }, [monosSnap, monoStates, monoReplies.counts]);
   const monoRail = useStableValue(monoRailState);
   const busyProjectPaths = useStableValue(
     promptableSessions.flatMap((session) =>
@@ -13044,7 +13116,7 @@ function Workspace({
       tabs={monoCovers ? NO_TITLE_TABS : titleTabs}
       mono={
         monoCovers && monoViewMono && monoViewSession
-          ? { look: monoLook(monoViewMono), state: monoState(monoViewSession) }
+          ? { look: monoLook(monoViewMono), state: monoViewState }
           : undefined
       }
       onToggleMonoOverview={

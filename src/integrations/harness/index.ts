@@ -51,6 +51,7 @@ export {
   cancelClaudeTurn,
   respondClaudeApproval,
   stopClaudeSession,
+  restartClaudeSession,
   forgetClaudeSession,
   bindClaudeSession,
 } from "./providers/claude/claude";
@@ -183,6 +184,8 @@ export {
   respondHarnessQuestion,
   keepHarnessQuestionOpen,
   stopHarnessSession,
+  canRestartHarnessSession,
+  restartHarnessSession,
   configureHarnessIdlePark,
   enforceHarnessIdleLimit,
   forgetHarnessSession,

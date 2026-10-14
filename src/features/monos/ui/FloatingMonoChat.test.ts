@@ -158,6 +158,20 @@ it("lists every Mono beside the chat and switches or adds from there", async () 
   });
 });
 
+it("shows child activity in the roster and header while keeping the idle parent's composer available", async () => {
+  await render();
+  for (const status of ["working", "needs-you", "idle"] as const) {
+    const view = snapshot(0);
+    view.monos = view.monos.map((mono) => ({ ...mono, status }));
+    act(() => receive({ payload: view }));
+    expect(container.querySelector("header [data-mono-status]")?.getAttribute("data-mono-status")).toBe(status);
+    expect(container.querySelector('[aria-label="Captain"]')?.getAttribute("aria-description"))
+      .toBe(status === "working" ? "Working" : status === "needs-you" ? "Needs you" : "Idle");
+    expect(container.querySelector('[aria-label="Stop reply"]')).toBeNull();
+    expect(container.querySelector("textarea")?.disabled).toBe(false);
+  }
+});
+
 it("switches Monos inside the same frame, loading only the conversation", async () => {
   await render();
   const frame = container.querySelector("[data-floating-mono]");

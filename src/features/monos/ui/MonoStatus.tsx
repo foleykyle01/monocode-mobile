@@ -28,7 +28,7 @@ export function MonoStatus({ state, color, className = "" }: Props) {
       <span
         aria-hidden
         className={`size-2 shrink-0 rounded-full ${dot ? "" : "bg-content/30"} ${
-          status === "working" ? "animate-pulse" : ""
+          status === "working" ? "motion-safe:animate-pulse" : ""
         }`}
         style={dot ? { background: dot } : undefined}
       />

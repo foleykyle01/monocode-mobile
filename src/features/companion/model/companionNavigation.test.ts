@@ -115,4 +115,34 @@ describe("companion navigation", () => {
     ]);
     expect(navigation.monos[0]).not.toHaveProperty("configure");
   });
+
+  it("projects shared child activity without making it a parent control state", () => {
+    const parent = session("mono-session", "/work/client");
+    let childState: "working" | "needs-you" | "idle" = "working";
+    const navigation = () => buildCompanionNavigation({
+      projectPaths: ["/work/client"],
+      groups: [],
+      assignments: {},
+      monos: [mono(["/work/client"], parent.id)],
+      sessions: [parent],
+      activityState: () => ({ status: childState, activity: "Child task" }),
+    }).monos[0];
+
+    expect(navigation()).toMatchObject({
+      status: "working",
+      statusLabel: "Working",
+      busy: false,
+      needsApproval: false,
+    });
+    expect(navigation()).not.toHaveProperty("activity");
+    childState = "needs-you";
+    expect(navigation()).toMatchObject({
+      status: "needs-you",
+      statusLabel: "Needs you",
+      busy: false,
+      needsApproval: false,
+    });
+    childState = "idle";
+    expect(navigation()).toMatchObject({ status: "idle", busy: false });
+  });
 });

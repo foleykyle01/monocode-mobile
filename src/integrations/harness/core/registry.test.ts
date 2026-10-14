@@ -7,6 +7,7 @@ import type { HarnessId } from "../../../features/sessions/model/session";
 import {
   HARNESS_IDLE_PARK_MS,
   bindHarnessSession,
+  canRestartHarnessSession,
   canCompactHarnessContext,
   canRunHarnessTextPrompt,
   runHarnessTextPrompt,
@@ -19,6 +20,7 @@ import {
   refreshHarnessCatalogs,
   registerHarness,
   resetHarnessIdlePark,
+  restartHarnessSession,
   sendHarnessTurn,
   type HarnessAdapter,
 } from "./registry";
@@ -63,6 +65,21 @@ describe("harness registry", () => {
         .filter((id) => id === "claude" || id === "codex" || id === "cursor")
         .sort(),
     ).toEqual(["claude", "codex", "cursor"]);
+  });
+
+  it("restarts only providers that explicitly preserve their resume state", async () => {
+    const restartSession = vi.fn(async () => undefined);
+    registerHarness(stub("claude", { restartSession }));
+    registerHarness(stub("codex"));
+
+    expect(canRestartHarnessSession("claude")).toBe(true);
+    expect(canRestartHarnessSession("codex")).toBe(false);
+
+    await restartHarnessSession("claude", "mono-1");
+    expect(restartSession).toHaveBeenCalledWith("mono-1");
+    await expect(restartHarnessSession("codex", "mono-1")).rejects.toThrow(
+      "does not support restarting this session",
+    );
   });
 
   it("announces readiness when the provider accepts, while preserving the caller's acceptance callback", async () => {

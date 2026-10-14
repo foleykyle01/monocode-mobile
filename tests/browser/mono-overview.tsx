@@ -7,6 +7,9 @@ import { launchedSessionState } from "../../src/features/monos/model/monoSpawned
 import { Modal } from "../../src/shared/ui/Modal";
 import { SecondaryButton } from "../../src/shared/ui/SecondaryButton";
 import { SearchableSelect } from "../../src/shared/ui/SearchableSelect";
+import { MonoRailSection } from "../../src/app/shell/MonoRailSection";
+import { createMono, monosSnapshot, saveMonoSessionId } from "../../src/features/monos/model/mono";
+import { useMonoActivityStates } from "../../src/features/monos/hooks/useMonoActivityStates";
 import "../../src/styles/index.css";
 
 const initial = ["approval", "question", "draft", "failed", "stopped", "done", "unknown"].map((state, index) => ({
@@ -37,4 +40,29 @@ function Fixture() {
     } : undefined} />
   </main>;
 }
-createRoot(document.getElementById("root")!).render(<Fixture />);
+function ActivityFixture() {
+  const [seed] = useState(() => {
+    localStorage.removeItem("monocode:mono-roster");
+    const mono = createMono();
+    const selected = createMono();
+    const child = { ...newSession("codex", "/child-project", "gpt-6"), id: "activity-child", busy: false };
+    const parent = { ...newSession("codex", "/repo"), id: "activity-parent", blocks: [{
+      id: "launch", role: "user" as const, text: "Work", monoSpawnedSessions: [{
+        sessionId: child.id, cwd: child.cwd, title: child.title, harness: child.harness, model: child.model,
+      }],
+    }] };
+    saveMonoSessionId(mono.id, parent.id);
+    return { child, parent, selected, roster: monosSnapshot() };
+  });
+  const [child, setChild] = useState(seed.child);
+  const states = useMonoActivityStates([seed.parent, child], seed.roster);
+  return <main className="flex h-full bg-background-base text-content">
+    <aside className="w-64"><MonoRailSection activeId={seed.selected.id} states={states} onOpen={() => {}} onCreate={() => {}} onDelete={() => {}} /></aside>
+    <section className="p-6"><h1>Another Mono is open</h1>
+      <button onClick={() => setChild({ ...seed.child, busy: true })}>Start child</button>
+      <button onClick={() => setChild({ ...seed.child, pendingQuestion: { requestId: 1, questions: [] } })}>Child needs input</button>
+      <button onClick={() => setChild(seed.child)}>Finish child</button>
+    </section>
+  </main>;
+}
+createRoot(document.getElementById("root")!).render(location.search.includes("activity") ? <ActivityFixture /> : <Fixture />);

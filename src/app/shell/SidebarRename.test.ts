@@ -2,7 +2,9 @@
 import { act, createElement, StrictMode, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatSessionTitle } from "../../features/sessions/model/session";
+import { formatSessionTitle, newSession, type Session } from "../../features/sessions/model/session";
+import { useMonoActivityStates } from "../../features/monos/hooks/useMonoActivityStates";
+import { saveRailMonosPinned } from "../../features/settings/model/displayPrefs";
 import { formatReminderTime } from "../../features/sessions/model/sessionReminders";
 import { Sidebar } from "./Sidebar";
 import {
@@ -266,6 +268,44 @@ describe("worktree explorer visibility", () => {
 });
 
 describe.each([false, true])("Mono rail selection (compact: %s)", (compact) => {
+  it("updates child activity while a different Mono is selected", async () => {
+    saveRailMonosPinned(true);
+    const mono = createMono();
+    saveMonoSessionId(mono.id, "activity-parent");
+    const selected = createMono();
+    const child = { ...newSession("codex", "/repo", "gpt-6"), id: "activity-child", busy: true };
+    const parent = { ...newSession("codex", "/repo"), id: "activity-parent", blocks: [{
+      id: "launch", role: "user" as const, text: "Work", monoSpawnedSessions: [{
+        sessionId: child.id, cwd: child.cwd, title: child.title, harness: child.harness, model: child.model,
+      }],
+    }] };
+    function ActivitySidebar({ sessions }: { sessions: Session[] }) {
+      const states = useMonoActivityStates(sessions, mono.id);
+      return createElement(Sidebar, { ...props,
+        projectRailOpen: !compact, compactProjectRail: compact,
+        onSelectProject: vi.fn(), onOpenProject: vi.fn(),
+        monoViewActive: true,
+        monos: { activeId: selected.id, states, onOpen: vi.fn(), onCreate: vi.fn(), onDelete: vi.fn() },
+      });
+    }
+    for (const [session, status] of [
+      [child, "Working"],
+      [{ ...child, pendingQuestion: { requestId: 1, questions: [] } }, "Needs you"],
+      [{ ...child, busy: false }, "Idle"],
+    ] as const) {
+      await act(async () => root.render(createElement(ActivitySidebar, { sessions: [parent, session] })));
+      const rail = container.querySelector(compact ? "[data-compact-project-rail]" : "[data-mono-rail]")!;
+      if (status === "Idle" && !compact) {
+        expect(rail.querySelector('[data-mono-status="working"]')).toBeNull();
+        expect(rail.querySelector('[data-mono-status="needs-you"]')).toBeNull();
+      } else {
+        const indicator = rail.querySelector(`[aria-label*="${status}"]`);
+        expect(indicator).not.toBeNull();
+        expect(indicator?.getAttribute("aria-current")).not.toBe("true");
+      }
+    }
+    expect(parent.busy).toBeUndefined();
+  });
   it.each([
     ["Inbox", "inboxActive", "onOpenInbox"],
     ["Notes", "notesActive", "onOpenNotes"],

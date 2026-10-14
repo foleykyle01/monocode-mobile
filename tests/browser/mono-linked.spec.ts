@@ -38,6 +38,15 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(page.locator(".conversation-title")).toHaveText("Scout");
   await expect(draft).toHaveValue("Bring the results back here");
   await expect(page.locator(".spawned-session").first()).toContainText("Done");
+  await page.getByRole("button", { name: "Back to workspace", exact: true }).click();
+  const scout = page.locator(".mono-row").filter({ hasText: "Scout" });
+  await expect(scout).toHaveText("ScoutWorking");
+  await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "mono-working-spin");
+  await page.screenshot({ path: testInfo.outputPath("home-working.png") });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(scout.locator(".mono-row__spinner")).toBeVisible();
+  await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "none");
+  await expect(scout).toHaveText("ScoutWorking");
 });
 
 for (const theme of ["dark", "light"]) test(`Needs you opens the next pending item with minimal ${theme} home cards`, async ({ page }, testInfo) => {
@@ -45,7 +54,8 @@ for (const theme of ["dark", "light"]) test(`Needs you opens the next pending it
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(value => localStorage.setItem("companion.preview.appearance.v1", value), theme);
   await page.goto("/tests/browser/mono-linked.html?demo=1");
-  await expect(page.locator(".mono-card").first()).toHaveText("ScoutWorking");
+  await expect(page.locator(".mono-card").first()).toHaveText("ScoutNeeds you");
+  await expect(page.locator(".mono-card").first().locator(".mono-row__spinner")).toHaveCount(0);
   await page.locator("summary.needs-you").click();
   await page.screenshot({ path: testInfo.outputPath("needs-you.png") });
   await page.getByRole("group", { name: "Waiting sessions" }).getByRole("button", { name: "Build the companion window" }).click();

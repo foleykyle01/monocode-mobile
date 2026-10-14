@@ -2,7 +2,13 @@ import type { ApprovalDecision } from "../../../integrations/harness";
 import type { Attachment, Session } from "../../sessions/model/session";
 import type { UserQuestionReply } from "../../sessions/model/userQuestion";
 import { displayAttachments } from "../../sessions/model/attachments";
-import { listMonos, monoLook, monoState, type MonoStatus } from "./mono";
+import {
+  listMonos,
+  monoLook,
+  monoState,
+  type MonoState,
+  type MonoStatus,
+} from "./mono";
 import { pixelLayers } from "../../projects/model/pixelMascots";
 
 export const FLOATING_MONO_CHANGED = "mono_chat_changed";
@@ -42,6 +48,7 @@ export type FloatingMonoRequest = {
 export function floatingMonoRoster(
   enabled: boolean,
   sessions: readonly Session[] = [],
+  states?: ReadonlyMap<string, MonoState>,
 ): FloatingMonoEntry[] {
   return enabled
     ? listMonos().map((mono) => {
@@ -50,7 +57,8 @@ export function floatingMonoRoster(
           id: mono.id,
           ...monoLook(mono),
           sessionId: mono.sessionId ?? null,
-          status: session ? monoState(session).status : "idle",
+          status: states?.get(mono.id)?.status ??
+            (session ? monoState(session).status : "idle"),
         };
       })
     : [];

@@ -6,7 +6,13 @@ import {
   loadTabGroupLabels,
   resolveTabGroupLabel,
 } from "../../workspace/model/tabGroups";
-import { MONO_STATUS_LABEL, monoLook, monoState, type Mono } from "../../monos/model/mono";
+import {
+  MONO_STATUS_LABEL,
+  monoLook,
+  monoState,
+  type Mono,
+  type MonoState,
+} from "../../monos/model/mono";
 import type { Session } from "../../sessions/model/session";
 import { companionProjectAppearance } from "./companionProjectAppearance";
 import type { CompanionMonoSummary } from "./companionMono";
@@ -43,6 +49,8 @@ type NavigationSource = {
   monos: readonly Mono[];
   sessions: readonly Session[];
   canChat?(session: Session): boolean;
+  /** Shared Mono activity is presentation-only; controls keep the parent state. */
+  activityState?(mono: Mono): MonoState | undefined;
 };
 
 /** Projects use the desktop's stable path key; a worktree session keeps its
@@ -107,7 +115,10 @@ export function buildCompanionNavigation(
     const canChat = !!foundSession && (source.canChat?.(foundSession) ?? true);
     const session = canChat ? foundSession : undefined;
     const look = monoLook(mono);
-    const state = foundSession ? monoState(foundSession) : undefined;
+    const ownState = foundSession
+      ? monoState(foundSession)
+      : { status: "idle" as const };
+    const state = source.activityState?.(mono) ?? ownState;
     return {
       id: mono.id,
       name: look.name.slice(0, 300),
@@ -116,11 +127,15 @@ export function buildCompanionNavigation(
       projectIds: mono.projects.map(pathKey).filter((id) => projectIds.has(id)),
       ...(session ? { sessionId: session.id } : {}),
       canChat,
-      status: state?.status ?? "idle",
-      statusLabel: MONO_STATUS_LABEL[state?.status ?? "idle"],
-      ...(state?.activity ? { activity: state.activity.slice(0, 300) } : {}),
-      busy: state?.status === "working",
-      needsApproval: state?.status === "needs-you",
+      status: state.status,
+      statusLabel: MONO_STATUS_LABEL[state.status],
+      // A child title is not an aggregate status and may not be available to
+      // this companion. Keep parent-only detail out of the home projection.
+      ...(state.status === ownState.status && ownState.activity
+        ? { activity: ownState.activity.slice(0, 300) }
+        : {}),
+      busy: ownState.status === "working",
+      needsApproval: ownState.status === "needs-you",
     };
   });
 
