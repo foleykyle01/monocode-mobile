@@ -157,8 +157,15 @@ function demoClient() {
   const workspace = createWorkspaceDemo(epoch);
   const navigation = () => ({ ...DEMO_NAVIGATION, monos: DEMO_NAVIGATION.monos.map(mono => {
     const session = sessions.find(entry => entry.id === mono.sessionId)!;
-    const status = session.needsApproval ? "needs-you" as const : session.busy ? "working" as const : "idle" as const;
-    return { ...mono, status, statusLabel: status === "needs-you" ? "Needs you" : status === "working" ? "Working" : "Idle", activity: status === "idle" ? undefined : mono.activity, busy: session.busy, needsApproval: session.needsApproval };
+    const state = (entry: CompanionSession) => entry.needsApproval || entry.needsQuestion ? "needs-you" as const : entry.busy ? "working" as const : "idle" as const;
+    const priority = (value: ReturnType<typeof state>) => value === "needs-you" ? 2 : value === "working" ? 1 : 0;
+    const ownState = state(session);
+    const status = (blocks[session.id] || []).flatMap(block => block.spawnedSessions || [])
+      .map(link => sessions.find(entry => entry.id === link.id))
+      .filter((child): child is CompanionSession => !!child)
+      .map(state)
+      .reduce((current, child) => priority(child) > priority(current) ? child : current, ownState);
+    return { ...mono, status, statusLabel: status === "needs-you" ? "Needs you" : status === "working" ? "Working" : "Idle", activity: status === ownState ? mono.activity : undefined, busy: session.busy, needsApproval: session.needsApproval };
   }) });
   const fake: CompanionClient = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
     if (command === "companion_status") return DEMO_STATUS as T;

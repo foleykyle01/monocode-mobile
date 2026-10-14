@@ -29,11 +29,16 @@ const mono = {
   sessionId: session.id,
 };
 
-function reader(currentMono = mono) {
+function reader(
+  currentMono = mono,
+  currentSession = session,
+  activityState?: NonNullable<Parameters<typeof createCompanionMonoReader>[0]>["activityState"],
+) {
   return createCompanionMonoReader({
     monos: () => [currentMono],
-    sessions: () => [session],
+    sessions: () => [currentSession],
     navigation: () => ({ projects: [{ id: "/work/app", name: "App", path: "/work/app/" }] }),
+    activityState,
     configuration: () => ({
       models: [{ harness: "claude", id: "opus", label: "Opus" }],
       accessModes: [{ id: "supervised", label: "Supervised", description: "Ask first" }],
@@ -79,6 +84,23 @@ describe("companion Mono read projection", () => {
     expect(memory.memory?.text).toContain("user likes tests");
     expect(memory.soul).toBeUndefined();
     expect(memory.habits).toBeUndefined();
+  });
+
+  it("uses shared child activity as presentation without inventing a parent approval", async () => {
+    const idleParent = { ...session, busy: false, blocks: [] };
+    const result = await reader(
+      mono,
+      idleParent,
+      () => ({ status: "needs-you", activity: "Child task" }),
+    ).read({ monoId: mono.id, section: "memory" });
+
+    expect(result.mono).toMatchObject({
+      status: "needs-you",
+      statusLabel: "Needs you",
+      busy: false,
+      needsApproval: false,
+    });
+    expect(result.mono).not.toHaveProperty("activity");
   });
 
   it("marks oversized lines as content-truncated while keeping the response bounded", async () => {

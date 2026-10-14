@@ -2165,6 +2165,10 @@ function Workspace({
     history,
     monosEnabled,
   );
+  // Companion requests arrive outside React. Keeping this current avoids
+  // rebuilding its bridge for streamed activity while retaining all owners.
+  const companionMonoStatesRef = useRef(monoStates);
+  companionMonoStatesRef.current = monoStates;
 
   const projectActivityRows = useMemo(
     () =>
@@ -10829,6 +10833,7 @@ function Workspace({
         monos: listMonos(),
         sessions: sessionsRef.current,
         canChat: companionEligible,
+        activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       });
     const companionInbox = createCompanionInbox(
       () => companionNavigation().projects,
@@ -10876,6 +10881,7 @@ function Workspace({
       sessions: () => sessionsRef.current,
       navigation: companionNavigation,
       canChat: companionEligible,
+      activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       configuration: companionConfiguration,
     });
     const companion =

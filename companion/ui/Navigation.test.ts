@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attentionTargets, NeedsYou, Navigation, monoStatusLabel, navigationProjects } from "./Navigation";
+import { attentionTargets, NeedsYou, Navigation, monoStatusLabel, monoWorking, navigationProjects } from "./Navigation";
 import { connectionMessage } from "./ConnectionNotice";
 import type { CompanionNavigation, CompanionSession } from "./types";
 
@@ -52,6 +52,33 @@ describe("companion workspace navigation", () => {
       expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutWorking");
       expect(container.querySelectorAll(".mono-card button")).toHaveLength(1);
     } finally { await act(async () => root.unmount()); }
+  });
+
+  it("renders aggregate working state as a spinner without changing parent controls", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const render = (status: "working" | "needs-you" | "idle") => act(async () => root.render(createElement(Navigation, {
+      sessions,
+      navigation: { ...navigation, monos: [{ ...navigation.monos[0], busy: false, needsApproval: false, status }] },
+      query: "",
+      filter: "all",
+      onSession: vi.fn(),
+      onMono: vi.fn(),
+    })));
+    try {
+      await render("working");
+      expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutWorking");
+      expect(container.querySelector(".mono-row__spinner")).not.toBeNull();
+      expect(monoWorking({ ...navigation.monos[0], busy: false, status: "working" })).toBe(true);
+      await render("needs-you");
+      expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutNeeds you");
+      expect(container.querySelector(".mono-row__spinner")).toBeNull();
+      await render("idle");
+      expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutIdle");
+      expect(container.querySelector(".mono-row__spinner")).toBeNull();
+    } finally { await act(async () => root.unmount()); container.remove(); }
   });
   it("uses the project dots for running, attention and unread sessions, with no dot for idle or read sessions", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -167,6 +194,8 @@ describe("companion workspace navigation", () => {
   it("shows the desktop Mono state and falls back to the compatible local status", () => {
     expect(monoStatusLabel(navigation.monos[0])).toBe("Working");
     expect(monoStatusLabel({ ...navigation.monos[0], statusLabel: "" })).toBe("Working");
+    expect(monoWorking({ ...navigation.monos[0], status: "needs-you", busy: true })).toBe(false);
+    expect(monoWorking({ ...navigation.monos[0], status: undefined, busy: true })).toBe(true);
   });
 
   it("remembers collapsed groups and projects and collapses to either level at once", async () => {

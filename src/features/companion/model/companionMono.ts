@@ -8,6 +8,7 @@ import {
   monoState,
   type Mono,
   type MonoStatus,
+  type MonoState,
 } from "../../monos/model/mono";
 import { parseHabits, type Habit } from "../../monos/model/monoHabits";
 import type { Session } from "../../sessions/model/session";
@@ -113,6 +114,8 @@ export type CompanionMonoReaderSource = {
   sessions: () => readonly Session[];
   navigation: () => Pick<CompanionNavigation, "projects">;
   canChat?: (session: Session) => boolean;
+  /** Shared Mono activity is presentation-only; controls keep the parent state. */
+  activityState?: (mono: Mono) => MonoState | undefined;
   configuration?: (session: Session) => CompanionMonoConfiguration | undefined;
 };
 
@@ -232,7 +235,10 @@ function summary(mono: Mono, source: CompanionMonoReaderSource): CompanionMonoSu
     ? source.sessions().find((session) => session.id === mono.sessionId)
     : undefined;
   const canChat = !!foundSession && (source.canChat?.(foundSession) ?? true);
-  const state = foundSession ? monoState(foundSession) : { status: "idle" as const };
+  const ownState = foundSession
+    ? monoState(foundSession)
+    : { status: "idle" as const };
+  const state = source.activityState?.(mono) ?? ownState;
   return {
     id: mono.id,
     name: look.name.slice(0, 300),
@@ -243,9 +249,11 @@ function summary(mono: Mono, source: CompanionMonoReaderSource): CompanionMonoSu
     canChat,
     status: state.status,
     statusLabel: MONO_STATUS_LABEL[state.status],
-    ...(state.activity ? { activity: bounded(state.activity, 300) } : {}),
-    busy: state.status === "working",
-    needsApproval: state.status === "needs-you",
+    ...(state.status === ownState.status && ownState.activity
+      ? { activity: bounded(ownState.activity, 300) }
+      : {}),
+    busy: ownState.status === "working",
+    needsApproval: ownState.status === "needs-you",
   };
 }
 

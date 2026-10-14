@@ -2,12 +2,15 @@ import { useMemo, useState } from "react";
 import { projectMascot } from "../../src/features/projects/model/projectMascots";
 import { HarnessIcon, HARNESS_ICONS } from "../../src/features/sessions/ui/HarnessIcon";
 import type { HarnessId } from "../../src/features/sessions/model/session";
-import { CircleHelp, ChevronRight, Plus, FileDiff } from "../../src/shared/ui/icons";
+import { CircleHelp, ChevronRight, Plus, FileDiff, Loader } from "../../src/shared/ui/icons";
 import type { CompanionMono, CompanionNavigation, CompanionProject, CompanionSession } from "./types";
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() || path;
 export const activityLabel = (item: { busy: boolean; needsApproval: boolean; needsQuestion?: boolean }) => item.needsQuestion ? "Needs an answer" : item.needsApproval ? "Needs approval" : item.busy ? "Working" : "Ready";
 export const monoStatusLabel = (mono: CompanionMono) => mono.needsApproval || mono.status === "needs-you" ? "Needs you" : mono.busy || mono.status === "working" ? "Working" : "Idle";
+export const monoWorking = (mono: CompanionMono) => mono.status
+  ? mono.status === "working"
+  : mono.busy;
 
 export function attentionTargets(sessions: CompanionSession[], navigation?: CompanionNavigation) {
   const targets = new Map<string, { id: string; title: string }>();
@@ -136,7 +139,7 @@ export function Navigation({ sessions, navigation, query, filter, selectedId, se
     {navigation && (!term && filter === "all" || monos.length > 0) ? <section id="companion-monos" className="mono-section" aria-label="Monos" hidden={!monosExpanded}>
       {monos.length ? <div className="mono-roster">{monos.map(mono => <div key={mono.id} className={`mono-card ${selectedMonoId === mono.id ? "mono-card--selected" : ""}`} style={{ "--mono-color": mono.color } as React.CSSProperties}>
         <button type="button" className={`mono-row ${selectedMonoId === mono.id ? "mono-row--selected" : ""}`} aria-current={selectedMonoId === mono.id ? "true" : undefined} onClick={() => onMono(mono.id)}>
-          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><small>{monoStatusLabel(mono)}</small></span>
+          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><span className="mono-row__status"><small aria-live="polite">{monoStatusLabel(mono)}</small>{monoWorking(mono) ? <Loader className="mono-row__spinner" aria-hidden="true" /> : null}</span></span>
         </button>
         {onMonoDetails ? <button className="mono-details-button" type="button" aria-label={`Details for ${mono.name}`} title={`Details for ${mono.name}`} onClick={() => onMonoDetails(mono.id)}><CircleHelp size={17} aria-hidden="true" /></button> : null}
       </div>)}</div> : <p className="nav-note">Your Monos will appear here when you add them on this Mac.</p>}

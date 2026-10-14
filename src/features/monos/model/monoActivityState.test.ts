@@ -149,6 +149,7 @@ describe("settled and unavailable children", () => {
       blocks: [{ id: "draft", role: "user", text: "Later", draft: true }],
     },
     { worktreeRemoved: true, pendingQuestion: { requestId: 1, questions: [] } },
+    { cwd: "remote://other/repo" },
     { ephemeral: true },
     { orchestrationLeadId: "lead" },
   ] satisfies Partial<Session>[])(

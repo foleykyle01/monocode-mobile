@@ -4,6 +4,7 @@ import type {
   Session,
 } from "../../sessions/model/session";
 import { isLiveAgentSession } from "../../sessions/model/liveAgents";
+import { isRemoteProjectPath } from "../../projects/model/recents";
 import { monoState, type Mono, type MonoState } from "./mono";
 import { monoSpawnedSessions } from "./monoSpawnedSessions";
 
@@ -29,6 +30,7 @@ export function monoActivitySessions(
   return sessions.flatMap((session) =>
     session.ephemeral ||
     session.worktreeRemoved ||
+    isRemoteProjectPath(session.cwd) ||
     !isLiveAgentSession(session) ||
     excluded.has(session.id)
       ? []

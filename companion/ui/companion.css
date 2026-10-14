@@ -224,6 +224,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .mono-row > span { display: grid; gap: 5px; min-width: 0; }
 .mono-row strong { font-size: calc(14px * var(--companion-ui-scale)); overflow-wrap: anywhere; }
 .mono-row small { overflow-wrap: anywhere; font-size: calc(10px * var(--companion-ui-scale)); line-height: 1.4; color: var(--companion-muted); }
+.mono-row__status { display: flex; align-items: center; gap: 5px; min-height: 14px; }
+.mono-row__spinner { width: 13px; height: 13px; flex: 0 0 13px; color: var(--companion-accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .mono-row__spinner { animation: mono-working-spin 1s linear infinite; }
+}
+@keyframes mono-working-spin { to { transform: rotate(360deg); } }
 .mono-mascot { flex: 0 0 auto; width: 25px; height: 25px; shape-rendering: crispEdges; }
 .detail-heading .mono-mascot { width: 20px; height: 20px; }
 .project-group { margin-bottom: 13px; }
