@@ -33,4 +33,4 @@ profile, application, or provider session was manipulated.
 - Mono state guard and owner wiring: `src/features/monos/model/monoModelRestart.ts`, `src/app/App.tsx`
 - Picker surface and focused UI tests: `src/features/sessions/ui/**`
 
-Commit: recorded in the local commit message after this note is added.
+Commit: `d76b440` (`Add Mono Claude model session restart`).
