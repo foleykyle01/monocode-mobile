@@ -147,7 +147,7 @@ Open the generated **MonoCode Phone Preview.app** reported by the build. Its wor
 
 Available actions depend on the Mac host and provider. Remote projects, habit runs, ephemeral/Inbox-ask sessions, orchestration-controlled sessions, and sessions undergoing removal/workspace changes are excluded. This is not full desktop feature parity.
 
-**Next build — Mono project sessions:** when a Mono starts work in a project, its conversation shows a linked session card with current activity. Tap it to follow the live session, send messages, answer approvals, or Stop. Back returns to the Mono with your draft and reading position preserved. Requires updated Mac and phone builds; this is not included in TestFlight 1004 or Mac beta.2.
+**Owner TestFlight 1006 — Mono project sessions and status:** when a Mono starts work in a project, its conversation shows a linked session card. Tap it to follow the live session, send messages, answer approvals, or Stop. Back preserves your Mono draft and reading position. Home cards reflect child Needs you/Working/Idle, with a Reduced Motion-aware working wheel. These host-dependent features require the matching Mac beta.4, currently a local owner handoff; the public beta.2 download does not contain them. See the [1006 release record](docs/companion/release-1006.md).
 
 ## Approach and stack
 
