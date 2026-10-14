@@ -18,7 +18,7 @@ Status: local implementation only; not installed, published, or merged.
 
 ## Validation
 
-- `vitest run src/integrations/harness/providers/claude/claudeLive.test.ts src/integrations/harness/core/registry.test.ts src/features/monos/model/monoModelRestart.test.ts src/features/sessions/ui/ModelPicker.test.ts src/features/sessions/ui/SessionPaneMessaging.test.ts` — 97 passed.
+- `vitest run src/integrations/harness/providers/claude/claudeLive.test.ts src/integrations/harness/core/registry.test.ts src/features/monos/model/monoModelRestart.test.ts src/features/monos/ui/MonoSettingsDialog.test.ts src/features/sessions/ui/ModelPicker.test.ts src/features/sessions/ui/SessionPaneMessaging.test.ts` — 103 passed.
 - `tsc --noEmit` — passed.
 - `git diff --check` — passed.
 
@@ -33,4 +33,5 @@ profile, application, or provider session was manipulated.
 - Mono state guard and owner wiring: `src/features/monos/model/monoModelRestart.ts`, `src/app/App.tsx`
 - Picker surface and focused UI tests: `src/features/sessions/ui/**`
 
-Commit: `d76b440` (`Add Mono Claude model session restart`).
+Commits: `d76b440` (`Add Mono Claude model session restart`) and `3c70e6f`
+(`Expose Mono restart in settings`).
