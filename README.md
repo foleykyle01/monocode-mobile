@@ -12,7 +12,7 @@ This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **
 
 ## Quickstart
 
-**Download the Mac app:** [MonoCode Dev 1.0.0-beta.2 for Apple Silicon](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2). **iPhone access:** invited internal TestFlight testers only; external review and a public invitation are still pending. Contributors can [build from source](companion/README.md#build-requirements).
+**Download the Mac app:** [MonoCode Dev 1.0.0-beta.2 for Apple Silicon](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2). **iPhone access:** invited internal TestFlight testers only; the configured Community invitation awaits Apple's external beta approval. Current Owner features require a newer local Mac build; see the [1006 release record](docs/companion/release-1006.md). Contributors can [build from source](companion/README.md#build-requirements).
 
 1. **Install MonoCode Dev on your Mac.** Download the `.dmg` above, open it, and drag **MonoCode Dev** into Applications. Use this mobile-enabled build; regular MonoCode cannot connect to the phone app.
 2. **Open a project and start a chat.** Use your existing project folder and [provider login](docs/providers.md). Switching from regular MonoCode? See below.
