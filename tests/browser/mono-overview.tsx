@@ -52,16 +52,17 @@ function ActivityFixture() {
       }],
     }] };
     saveMonoSessionId(mono.id, parent.id);
-    return { child, parent, selected, roster: monosSnapshot() };
+    return { child, parent, mono, selected, roster: monosSnapshot() };
   });
   const [child, setChild] = useState(seed.child);
+  const [unseen, setUnseen] = useState(0);
   const states = useMonoActivityStates([seed.parent, child], seed.roster);
   return <main className="flex h-full bg-background-base text-content">
-    <aside className="w-64"><MonoRailSection activeId={seed.selected.id} states={states} onOpen={() => {}} onCreate={() => {}} onDelete={() => {}} /></aside>
+    <aside className="w-64 shrink-0"><MonoRailSection activeId={seed.selected.id} states={states} unseenCounts={new Map([[seed.mono.id, unseen]])} onOpen={() => setUnseen(0)} onCreate={() => {}} onDelete={() => {}} /></aside>
     <section className="p-6"><h1>Another Mono is open</h1>
       <button onClick={() => setChild({ ...seed.child, busy: true })}>Start child</button>
       <button onClick={() => setChild({ ...seed.child, pendingQuestion: { requestId: 1, questions: [] } })}>Child needs input</button>
-      <button onClick={() => setChild(seed.child)}>Finish child</button>
+      <button onClick={() => { setChild(seed.child); setUnseen(1); }}>Finish child</button>
     </section>
   </main>;
 }

@@ -103,3 +103,30 @@ it("counts a mono's unread replies, except the one open", () => {
   render({ activeId: mono.id, unseenCounts: new Map([[mono.id, 3]]) });
   expect(badge()).toBeNull();
 });
+
+it("shows completed unread work in green until opened, with active work taking priority", () => {
+  const mono = createMono();
+  const unseenCounts = new Map([[mono.id, 1]]);
+  const dot = () => container.querySelector("[data-mono-status-dot]")!;
+  render({ unseenCounts });
+  expect(dot().getAttribute("aria-label")).toBe("Done, 1 new reply");
+  expect(dot().classList.contains("bg-emerald-400")).toBe(true);
+  expect(container.querySelector('[data-mono-unread="1"]')).toBe(dot());
+  expect(dot().textContent).toBe("1");
+  expect(container.querySelectorAll("[data-mono-status-dot]")).toHaveLength(1);
+  expect(container.querySelector('[aria-label*="Done, unread"]')).not.toBeNull();
+
+  for (const status of ["working", "needs-you"] as const) {
+    render({ unseenCounts, states: new Map([[mono.id, { status }]]) });
+    expect(dot().getAttribute("data-mono-status-dot")).toBe(status);
+    expect(dot().classList.contains("bg-emerald-400")).toBe(false);
+    expect(dot().textContent).toBe("1");
+    expect(dot().classList.contains(status === "working" ? "bg-blue-400" : "bg-amber-400")).toBe(true);
+  }
+
+  render({ unseenCounts, activeId: mono.id });
+  expect(dot().getAttribute("aria-label")).toBe("Idle");
+  expect(dot().classList.contains("bg-emerald-400")).toBe(false);
+  render();
+  expect(dot().getAttribute("aria-label")).toBe("Idle");
+});

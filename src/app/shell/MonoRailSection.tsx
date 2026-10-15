@@ -9,7 +9,8 @@ import { ImagePlus, MoreHorizontal, Plus, Trash2 } from "../../shared/ui/icons";
 import { Popover, type PopoverAnchor } from "../../shared/ui/Popover";
 import { Shimmer } from "../../shared/ui/Shimmer";
 import { useAnimatedReorder } from "../../shared/hooks/useAnimatedReorder";
-import { MonoRailMascot } from "../../features/monos/ui/MonoRailMascot";
+import { MonoStatusDot } from "../../features/monos/ui/MonoRailMascot";
+import { PixelMascot } from "../../features/projects/ui/PixelMascot";
 import { MonoIntroPopover } from "../../features/monos/ui/MonoIntro";
 import { ProjectBackgroundDialog } from "../../features/projects/ui/ProjectBackgroundDialog";
 import { monoBackgroundKey } from "../../features/monos/model/monoBackground";
@@ -141,7 +142,9 @@ export function MonoRailSection({
             : "No projects yet";
           const status =
             state.status === "idle"
-              ? undefined
+              ? unseen
+                ? "Done, unread"
+                : undefined
               : MONO_STATUS_LABEL[state.status];
           return (
             <div
@@ -150,7 +153,7 @@ export function MonoRailSection({
               data-selected={selected || undefined}
               data-mono-status={state.status}
               className={`reorder-item project-reorder-item group relative flex h-8 cursor-default touch-none items-stretch rounded-md px-2 ${
-                selected ? "bg-selection-strong text-content" : "opacity-65"
+                selected ? "bg-selection-strong text-content" : ""
               }`}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
@@ -192,12 +195,14 @@ export function MonoRailSection({
                   .filter(Boolean)
                   .join(", ")}
                 aria-current={selected ? "true" : undefined}
-                className="flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none group-hover:pr-6 group-has-[:focus-visible]:pr-6"
+                className={`flex min-w-0 flex-1 cursor-default items-center gap-2 pr-9 text-left transition-[padding] duration-150 motion-reduce:transition-none group-hover:pr-16 group-has-[:focus-visible]:pr-16 ${selected ? "" : "opacity-65"}`}
               >
-                <MonoRailMascot
+                <PixelMascot
                   name={look.mascot}
                   color={look.color}
                   status={state.status}
+                  still={state.status === "idle"}
+                  className="size-4 shrink-0"
                 />
                 {state.status === "working" ? (
                   <Shimmer
@@ -212,16 +217,13 @@ export function MonoRailSection({
                     {look.name}
                   </span>
                 )}
-                {unseen ? (
-                  <span
-                    aria-hidden
-                    data-mono-unread={unseen}
-                    className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-content/15 px-1 text-[10px] font-medium tabular-nums leading-none text-content/80 group-hover:hidden group-has-[:focus-visible]:hidden"
-                  >
-                    {unreadBadge(unseen)}
-                  </span>
-                ) : null}
               </button>
+              <MonoStatusDot
+                status={state.status}
+                color={look.color}
+                count={unseen}
+                className={`pointer-events-none right-3 top-1/2 translate-x-1/2 -translate-y-1/2 ${unseen ? `grid size-4 place-items-center font-medium tabular-nums leading-none ${unseen > 99 ? "text-[8px]" : "text-[10px]"}` : "size-2"}`}
+              />
               <button
                 type="button"
                 data-no-drag
@@ -233,7 +235,7 @@ export function MonoRailSection({
                   event.stopPropagation();
                   setMenu({ id: mono.id, anchor: event.currentTarget });
                 }}
-                className="absolute right-1 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid"
+                className="absolute right-7 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid"
               >
                 <MoreHorizontal className="size-4" strokeWidth={1.75} />
               </button>
