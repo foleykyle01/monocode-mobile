@@ -47,11 +47,12 @@ synthetic transcript were verified. It was not installed over the owner's app.
 | Pending question | Visible question card; native installation refused |
 | Pending approval | Visible Allow/Deny card; native installation refused without executing it |
 | Cross-window work | Restart from idle second window refused while first window remained Working |
-| Scheduled-work preparation | Fixture prepared, but official Computer Use connection failed before the native result could be verified; incomplete |
+| Scheduled-work preparation | Initial tool connection failed; a fresh isolated retry held preparation with the session otherwise idle, and native installation refused |
 | Owner profile and pairing | Full existing chats/groups/Monos/settings/phone confirmation remains pending |
 
 The fixture exercised synthetic application state, not real provider work or
-physical phone pairing. It does not replace the remaining acceptance checks.
+physical phone pairing. Seventeen targeted updater/configuration tests also
+passed. These checks do not replace the remaining owner-profile/pairing verification.
 The test harness is local-only and is not included in this release.
 
 `COMPANION_MAC_UPDATE_VERIFIED` remains **false**. The global

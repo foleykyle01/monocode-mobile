@@ -183,8 +183,9 @@ signed/notarized Apple Silicon [1.0.0-beta.5 installer](https://github.com/foley
 is public. The owner has beta.4 installed. A disposable beta.4 fixture downloaded,
 verified, installed and restarted into the exact beta.5 payload, retaining its
 synthetic transcript. Pending question/approval and cross-window work refused
-restart. The full scheduled-work and existing-profile/pairing checks remain
-pending, so the Mac update feed stays disabled.
+restart. A fresh isolated retry also refused restart while scheduled-work
+preparation was held. Full existing-profile/pairing verification remains pending,
+so the Mac update feed stays disabled.
 
 The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
 are published and saved in App Store Connect. Build 1004 is waiting for external
