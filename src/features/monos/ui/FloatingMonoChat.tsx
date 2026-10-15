@@ -352,7 +352,6 @@ function MonoRail({
             </button>
             <MonoStatusDot
               status={mono.status}
-              color={mono.color}
               className="pointer-events-none top-0.5 right-2.5 size-2"
             />
           </div>

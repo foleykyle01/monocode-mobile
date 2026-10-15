@@ -88,17 +88,18 @@ it("lists monos once there are some, with the plus in the header", () => {
   expect(container.querySelectorAll('[aria-label="New mono"]')).toHaveLength(1);
 });
 
-it("counts a mono's unread replies, except the one open", () => {
+it("describes unread replies without rendering a number, except the one open", () => {
   const mono = createMono();
   const badge = () => container.querySelector("[data-mono-unread]");
   render({ unseenCounts: new Map([[mono.id, 3]]) });
-  expect(badge()?.textContent).toBe("3");
+  expect(badge()?.textContent).toBe("");
   expect(
     container.querySelector(`[aria-label*="3 new replies"]`),
   ).not.toBeNull();
 
   render({ unseenCounts: new Map([[mono.id, 120]]) });
-  expect(badge()?.textContent).toBe("99+");
+  expect(badge()?.textContent).toBe("");
+  expect(badge()?.getAttribute("aria-label")).toContain("120 new replies");
 
   render({ activeId: mono.id, unseenCounts: new Map([[mono.id, 3]]) });
   expect(badge()).toBeNull();
@@ -112,7 +113,7 @@ it("shows completed unread work in green until opened, with active work taking p
   expect(dot().getAttribute("aria-label")).toBe("Done, 1 new reply");
   expect(dot().classList.contains("bg-emerald-400")).toBe(true);
   expect(container.querySelector('[data-mono-unread="1"]')).toBe(dot());
-  expect(dot().textContent).toBe("1");
+  expect(dot().textContent).toBe("");
   expect(container.querySelectorAll("[data-mono-status-dot]")).toHaveLength(1);
   expect(container.querySelector('[aria-label*="Done, unread"]')).not.toBeNull();
 
@@ -120,7 +121,7 @@ it("shows completed unread work in green until opened, with active work taking p
     render({ unseenCounts, states: new Map([[mono.id, { status }]]) });
     expect(dot().getAttribute("data-mono-status-dot")).toBe(status);
     expect(dot().classList.contains("bg-emerald-400")).toBe(false);
-    expect(dot().textContent).toBe("1");
+    expect(dot().textContent).toBe("");
     expect(dot().classList.contains(status === "working" ? "bg-blue-400" : "bg-amber-400")).toBe(true);
   }
 

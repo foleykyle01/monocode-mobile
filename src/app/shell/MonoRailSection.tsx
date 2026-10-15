@@ -220,9 +220,8 @@ export function MonoRailSection({
               </button>
               <MonoStatusDot
                 status={state.status}
-                color={look.color}
                 count={unseen}
-                className={`pointer-events-none right-3 top-1/2 translate-x-1/2 -translate-y-1/2 ${unseen ? `grid size-4 place-items-center font-medium tabular-nums leading-none ${unseen > 99 ? "text-[8px]" : "text-[10px]"}` : "size-2"}`}
+                className="right-3 top-1/2 size-2 translate-x-1/2 -translate-y-1/2"
               />
               <button
                 type="button"
