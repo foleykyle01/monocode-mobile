@@ -43,6 +43,9 @@ export function MonoMascot({ mono }: { mono: CompanionMono }) {
   const mascot = projectMascot(mono.id, mono.mascot);
   return <svg className="mono-mascot" viewBox="0 0 8 8" aria-hidden="true" style={{ color: mono.color }}><path fill="currentColor" d={mascot.restPath} /></svg>;
 }
+export function MonoWorkingIndicator({ mono }: { mono: CompanionMono }) {
+  return <span className="mono-working-indicator">{monoWorking(mono) ? <span role="status" aria-label={`${mono.name} is working`}><Loader className="mono-working-spinner" aria-hidden="true" /></span> : null}</span>;
+}
 export function ProjectIcon({ project }: { project: Pick<CompanionProject, "id" | "mascot" | "color" | "logo"> }) {
   const [failedLogo, setFailedLogo] = useState<string>();
   if (project.logo && failedLogo !== project.logo) return <img className="project-icon" src={project.logo} alt="" onError={() => setFailedLogo(project.logo)} />;
@@ -139,9 +142,10 @@ export function Navigation({ sessions, navigation, query, filter, selectedId, se
     {navigation && (!term && filter === "all" || monos.length > 0) ? <section id="companion-monos" className="mono-section" aria-label="Monos" hidden={!monosExpanded}>
       {monos.length ? <div className="mono-roster">{monos.map(mono => <div key={mono.id} className={`mono-card ${selectedMonoId === mono.id ? "mono-card--selected" : ""}`} style={{ "--mono-color": mono.color } as React.CSSProperties}>
         <button type="button" className={`mono-row ${selectedMonoId === mono.id ? "mono-row--selected" : ""}`} aria-current={selectedMonoId === mono.id ? "true" : undefined} onClick={() => onMono(mono.id)}>
-          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><span className="mono-row__status"><small aria-live="polite">{monoStatusLabel(mono)}</small>{monoWorking(mono) ? <Loader className="mono-row__spinner" aria-hidden="true" /> : null}</span></span>
+          <MonoMascot mono={mono} /><span className="mono-row__body"><strong>{mono.name}</strong><span className="mono-row__status"><small aria-live="polite">{monoStatusLabel(mono)}</small></span></span>
         </button>
         {onMonoDetails ? <button className="mono-details-button" type="button" aria-label={`Details for ${mono.name}`} title={`Details for ${mono.name}`} onClick={() => onMonoDetails(mono.id)}><CircleHelp size={17} aria-hidden="true" /></button> : null}
+        <MonoWorkingIndicator mono={mono} />
       </div>)}</div> : <p className="nav-note">Your Monos will appear here when you add them on this Mac.</p>}
     </section> : null}
     {!term && filter === "all" && visibleGroups.length ? <div className="nav-collapse" role="group" aria-label="Collapse workspace">

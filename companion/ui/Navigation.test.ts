@@ -70,14 +70,14 @@ describe("companion workspace navigation", () => {
     try {
       await render("working");
       expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutWorking");
-      expect(container.querySelector(".mono-row__spinner")).not.toBeNull();
+      expect(container.querySelector(".mono-card > .mono-working-indicator .mono-working-spinner")).not.toBeNull();
       expect(monoWorking({ ...navigation.monos[0], busy: false, status: "working" })).toBe(true);
       await render("needs-you");
       expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutNeeds you");
-      expect(container.querySelector(".mono-row__spinner")).toBeNull();
+      expect(container.querySelector(".mono-working-spinner")).toBeNull();
       await render("idle");
       expect(container.querySelector(".mono-card")?.textContent).toBe("ScoutIdle");
-      expect(container.querySelector(".mono-row__spinner")).toBeNull();
+      expect(container.querySelector(".mono-working-spinner")).toBeNull();
     } finally { await act(async () => root.unmount()); container.remove(); }
   });
   it("uses the project dots for running, attention and unread sessions, with no dot for idle or read sessions", async () => {

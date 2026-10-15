@@ -1,5 +1,21 @@
 import { expect, test } from "@playwright/test";
 
+test("working subsession cards animate on the right and respect reduced motion", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/mono-working-cards.html");
+  const ring = page.locator('.spawned-session__status[data-state="working"] > svg');
+  await expect(ring).toBeVisible();
+  const body = await page.locator(".spawned-session__body").boundingBox();
+  const bounds = await ring.boundingBox();
+  expect(bounds!.x).toBeGreaterThan(body!.x + body!.width);
+  await expect(ring).toHaveCSS("animation-name", "mono-working-spin");
+  const transform = await ring.evaluate(el => getComputedStyle(el).transform);
+  await expect.poll(() => ring.evaluate(el => getComputedStyle(el).transform)).not.toBe(transform);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(ring).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".spawned-session")).toContainText("Working");
+});
+
 test("a Mono opens its project sessions with normal chat controls and returns to its draft", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/mono-linked.html?demo=1");
@@ -36,16 +52,36 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await page.screenshot({ path: testInfo.outputPath("linked-session.png") });
   await page.getByRole("button", { name: "Back to Scout", exact: true }).click();
   await expect(page.locator(".conversation-title")).toHaveText("Scout");
+  const chatRing = page.locator(".detail-heading .mono-working-spinner");
+  await expect(chatRing).toBeVisible();
+  await expect(chatRing).toHaveCSS("animation-name", "mono-working-spin");
+  const titleBounds = await page.locator(".conversation-title").boundingBox();
+  const ringBounds = await chatRing.boundingBox();
+  expect(ringBounds!.x).toBeGreaterThanOrEqual(titleBounds!.x + titleBounds!.width);
+  const initialTransform = await chatRing.evaluate(el => getComputedStyle(el).transform);
+  await expect.poll(() => chatRing.evaluate(el => getComputedStyle(el).transform)).not.toBe(initialTransform);
+  await page.screenshot({ path: testInfo.outputPath("mono-chat-working.png") });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(chatRing).toHaveCSS("animation-name", "none");
+  await expect(page.getByRole("status", { name: "Scout is working" }).last()).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await expect(draft).toHaveValue("Bring the results back here");
   await expect(page.locator(".spawned-session").first()).toContainText("Done");
   await page.getByRole("button", { name: "Back to workspace", exact: true }).click();
   const scout = page.locator(".mono-row").filter({ hasText: "Scout" });
   await expect(scout).toHaveText("ScoutWorking");
-  await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "mono-working-spin");
+  const homeRing = page.locator(".mono-card").filter({ hasText: "Scout" }).locator(".mono-working-spinner");
+  await expect(homeRing).toHaveCSS("animation-name", "mono-working-spin");
+  const cardBounds = await page.locator(".mono-card").filter({ hasText: "Scout" }).boundingBox();
+  const homeBounds = await homeRing.boundingBox();
+  // Engines round the half-pixel card border differently.
+  expect(Math.abs(cardBounds!.x + cardBounds!.width - homeBounds!.x - homeBounds!.width / 2 - 20.5)).toBeLessThanOrEqual(1);
+  const homeTransform = await homeRing.evaluate(el => getComputedStyle(el).transform);
+  await expect.poll(() => homeRing.evaluate(el => getComputedStyle(el).transform)).not.toBe(homeTransform);
   await page.screenshot({ path: testInfo.outputPath("home-working.png") });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(scout.locator(".mono-row__spinner")).toBeVisible();
-  await expect(scout.locator(".mono-row__spinner")).toHaveCSS("animation-name", "none");
+  await expect(homeRing).toBeVisible();
+  await expect(homeRing).toHaveCSS("animation-name", "none");
   await expect(scout).toHaveText("ScoutWorking");
 });
 
@@ -55,7 +91,7 @@ for (const theme of ["dark", "light"]) test(`Needs you opens the next pending it
   await page.addInitScript(value => localStorage.setItem("companion.preview.appearance.v1", value), theme);
   await page.goto("/tests/browser/mono-linked.html?demo=1");
   await expect(page.locator(".mono-card").first()).toHaveText("ScoutNeeds you");
-  await expect(page.locator(".mono-card").first().locator(".mono-row__spinner")).toHaveCount(0);
+  await expect(page.locator(".mono-card").first().locator(".mono-working-spinner")).toHaveCount(0);
   await page.locator("summary.needs-you").click();
   await page.screenshot({ path: testInfo.outputPath("needs-you.png") });
   await page.getByRole("group", { name: "Waiting sessions" }).getByRole("button", { name: "Build the companion window" }).click();
