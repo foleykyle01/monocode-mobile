@@ -44,8 +44,8 @@ The installed owner beta.4 embeds the dedicated fork beta endpoint and updater
 verification key; its signature and executable identity were checked. It does
 not need another manual bootstrap solely to acquire updater support. The guarded
 updater and release workflow are implemented. A real disposable beta.4-to-beta.5
-upgrade passed, but scheduled-work and full existing-profile/pairing verification
-remain incomplete. The global feed is therefore still unpublished and gated off.
+upgrade and scheduled-preparation refusal passed, but full existing-profile/pairing
+verification remains incomplete. The global feed is therefore still unpublished and gated off.
 Users on older builds without an embedded fork feed still need a signed bootstrap.
 
 Reuse the existing Tauri updater and Settings update UI. Configure only a

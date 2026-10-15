@@ -48,7 +48,7 @@ Status as of **October 14, 2026**:
 | iPhone | **0.1.1 (1004)** is processed and available in the internal **Owner testing** TestFlight group. External beta access and a public invitation are not available yet. |
 | Mac installer | [**MonoCode Dev 1.0.0-beta.5**](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5), based on MonoCode **0.13.0**, is available as a signed and notarized Apple Silicon installer. |
 | Source | Available here for contributors who can build and sign the apps themselves. A GitHub source archive is not an app installer. |
-| Updates | Internal iPhone updates use TestFlight. The Mac update feed remains disabled pending the remaining scheduled-work and owner-profile/pairing checks. |
+| Updates | Internal iPhone updates use TestFlight. The Mac update feed remains disabled pending the remaining owner-profile/pairing verification. |
 | Notifications | **Disabled in build 1004**, with notification settings hidden. Open the phone app to check activity; background alerts are not included. |
 
 Build 1004 also adds full-page Settings with Connection first, an icon-only back button, and improved group/project collapsing in workspace navigation. Physical upgrade and reconnection validation for this build remains pending; earlier builds have been exercised on a real iPhone.
