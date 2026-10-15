@@ -35,3 +35,39 @@ test("status dots stay aligned with Git details, hover, focus and collapsed grou
   await header.hover();
   expect(await groupDot.boundingBox()).toEqual(before);
 });
+
+test("Mono dots and count bubbles share the project column through hover, focus and selection", async ({ page }) => {
+  await page.goto("/tests/browser/project-activity.html");
+  const projectDot = page.getByRole("button", { name: /ungrouped.*completed, unread/ }).locator('[role="img"]');
+  const projectBox = (await projectDot.boundingBox())!;
+  const centerX = projectBox.x + projectBox.width / 2;
+  const rows = page.locator("[data-mono-rail] [data-mono-status]");
+  await expect(rows).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    const row = rows.nth(i);
+    const badge = row.locator("[data-mono-status-dot]");
+    await expect(badge).toHaveText(["", "1", "12", "99+"][i]);
+    const assertPosition = async () => {
+      const box = (await badge.boundingBox())!;
+      const rowBox = (await row.boundingBox())!;
+      expect(box.x + box.width / 2).toBeCloseTo(centerX);
+      expect(box.y + box.height / 2).toBeCloseTo(rowBox.y + rowBox.height / 2);
+      return box;
+    };
+    const initial = await assertPosition();
+    expect(initial.width).toBe(i ? 16 : 8);
+    expect(initial.height).toBe(initial.width);
+    await row.hover();
+    const options = row.getByRole("button", { name: /options$/ });
+    await expect(options).toBeVisible();
+    const menuBox = (await options.boundingBox())!;
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual((await assertPosition()).x);
+    await options.focus();
+    await page.mouse.move(900, 700);
+    await assertPosition();
+    await row.locator("button").first().click();
+    await expect(row).toHaveAttribute("data-selected", "true");
+    await expect(badge).toHaveText("");
+    await assertPosition();
+  }
+});
