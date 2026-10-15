@@ -1,10 +1,11 @@
 # Updates and distribution
 
-Status: October 15, 2026. Companion **0.1.1 (1006)** is in internal Owner testing;
+Status: October 15, 2026. Companion **0.1.1 (1007)** is in internal Owner testing;
 this Mac-only update makes no iPhone release changes. Signed/notarized Mac
 **1.0.0-beta.5** is publicly downloadable, with desktop base **MonoCode 0.13.0**.
-The owner has beta.4 installed. Automatic Mac delivery remains disabled pending
-the complete upgrade safety/profile gate. See [beta.5 evidence and limits](release-mac-beta5.md).
+The owner has beta.5 installed and confirmed existing data and phone connectivity.
+The beta update feed is active after the upgrade safety/profile gate passed.
+See [beta.5 evidence and limits](release-mac-beta5.md).
 
 ## 1. The user experience
 
@@ -40,12 +41,13 @@ an uncertain phone command to complete an update.
 
 ## 2. Mac release channel
 
-The installed owner beta.4 embeds the dedicated fork beta endpoint and updater
+The installed owner beta.5 embeds the dedicated fork beta endpoint and updater
 verification key; its signature and executable identity were checked. It does
 not need another manual bootstrap solely to acquire updater support. The guarded
 updater and release workflow are implemented. A real disposable beta.4-to-beta.5
-upgrade and scheduled-preparation refusal passed, but full existing-profile/pairing
-verification remains incomplete. The global feed is therefore still unpublished and gated off.
+upgrade and scheduled-preparation refusal passed. The owner subsequently confirmed
+existing-profile/pairing integrity. Protected feed promotion succeeded; the installed
+beta.5 app checked the live feed and correctly reported it is on the latest version.
 Users on older builds without an embedded fork feed still need a signed bootstrap.
 
 Reuse the existing Tauri updater and Settings update UI. Configure only a
@@ -53,10 +55,10 @@ fork-owned HTTPS feed, public verification key and release URLs. The upstream
 MonoCode feed must never update a companion-enabled installation.
 
 Use this fork's public GitHub Releases for delivery; no additional user account
-or paid update service is needed. The proposed beta feed is
+or paid update service is needed. The active beta feed is
 `https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json`.
 Reserve a separate `companion-updates-stable` tag for stable delivery. These feeds
-are **not live**; the release overlay embeds the beta endpoint for bootstrap testing. Each pointer
+have separate status: beta is live; stable remains reserved and inactive. Each pointer
 contains the fork version, notes, date and per-architecture artifact URL/signature;
 artifact URLs refer to immutable, versioned releases rather than the channel tag.
 Publish and validate signed artifacts first, then replace the channel manifest.
@@ -84,8 +86,8 @@ before schema migrations; a rollback never blindly restores an old database over
 newly written sessions.
 
 Use a fork-owned, monotonically increasing desktop version once binaries ship;
-record the upstream base separately in About/release notes. Current candidate
-beta.5 is newer than installed beta.4. Do not append semver build metadata as the
+record the upstream base separately in About/release notes. The feed and installed
+app are both beta.5, so no update is offered until a higher release. Do not append semver build metadata as the
 only version increment. Only older Dev builds without the fork feed require a
 manual bootstrap.
 
@@ -217,10 +219,10 @@ The Mac environment contains Developer ID/notarization credentials and a separat
 Tauri signing key; both workflows run only on public `main` after review. Candidate
 1003 passed iPhone processing and the owner confirmed operation/reconnection.
 The Apple Silicon [1.0.0-beta.5 Mac installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5)
-is signed, notarized, verified and public. The owner remains on beta.4.
-Remaining Mac delivery checks are recorded in [the beta.5 record](release-mac-beta5.md);
-the previous TestFlight external-review state is unchanged by this release. The Mac
-feed remains disabled through `COMPANION_MAC_UPDATE_VERIFIED=false`. See the
+is signed, notarized, verified and public. The owner is on beta.5.
+Completed Mac delivery checks are recorded in [the beta.5 record](release-mac-beta5.md);
+this activation makes no TestFlight audience or review changes. The Mac feed is
+active with `COMPANION_MAC_UPDATE_VERIFIED=true`. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,

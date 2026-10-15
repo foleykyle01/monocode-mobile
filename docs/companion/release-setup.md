@@ -2,14 +2,14 @@
 
 The intended normal-user path is a direct signed Mac download with verified
 in-app updates, plus TestFlight for iPhone beta delivery. The iPhone portion is
-now live for internal Owner testing: build **0.1.1 (1006)** is VALID in App Store
+now live for internal Owner testing: build **0.1.1 (1007)** is VALID in App Store
 Connect and IN_BETA_TESTING in the existing Owner testing group. Its testing notes
-are saved. Build 1004 remains in Community beta, waiting for external review;
-the existing public invitation is configured with a 100-person cap. The signed
+are saved. Existing Community audience/review settings are unchanged by Mac feed
+activation; the existing public invitation has a 100-person cap. The signed
 Mac beta.5 download is now public and includes the current host features plus
-combined Mono status/unread badges. The owner has beta.4 installed with the
-dedicated fork feed and verification key embedded. Feed activation remains
-disabled while the full real-update safety/profile gate is incomplete; see the
+combined Mono status/unread badges. The owner has beta.5 installed with the
+dedicated fork feed and verification key embedded. The safety/profile gate is
+complete and the beta feed is active; installed-app discovery reports up to date. See the
 [beta.5 updater record](release-mac-beta5.md). The
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
 USB. See [Updates and distribution](updates-and-distribution.md)
@@ -177,15 +177,16 @@ The workflow selects Xcode 26.3 explicitly, verifies iOS SDK 26 or newer in the
 packaged app, and generates opaque PNG icons without alpha channels. These guard
 against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
-processing. Candidates 1004 through 1006 also passed signed upload and Apple processing.
+processing. Candidates 1004 through 1007 also passed signed upload and Apple processing.
 Mac release CI and guarded installation/restart handling are implemented. The
 signed/notarized Apple Silicon [1.0.0-beta.5 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5)
-is public. The owner has beta.4 installed. A disposable beta.4 fixture downloaded,
+is public. The owner has beta.5 installed. A disposable beta.4 fixture downloaded,
 verified, installed and restarted into the exact beta.5 payload, retaining its
 synthetic transcript. Pending question/approval and cross-window work refused
 restart. A fresh isolated retry also refused restart while scheduled-work
-preparation was held. Full existing-profile/pairing verification remains pending,
-so the Mac update feed stays disabled.
+preparation was held. The owner confirmed existing chats, Monos, projects and
+settings intact and the updated phone connected. Protected promotion succeeded;
+the live beta feed, archive signature/hash and installed-app check are verified.
 
 The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
 are published and saved in App Store Connect. Build 1004 is waiting for external
