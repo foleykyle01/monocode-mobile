@@ -1,4 +1,4 @@
-# Mac beta.5: published download, updater gate incomplete
+# Mac beta.5: published download and active update feed
 
 October 15, 2026. **1.0.0-beta.5**, Apple Silicon arm64, `MonoCode Dev`, identity
 `com.monocode.companion-spike`, Developer ID team `RBT45GBH6K`.
@@ -48,18 +48,23 @@ synthetic transcript were verified. It was not installed over the owner's app.
 | Pending approval | Visible Allow/Deny card; native installation refused without executing it |
 | Cross-window work | Restart from idle second window refused while first window remained Working |
 | Scheduled-work preparation | Initial tool connection failed; a fresh isolated retry held preparation with the session otherwise idle, and native installation refused |
-| Owner profile and pairing | Full existing chats/groups/Monos/settings/phone confirmation remains pending |
+| Owner profile and pairing | Owner installed beta.5, confirmed phone connected/updated, and confirmed existing chats, Monos, projects and settings intact |
 
 The fixture exercised synthetic application state, not real provider work or
 physical phone pairing. Seventeen targeted updater/configuration tests also
-passed. These checks do not replace the remaining owner-profile/pairing verification.
+passed. The owner separately completed the physical profile/pairing verification.
 The test harness is local-only and is not included in this release.
 
-`COMPANION_MAC_UPDATE_VERIFIED` remains **false**. The global
-`companion-updates-beta/latest.json` feed is **not published**. The versioned
-candidate manifest does not activate discovery in the installed beta.4 app.
-Do not advertise automatic updates as finished or promote the feed until all
-required checks in [release setup](release-setup.md) pass. After validation and
-promotion, the intended owner flow is **Check for updates → Download → Later or
-Restart to update**, with a fresh host-wide idle check. No owner restart was
-performed by this release task.
+`COMPANION_MAC_UPDATE_VERIFIED` is now **true** after those checks.
+[Protected promotion run 38820935933](https://github.com/foleykyle01/monocode-mobile/actions/runs/38820935933)
+succeeded from main `d902475840cdaf0bc0e8c3f5e2978bb77f5412de`, promoting only the
+existing signed beta.5 payload. The [global beta manifest](https://github.com/foleykyle01/monocode-mobile/releases/download/companion-updates-beta/latest.json)
+is anonymously accessible. Its version, immutable archive URL and signature match
+the verified release; an anonymous archive download hash-matched and Minisign passed.
+
+Installed beta.5 passed strict codesign, executable hash and embedded feed/key
+checks. **Settings → General → Check for updates** in that running installed app
+returned **“You're on the latest version.”** No restart, replacement or test-copy
+launch occurred during activation. Same-version discovery correctly offers no update.
+For a future higher release, use **Download → Later or Restart to update**, with a
+fresh host-wide idle check. Group-context work is not included in beta.5.
