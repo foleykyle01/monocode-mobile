@@ -18,7 +18,7 @@ import type {
 import "./companion.css";
 import { Transcript } from "./Transcript";
 import { SessionChanges } from "./SessionChanges";
-import { attentionTargets, NeedsYou, MonoMascot, Navigation } from "./Navigation";
+import { attentionTargets, NeedsYou, MonoMascot, MonoWorkingIndicator, Navigation } from "./Navigation";
 import { MonoDetailsView } from "./MonoDetailsView";
 import { ConnectionNotice } from "./ConnectionNotice";
 import { SessionSettings } from "./SessionSettings";
@@ -893,6 +893,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               <button className={`back-button ${linkedParent ? "back-button--linked" : ""}`} type="button" aria-label={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} title={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} onClick={backToConversation}><ChevronLeft size={20} aria-hidden="true" /></button>
               {selectedMono ? <MonoMascot mono={selectedMono} /> : null}
               <h2 className="conversation-title" title={selectedMono?.name || selected.title || "Untitled session"}>{selectedMono?.name || selected.title || "Untitled session"}</h2>
+              {selectedMono ? <MonoWorkingIndicator mono={selectedMono} /> : null}
             </header>
             {displayOffline ? <div className="chat-connection" role="status"><span className={connectionDot} aria-hidden="true" /><span>{!displayOnline ? "Offline" : displayReconnecting ? "Reconnecting…" : "Mac unavailable"}</span>{displayOnline && !displayReconnecting ? <button type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()}>Retry</button> : null}</div> : null}
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}

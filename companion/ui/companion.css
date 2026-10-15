@@ -225,9 +225,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .mono-row strong { font-size: calc(14px * var(--companion-ui-scale)); overflow-wrap: anywhere; }
 .mono-row small { overflow-wrap: anywhere; font-size: calc(10px * var(--companion-ui-scale)); line-height: 1.4; color: var(--companion-muted); }
 .mono-row__status { display: flex; align-items: center; gap: 5px; min-height: 14px; }
-.mono-row__spinner { width: 13px; height: 13px; flex: 0 0 13px; color: var(--companion-accent); }
+.mono-working-indicator { display: flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; }
+.mono-working-indicator > span { display: flex; }
+.mono-card > .mono-working-indicator { margin-right: 12px; }
+.mono-working-spinner { width: 16px; height: 16px; color: var(--companion-accent); }
 @media (prefers-reduced-motion: no-preference) {
-  .mono-row__spinner { animation: mono-working-spin 1s linear infinite; }
+  .mono-working-spinner { animation: mono-working-spin 1s linear infinite; }
 }
 @keyframes mono-working-spin { to { transform: rotate(360deg); } }
 .mono-mascot { flex: 0 0 auto; width: 25px; height: 25px; shape-rendering: crispEdges; }

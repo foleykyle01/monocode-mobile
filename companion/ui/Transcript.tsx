@@ -147,8 +147,8 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
         const Icon = { working: Loader, input: Clock, draft: CircleDashed, failed: CircleAlert, stopped: CircleX, done: Check, unknown: CircleDashed }[state] ?? CircleDashed;
         const project = session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd;
         return <button className="spawned-session" type="button" key={session.id} onClick={() => onOpenSession(session, viewport.current?.scrollTop ?? 0)}>
-          <span key={state} className="spawned-session__status" data-state={state} aria-hidden="true"><Icon size={16} /></span>
           <span className="spawned-session__body"><strong>{session.title}</strong><small>{project} · {label}</small></span>
+          <span key={state} className="spawned-session__status" data-state={state} aria-hidden="true"><Icon size={16} /></span>
           <ChevronRight size={16} aria-hidden="true" />
         </button>;
       })}

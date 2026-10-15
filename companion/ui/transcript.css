@@ -117,6 +117,9 @@
 .spawned-session__status { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; color: var(--companion-muted); animation: state-acknowledged var(--motion-surface-duration) var(--motion-ease-out); }
 .spawned-session__status[data-state="input"], .spawned-session__status[data-state="working"] { color: var(--companion-accent); }
 .spawned-session__status[data-state="failed"] { color: var(--companion-danger); }
+@media (prefers-reduced-motion: no-preference) {
+  .spawned-session__status[data-state="working"] > svg { animation: mono-working-spin 1s linear infinite; }
+}
 .queued-follow-ups { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--companion-stroke); border-radius: 10px; }
 .queued-follow-ups small { color: var(--companion-muted); }
 .queued-follow-ups p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
