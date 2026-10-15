@@ -6,10 +6,11 @@ now live for internal Owner testing: build **0.1.1 (1006)** is VALID in App Stor
 Connect and IN_BETA_TESTING in the existing Owner testing group. Its testing notes
 are saved. Build 1004 remains in Community beta, waiting for external review;
 the existing public invitation is configured with a 100-person cap. The signed
-Mac beta.2 download is public but lacks the new linked-session, queued-send and
-aggregate child-status host capabilities. Matching signed/notarized Mac beta.4
-is staged locally for a separate manual handoff; it has not been installed or
-published. The
+Mac beta.5 download is now public and includes the current host features plus
+combined Mono status/unread badges. The owner has beta.4 installed with the
+dedicated fork feed and verification key embedded. Feed activation remains
+disabled while the full real-update safety/profile gate is incomplete; see the
+[beta.5 updater record](release-mac-beta5.md). The
 normal-user path does not require a public App Store listing, a terminal, Xcode, or
 USB. See [Updates and distribution](updates-and-distribution.md)
 for the broader delivery and rollback plan.
@@ -178,10 +179,12 @@ against the SDK and large-icon rejections encountered on the first signed
 candidate. Candidate 1003 passed CI, uploaded successfully, and completed Apple
 processing. Candidates 1004 through 1006 also passed signed upload and Apple processing.
 Mac release CI and guarded installation/restart handling are implemented. The
-signed/notarized Apple Silicon [1.0.0-beta.2 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
-is public but lacks the current host features. The owner has installed beta.3;
-the matching signed/notarized beta.4 is prepared locally for manual installation.
-Real bootstrap-to-update validation remains pending. The Mac update feed stays disabled.
+signed/notarized Apple Silicon [1.0.0-beta.5 installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5)
+is public. The owner has beta.4 installed. A disposable beta.4 fixture downloaded,
+verified, installed and restarted into the exact beta.5 payload, retaining its
+synthetic transcript. Pending question/approval and cross-window work refused
+restart. The full scheduled-work and existing-profile/pairing checks remain
+pending, so the Mac update feed stays disabled.
 
 The [privacy page](privacy.md) and [reviewer setup instructions](beta-review.md)
 are published and saved in App Store Connect. Build 1004 is waiting for external

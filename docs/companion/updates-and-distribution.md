@@ -1,17 +1,16 @@
 # Updates and distribution
 
-Status: accepted distribution direction, October 13, 2026. Companion **0.1.1**
-(iPhone build **1004**) is valid in App Store Connect and in internal Owner
-testing, with desktop base **MonoCode 0.13.0**. Automatic Mac distribution is not
-enabled, and no signed/notarized Mac installer or external TestFlight invitation
-has been published. A public GitHub repository is not itself a production
-installer or an iPhone distribution channel.
+Status: October 15, 2026. Companion **0.1.1 (1006)** is in internal Owner testing;
+this Mac-only update makes no iPhone release changes. Signed/notarized Mac
+**1.0.0-beta.5** is publicly downloadable, with desktop base **MonoCode 0.13.0**.
+The owner has beta.4 installed. Automatic Mac delivery remains disabled pending
+the complete upgrade safety/profile gate. See [beta.5 evidence and limits](release-mac-beta5.md).
 
 ## 1. The user experience
 
 | Stage | Mac | iPhone |
 | --- | --- | --- |
-| First install | Planned: download a signed, notarized DMG; drag the app to Applications | Current internal path: join the Owner TestFlight beta and tap Install |
+| First install | Download a signed, notarized DMG; drag the app to Applications | Current internal path: join the Owner TestFlight beta and tap Install |
 | Connect | Settings → Connections → Phone companion → Show QR code | Scan once; pairing survives normal updates |
 | Later updates | Check automatically, download a verified update, then offer Restart to update when work is safe | TestFlight manages updates according to the user's settings |
 | Recovery | Keep the current app on download/signature failure; offer Retry | Reconnect to the same Mac after returning to the app |
@@ -41,13 +40,13 @@ an uncertain phone command to complete an update.
 
 ## 2. Mac release channel
 
-The installed owner build currently has no updater feed embedded. Existing MonoCode
-Dev users therefore need one final manual drag-and-drop/bootstrap install when the
-first compatible signed Mac release is ready. After that bootstrap, the planned
-fork-owned feed can deliver verified optional updates. The guarded updater and
-release workflow are implemented, while real bootstrap/upgrade validation and
-feed publication remain pending. The latest installed owner build is
-`be563c1`, but it is not a public signed/notarized download.
+The installed owner beta.4 embeds the dedicated fork beta endpoint and updater
+verification key; its signature and executable identity were checked. It does
+not need another manual bootstrap solely to acquire updater support. The guarded
+updater and release workflow are implemented. A real disposable beta.4-to-beta.5
+upgrade passed, but scheduled-work and full existing-profile/pairing verification
+remain incomplete. The global feed is therefore still unpublished and gated off.
+Users on older builds without an embedded fork feed still need a signed bootstrap.
 
 Reuse the existing Tauri updater and Settings update UI. Configure only a
 fork-owned HTTPS feed, public verification key and release URLs. The upstream
@@ -85,10 +84,10 @@ before schema migrations; a rollback never blindly restores an old database over
 newly written sessions.
 
 Use a fork-owned, monotonically increasing desktop version once binaries ship;
-record the upstream base separately in About/release notes. The first updater
-bootstrap must be newer than installed 0.13.0 (proposed `1.0.0-beta.1`). Do not
-append semver build metadata as the only version increment. Existing Dev builds
-have no feed, so one final drag-and-drop install is required to bootstrap updates.
+record the upstream base separately in About/release notes. Current candidate
+beta.5 is newer than installed beta.4. Do not append semver build metadata as the
+only version increment. Only older Dev builds without the fork feed require a
+manual bootstrap.
 
 ### Bootstrap and later delivery
 
@@ -96,8 +95,8 @@ have no feed, so one final drag-and-drop install is required to bootstrap update
    identifier, the fork feed, its public updater key and safe restart handling.
    Existing users quit Dev and replace only the app in its existing location.
    Do not delete the app's data folder, import the original MonoCode profile again,
-   or revoke phone pairing. The current local update is not this bootstrap.
-2. After the bootstrap, checking for updates shows a version and release notes.
+   or revoke phone pairing. The owner already has this updater-capable bootstrap.
+2. After the bootstrap and validated feed activation, checking for updates shows a version and release notes.
    Users can download during work, select Later, or choose Restart to update.
    TestFlight continues handling phone updates independently.
 3. Release maintainers build from reviewed public source, validate signatures,
@@ -208,7 +207,7 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 Current foundations: Tauri updater is present but companion endpoints are disabled;
 the manual fallback now points to this fork. Phone version metadata is 0.1.1 and
-build 1004 is available in internal TestFlight Owner testing. Apple Distribution and
+build 1006 is available in internal TestFlight Owner testing. Apple Distribution and
 Developer ID Application certificates were created in Xcode with the owner's
 authorization. The development certificate is retained. Certificates alone do not
 configure notarization, App Store Connect or CI access.
@@ -217,10 +216,10 @@ The TestFlight and Mac workflows have separate protected GitHub environments.
 The Mac environment contains Developer ID/notarization credentials and a separate
 Tauri signing key; both workflows run only on public `main` after review. Candidate
 1003 passed iPhone processing and the owner confirmed operation/reconnection.
-The Apple Silicon [1.0.0-beta.2 Mac installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.2)
-is signed, notarized, verified and public. The owner installed the matching package.
-Remaining delivery gates include real bootstrap-to-update validation,
-App Store Connect privacy/review metadata and external beta approval. The Mac
+The Apple Silicon [1.0.0-beta.5 Mac installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5)
+is signed, notarized, verified and public. The owner remains on beta.4.
+Remaining Mac delivery checks are recorded in [the beta.5 record](release-mac-beta5.md);
+the previous TestFlight external-review state is unchanged by this release. The Mac
 feed remains disabled through `COMPANION_MAC_UPDATE_VERIFIED=false`. See the
 [release setup checklist](release-setup.md) for the executable readiness check.
 
