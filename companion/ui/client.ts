@@ -7,6 +7,7 @@ import type {
   InvokeLike,
   MutationInput,
   PendingMutation,
+  CompanionSendReceipt,
   CompanionImageAttachment,
   SessionRead,
   SessionsList,
@@ -184,7 +185,7 @@ export function createCompanionClient(
       }
     }
     try {
-      const result = await request<{ accepted: boolean; delivery?: "queued" | "accepted" }>(action, safeInput, requestId);
+      const result = await request<CompanionSendReceipt>(action, safeInput, requestId);
       if (result?.accepted !== true) {
         throw new CompanionRequestError(
           "Desktop did not confirm this command; keep the same request ID when retrying",
@@ -211,7 +212,8 @@ export function createCompanionClient(
   async function stageImage(image: CompanionImageDraft) {
     if (!native) throw new CompanionRequestError("Image messages are available in the iPhone app", false);
     try {
-      return await invoke<CompanionImageAttachment>("companion_stage_attachment", { image });
+      const { id, name, mimeType, size, width, height, data } = image;
+      return await invoke<CompanionImageAttachment>("companion_stage_attachment", { image: { id, name, mimeType, size, width, height, data } });
     } catch (error) {
       throw new CompanionRequestError(errorText(error), false);
     }
@@ -220,7 +222,7 @@ export function createCompanionClient(
   async function discardStagedImages(attachments: CompanionImageAttachment[]) {
     if (!attachments.length) return;
     try {
-      await invoke("companion_discard_staged_attachments", { attachments });
+      await invoke("companion_discard_staged_attachments", { references: attachments });
     } catch {
       // The native command only removes the phone's private staging files.
     }

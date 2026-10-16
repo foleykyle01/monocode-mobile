@@ -32,6 +32,29 @@ fn clear_staged_attachments(app: &AppHandle, input: &Value) {
     let _ = attachments::discard(&directory, &references);
 }
 
+fn finalized_send_input(input: &Value, request_id: &str) -> Result<Value> {
+    let references = attachments::references(input)?;
+    if references.is_empty() {
+        return Ok(input.clone());
+    }
+    // The longest chunk suffix is "-u3-8388607". Keep the device request
+    // below the protocol limit after that suffix is added.
+    ensure!(request_id.len() <= 45, "Image request ID is too large");
+    let mut final_input = input.clone();
+    final_input
+        .as_object_mut()
+        .context("Invalid send input")?
+        .insert("uploadId".into(), Value::String(request_id.into()));
+    Ok(final_input)
+}
+
+fn expired_upload(response: &Value) -> bool {
+    response.get("ok").and_then(Value::as_bool) == Some(false)
+        && response.get("outcomeUnknown").and_then(Value::as_bool) != Some(true)
+        && response.get("error").and_then(Value::as_str)
+            .is_some_and(|message| message.contains("Image upload expired"))
+}
+
 async fn upload_staged_attachments(
     endpoint: &Endpoint,
     host: &EndpointAddr,
@@ -87,12 +110,7 @@ async fn upload_staged_attachments(
             require_ok(&response)?;
         }
     }
-    let mut final_input = input.clone();
-    final_input
-        .as_object_mut()
-        .context("Invalid send input")?
-        .insert("uploadId".into(), Value::String(request_id.into()));
-    Ok(final_input)
+    finalized_send_input(input, request_id)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -268,19 +286,33 @@ async fn companion_request(
             client_state.mutation_in_flight = true;
         }
         drop(client_state);
-        // From this point a mutation may have reached the Mac. Every earlier
-        // failure is a definitive local rejection, so the phone must not
-        // invent a recovery command for it.
-        // Image chunks only stage bytes on the paired Mac; the final send is
-        // still one persisted, idempotent mutation. Retain the recovery record
-        // if either leg loses its receipt.
-        dispatch_started = true;
         let response = async {
             let outbound_input = if action == "sessions.send" {
+                let final_input = finalized_send_input(&input, &request_id)?;
+                if is_retry && input.get("attachments").is_some() {
+                    // A lost final receipt is recoverable by the bridge's
+                    // request receipt before we touch chunks or turn state.
+                    dispatch_started = true;
+                    let receipt = exchange(
+                        &endpoint,
+                        &host,
+                        &Request::Command {
+                            version: VERSION,
+                            request_id: request_id.clone(),
+                            action: action.clone(),
+                            input: final_input.clone(),
+                        },
+                    ).await?;
+                    if !expired_upload(&receipt) {
+                        return Ok(receipt);
+                    }
+                    // The final send was definitely rejected before delivery;
+                    // restage chunks below, then issue the exact same send.
+                    dispatch_started = false;
+                }
                 upload_staged_attachments(&endpoint, &host, &request_id, &input, &app).await?
-            } else {
-                input.clone()
-            };
+            } else { input.clone() };
+            dispatch_started = true;
             exchange(
                 &endpoint,
                 &host,
@@ -302,6 +334,11 @@ async fn companion_request(
                     delete_private(PENDING_ACCOUNT)?;
                     if action == "sessions.send" { clear_staged_attachments(&app, &input); }
                 }
+            } else if !dispatch_started {
+                // Chunk staging cannot deliver a user message. A rejected or
+                // interrupted preflight has no uncertain final send to retain.
+                delete_private(PENDING_ACCOUNT)?;
+                if action == "sessions.send" { clear_staged_attachments(&app, &input); }
             }
         }
         response

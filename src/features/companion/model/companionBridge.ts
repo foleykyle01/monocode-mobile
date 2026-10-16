@@ -18,6 +18,7 @@ import {
   validateCompanionImages,
   type CompanionImageAttachment,
 } from "./companionAttachments";
+import { companionQueueId } from "./companionFollowUp";
 
 export type CompanionConfiguration = {
   models: { harness: string; id: string; label: string }[];
@@ -108,7 +109,7 @@ function snapshotBlock(block: Block) {
 }
 
 type UploadedImage = CompanionImageAttachment & {
-  chunks: Map<number, string>;
+  chunks: Map<number, Uint8Array>;
   received: number;
 };
 
@@ -177,12 +178,79 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     if (typeof data !== "string" || data.length === 0 || data.length > 131_072)
       throw new Error("Invalid image chunk");
     try {
-      const bytes = atob(data);
-      if (btoa(bytes) !== data) throw new Error();
-      return bytes.length;
+      const binary = atob(data);
+      if (btoa(binary) !== data) throw new Error();
+      return Uint8Array.from(binary, byte => byte.charCodeAt(0));
     } catch {
       throw new Error("Invalid image chunk");
     }
+  }
+
+  function imageBytes(image: UploadedImage) {
+    const bytes = new Uint8Array(image.size);
+    let offset = 0;
+    for (const chunk of [...image.chunks.entries()].sort(([left], [right]) => left - right)) {
+      bytes.set(chunk[1], offset);
+      offset += chunk[1].length;
+    }
+    if (offset !== image.size) throw new Error("Image upload is incomplete. Send the message again.");
+    return bytes;
+  }
+
+  function base64(bytes: Uint8Array) {
+    let text = "";
+    for (let index = 0; index < bytes.length; index += 0x8000)
+      text += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    return btoa(text);
+  }
+
+  function imageDimensions(bytes: Uint8Array, mimeType: string): { width: number; height: number } {
+    const fail = (): never => { throw new Error("Image data does not match its attachment metadata"); };
+    const u16be = (offset: number) => (bytes[offset] << 8) | bytes[offset + 1];
+    const u32be = (offset: number) => ((bytes[offset] * 0x1000000) + (bytes[offset + 1] << 16) + (bytes[offset + 2] << 8) + bytes[offset + 3]) >>> 0;
+    if (mimeType === "image/png") {
+      if (bytes.length < 24 || ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)
+        || String.fromCharCode(...bytes.subarray(12, 16)) !== "IHDR") fail();
+      return { width: u32be(16), height: u32be(20) };
+    }
+    if (mimeType === "image/gif") {
+      if (bytes.length < 10 || (String.fromCharCode(...bytes.subarray(0, 6)) !== "GIF87a" && String.fromCharCode(...bytes.subarray(0, 6)) !== "GIF89a")) fail();
+      return { width: bytes[6] | (bytes[7] << 8), height: bytes[8] | (bytes[9] << 8) };
+    }
+    if (mimeType === "image/jpeg") {
+      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) fail();
+      for (let offset = 2; offset + 9 < bytes.length;) {
+        if (bytes[offset++] !== 0xff) fail();
+        while (bytes[offset] === 0xff) ++offset;
+        const marker = bytes[offset++];
+        if (marker === 0xd9 || marker === 0xda) break;
+        if (offset + 1 >= bytes.length) fail();
+        const length = u16be(offset);
+        if (length < 2 || offset + length > bytes.length) fail();
+        if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf))
+          return { width: u16be(offset + 5), height: u16be(offset + 3) };
+        offset += length;
+      }
+      fail();
+    }
+    if (mimeType === "image/webp") {
+      if (bytes.length < 20 || String.fromCharCode(...bytes.subarray(0, 4)) !== "RIFF" || String.fromCharCode(...bytes.subarray(8, 12)) !== "WEBP") fail();
+      for (let offset = 12; offset + 8 <= bytes.length;) {
+        const kind = String.fromCharCode(...bytes.subarray(offset, offset + 4));
+        const size = bytes[offset + 4] | (bytes[offset + 5] << 8) | (bytes[offset + 6] << 16) | (bytes[offset + 7] << 24);
+        const data = offset + 8;
+        if (size < 0 || data + size > bytes.length) fail();
+        if (kind === "VP8X" && size >= 10) return { width: 1 + bytes[data + 4] + (bytes[data + 5] << 8) + (bytes[data + 6] << 16), height: 1 + bytes[data + 7] + (bytes[data + 8] << 8) + (bytes[data + 9] << 16) };
+        if (kind === "VP8L" && size >= 5 && bytes[data] === 0x2f) {
+          const bits = bytes[data + 1] | (bytes[data + 2] << 8) | (bytes[data + 3] << 16) | (bytes[data + 4] << 24);
+          return { width: 1 + (bits & 0x3fff), height: 1 + ((bits >>> 14) & 0x3fff) };
+        }
+        if (kind === "VP8 " && size >= 10 && bytes[data + 3] === 0x9d && bytes[data + 4] === 0x01 && bytes[data + 5] === 0x2a)
+          return { width: u16be(data + 6) & 0x3fff, height: u16be(data + 8) & 0x3fff };
+        offset = data + size + (size % 2);
+      }
+    }
+    return fail();
   }
 
   function uploadedImages(input: Record<string, unknown>, requestId: string) {
@@ -205,7 +273,11 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       const received = upload.images.get(image.id);
       if (!received || received.received !== image.size || received.name !== image.name || received.mimeType !== image.mimeType || received.width !== image.width || received.height !== image.height)
         throw new Error("Image upload is incomplete. Send the message again.");
-      return { id: image.id, name: image.name, mimeType: image.mimeType, kind: "image" as const, size: image.size, data: [...received.chunks.entries()].sort(([left], [right]) => left - right).map(([, data]) => data).join("") };
+      const bytes = imageBytes(received);
+      const dimensions = imageDimensions(bytes, image.mimeType);
+      if (dimensions.width !== image.width || dimensions.height !== image.height)
+        throw new Error("Image data does not match its attachment metadata");
+      return { id: image.id, name: image.name, mimeType: image.mimeType, kind: "image" as const, size: image.size, data: base64(bytes) };
     });
     return { images: attachments, scope };
   }
@@ -222,8 +294,8 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     if (!Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error("Invalid image offset");
     const bytes = decodedBytes(input.data);
     const offset = input.offset as number;
-    if (offset + bytes > image.size) throw new Error("Image upload is too large");
-    const uploadId = text(input, "uploadId", 56);
+    if (offset + bytes.length > image.size) throw new Error("Image upload is too large");
+    const uploadId = text(input, "uploadId", 128);
     const scope = uploadScope(requestId, uploadId, true);
     cleanUploads();
     let upload = uploads.get(scope);
@@ -243,14 +315,14 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       throw new Error("Image upload metadata changed");
     const existing = received.chunks.get(offset);
     if (existing !== undefined) {
-      if (existing !== input.data) throw new Error("Image retry does not match uploaded bytes");
+      if (existing.length !== bytes.length || existing.some((value, index) => value !== bytes[index])) throw new Error("Image retry does not match uploaded bytes");
       return { accepted: true };
     }
     const buffered = [...uploads.values()].reduce((total, entry) => total + [...entry.images.values()].reduce((size, candidate) => size + candidate.received, 0), 0);
-    if (buffered + bytes > UPLOAD_BYTES_LIMIT) throw new Error("Too many images are waiting to send");
+    if (buffered + bytes.length > UPLOAD_BYTES_LIMIT) throw new Error("Too many images are waiting to send");
     if (offset !== received.received) throw new Error("Image chunks are out of order");
-    received.chunks.set(offset, input.data as string);
-    received.received += bytes;
+    received.chunks.set(offset, bytes);
+    received.received += bytes.length;
     upload.expiresAt = Date.now() + UPLOAD_TTL_MS;
     return { accepted: true };
   }
@@ -478,7 +550,11 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       if (!accepted)
         throw new Error("Desktop did not accept the follow-up");
       if (uploaded.scope) uploads.delete(uploaded.scope);
-      return { epoch, sessionId: id, accepted: true, turn: owner.turn(id), delivery: accepted === "queued" ? "queued" : "accepted" };
+      return {
+        epoch, sessionId: id, accepted: true, turn: owner.turn(id),
+        delivery: accepted === "queued" ? "queued" : "accepted",
+        ...(accepted === "queued" ? { queueId: companionQueueId(`companion:${epoch}:${requestId}`) } : {}),
+      };
     } else if (action === "sessions.queue.resume") {
       fields(input, ["epoch", "sessionId", "turn"]);
       if (!owner.resumeQueue || session.queueStatus !== "paused" || !session.queuedMessages?.length)
@@ -580,9 +656,17 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
         // old mutation. Restarting this development bridge creates a new epoch.
         if (receipts.size >= RECEIPT_LIMIT) throw new Error("Development command limit reached; restart the isolated app");
         const result = queue.then(() => mutate(action, input, requestId));
-        receipts.set(requestId, { signature, result });
+        // A final send that has no staged bytes never reaches the owner. Do
+        // not turn that preflight rejection into a receipt which would block
+        // the same idempotent request after its phone replays the chunks.
+        const receipt = result.catch(error => {
+          if (action === "sessions.send" && error instanceof Error && error.message.startsWith("Image upload expired"))
+            receipts.delete(requestId);
+          throw error;
+        });
+        receipts.set(requestId, { signature, result: receipt });
         queue = result.then(() => undefined, () => undefined);
-        return result;
+        return receipt;
       } catch (error) {
         return Promise.reject(error);
       }

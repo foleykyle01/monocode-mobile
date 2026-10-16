@@ -131,7 +131,7 @@ describe("desktop companion owner boundary", () => {
     });
     const command = { ...input(), text: "Next" };
     const results = await Promise.all([bridge.handle("one", "sessions.send", command), bridge.handle("one", "sessions.send", command)]);
-    expect(results[0]).toMatchObject({ accepted: true, delivery: "queued", turn: 1 });
+    expect(results[0]).toMatchObject({ accepted: true, delivery: "queued", queueId: "companion_test-epoch_one", turn: 1 });
     expect(results[1]).toEqual(results[0]);
     await bridge.handle("two", "sessions.send", { ...input(), text: "Then this" });
     expect(owner.send).toHaveBeenCalledTimes(2);
@@ -142,6 +142,12 @@ describe("desktop companion owner boundary", () => {
     expect(await bridge.handle("read-queue", "sessions.read", { sessionId: session.id })).toMatchObject({ queuedMessages: [
       { id: "desktop", state: "queued" }, { id: "companion_test-epoch_one", state: "queued" }, { id: "companion_test-epoch_two", state: "queued" },
     ] });
+    // The desktop queue dispatcher owns removal. Once it accepts the head,
+    // the phone read no longer reports a stale queued row or receipt target.
+    session.busy = false;
+    session.queuedMessages = undefined;
+    session.queueStatus = undefined;
+    expect(await bridge.handle("read-delivered", "sessions.read", { sessionId: session.id })).not.toHaveProperty("queuedMessages.0");
     await expect(bridge.handle("invalid", "sessions.send", { ...input(), turn: 0, text: "Stale" })).rejects.toThrow("turn changed");
     await expect(bridge.handle("missing", "sessions.send", { ...input(), sessionId: "missing", text: "Wrong" })).rejects.toThrow("not available");
     expect(owner.send).toHaveBeenCalledTimes(2);
@@ -155,21 +161,52 @@ describe("desktop companion owner boundary", () => {
   });
 
   it("accepts bounded staged images exactly once and only projects their metadata", async () => {
-    const { bridge, owner, input } = fixture();
-    const image = { id: "image-one", name: "Screen.png", mimeType: "image/png", size: 5, width: 2, height: 2 };
-    const send = { ...input(), text: "What does this show?", attachments: [image], uploadId: "image-send" };
+    const { bridge, owner, input, session } = fixture();
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9JZCkAAAAASUVORK5CYII=";
+    const image = { id: "image-one", name: "Screen.png", mimeType: "image/png", size: 68, width: 1, height: 1 };
+    const send = { ...input(), text: "What does this show?", attachments: [image], uploadId: "peer-one-image-send" };
 
-    await expect(bridge.handle("image-send-u0-0", "sessions.attachment.upload", {
-      ...input(), uploadId: "image-send", ...image, offset: 0, data: "aGVsbG8=",
+    await expect(bridge.handle("peer-one-image-send-u0-0", "sessions.attachment.upload", {
+      ...input(), uploadId: "peer-one-image-send", ...image, offset: 0, data: png,
     })).resolves.toEqual({ accepted: true });
-    await expect(bridge.handle("image-send", "sessions.send", send)).resolves.toMatchObject({ accepted: true, delivery: "accepted" });
-    expect(owner.send).toHaveBeenCalledExactlyOnceWith("test-session", "What does this show?", [expect.objectContaining({ id: image.id, name: image.name, mimeType: image.mimeType, size: image.size, kind: "image", data: "aGVsbG8=" })], "companion:test-epoch:image-send");
+    await expect(bridge.handle("peer-one-image-send", "sessions.send", send)).resolves.toMatchObject({ accepted: true, delivery: "accepted" });
+    // Model a lost phone receipt after the owner advanced its turn: the same
+    // final envelope recovers the bridge receipt without replaying chunks.
+    await expect(bridge.handle("peer-one-image-send", "sessions.send", send)).resolves.toMatchObject({ accepted: true, delivery: "accepted" });
+    expect(owner.send).toHaveBeenCalledExactlyOnceWith("test-session", "What does this show?", [expect.objectContaining({ id: image.id, name: image.name, mimeType: image.mimeType, size: image.size, kind: "image", data: png })], "companion:test-epoch:peer-one-image-send");
 
     const transcript = await bridge.handle("image-read", "sessions.read", { sessionId: "test-session" });
     expect(transcript).toMatchObject({ blocks: expect.arrayContaining([expect.objectContaining({ attachments: [{ name: image.name, mimeType: image.mimeType, size: image.size }] })]) });
-    expect(JSON.stringify(transcript)).not.toContain("aGVsbG8=");
+    expect(JSON.stringify(transcript)).not.toContain(png);
     await expect(bridge.handle("unbound-image", "sessions.send", { ...input(), text: "No bytes", attachments: [image], uploadId: "other" }))
       .rejects.toThrow("bound");
+
+    session.busy = false;
+    const raw = atob(png);
+    const split = { ...image, id: "image-split" };
+    const splitId = "peer-one-image-split";
+    await bridge.handle(`${splitId}-u0-0`, "sessions.attachment.upload", { ...input(), uploadId: splitId, ...split, offset: 0, data: btoa(raw.slice(0, 2)) });
+    await bridge.handle(`${splitId}-u0-2`, "sessions.attachment.upload", { ...input(), uploadId: splitId, ...split, offset: 2, data: btoa(raw.slice(2)) });
+    await expect(bridge.handle(splitId, "sessions.send", { ...input(), text: "Split image", attachments: [split], uploadId: splitId })).resolves.toMatchObject({ accepted: true });
+    expect(owner.send).toHaveBeenLastCalledWith("test-session", "Split image", [expect.objectContaining({ data: png })], "companion:test-epoch:peer-one-image-split");
+  });
+
+  it("keeps namespaced uploads device-scoped and rejects malformed image bytes", async () => {
+    const { bridge, input, owner, session } = fixture();
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9JZCkAAAAASUVORK5CYII=";
+    const image = { id: "image-one", name: "Screen.png", mimeType: "image/png", size: 68, width: 1, height: 1 };
+    for (const peer of ["peer-one", "peer-two"]) {
+      const uploadId = `${peer}-same`;
+      await bridge.handle(`${uploadId}-u0-0`, "sessions.attachment.upload", { ...input(), uploadId, ...image, offset: 0, data: png });
+      await bridge.handle(uploadId, "sessions.send", { ...input(), text: peer, attachments: [image], uploadId });
+      session.busy = false;
+    }
+    expect(owner.send).toHaveBeenCalledTimes(2);
+    await bridge.handle("peer-three-bad-u0-0", "sessions.attachment.upload", { ...input(), uploadId: "peer-three-bad", ...image, offset: 0, data: png });
+    await expect(bridge.handle("peer-three-bad", "sessions.send", { ...input(), text: "bad", attachments: [{ ...image, width: 2 }], uploadId: "peer-three-bad" })).rejects.toThrow("incomplete");
+    const malformed = { ...image, size: 5 };
+    await bridge.handle("peer-four-bad-u0-0", "sessions.attachment.upload", { ...input(), uploadId: "peer-four-bad", ...malformed, offset: 0, data: "aGVsbG8=" });
+    await expect(bridge.handle("peer-four-bad", "sessions.send", { ...input(), text: "bad bytes", attachments: [malformed], uploadId: "peer-four-bad" })).rejects.toThrow("metadata");
   });
 
   it("exposes only the existing paused-queue recovery and refuses unsafe retries", async () => {

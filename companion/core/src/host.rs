@@ -149,7 +149,11 @@ async fn desktop_request(
         "Invalid desktop credential"
     );
     // Device namespaces prevent unrelated phones colliding in desktop receipts.
-    let request = json!({"token": config.token, "namespace":"companion", "requestId":format!("{}-{request_id}", peer), "action":action, "input":input});
+    // An image upload is bound to that same receipt ID, so namespace its private
+    // upload token too. The phone never sees this desktop-only value.
+    let namespaced_request_id = format!("{}-{request_id}", peer);
+    let input = namespace_upload_id(input, action, &namespaced_request_id)?;
+    let request = json!({"token": config.token, "namespace":"companion", "requestId":namespaced_request_id, "action":action, "input":input});
     let mut bytes = serde_json::to_vec(&request)?;
     ensure!(bytes.len() < MAX_REQUEST, "Request is too large");
     bytes.push(b'\n');
@@ -179,6 +183,43 @@ async fn desktop_request(
         }
     }
     Ok(serde_json::from_slice(&response)?)
+}
+
+fn namespace_upload_id(mut input: Value, action: &str, request_id: &str) -> Result<Value> {
+    if !matches!(action, "sessions.send" | "sessions.attachment.upload") {
+        return Ok(input);
+    }
+    let object = input
+        .as_object_mut()
+        .context("Invalid image request input")?;
+    let Some(upload_id) = object.get_mut("uploadId") else {
+        return Ok(input);
+    };
+    let raw = upload_id.as_str().context("Invalid image upload ID")?;
+    let final_request_id = if action == "sessions.send" {
+        ensure!(
+            request_id.ends_with(&format!("-{raw}")),
+            "Image upload ID does not match this device request"
+        );
+        request_id.to_owned()
+    } else {
+        let (peer, suffix) = request_id
+            .rsplit_once(&format!("-{raw}-u"))
+            .context("Image upload ID does not match this device request")?;
+        let (index, offset) = suffix
+            .split_once('-')
+            .context("Invalid image upload request")?;
+        ensure!(
+            !index.is_empty()
+                && !offset.is_empty()
+                && index.bytes().all(|value| value.is_ascii_digit())
+                && offset.bytes().all(|value| value.is_ascii_digit()),
+            "Invalid image upload request"
+        );
+        format!("{peer}-{raw}")
+    };
+    *upload_id = Value::String(final_request_id);
+    Ok(input)
 }
 
 pub struct Host {
@@ -365,6 +406,30 @@ mod tests {
         let current = gate.invite(peer().into());
         gate.invitation.as_mut().unwrap().1 = now() - 1;
         assert!(gate.pair(peer(), &current.invitation).is_err());
+    }
+
+    #[test]
+    fn device_namespaces_image_upload_and_final_ids_together() {
+        let first = "a".repeat(64);
+        let second = "b".repeat(64);
+        let input = json!({"uploadId":"same","id":"image","data":"abc"});
+        let chunk = namespace_upload_id(
+            input.clone(),
+            "sessions.attachment.upload",
+            &format!("{first}-same-u0-98304"),
+        )
+        .unwrap();
+        let final_send =
+            namespace_upload_id(input.clone(), "sessions.send", &format!("{first}-same")).unwrap();
+        let other = namespace_upload_id(input, "sessions.send", &format!("{second}-same")).unwrap();
+        assert_eq!(chunk["uploadId"], final_send["uploadId"]);
+        assert_ne!(final_send["uploadId"], other["uploadId"]);
+        assert!(namespace_upload_id(
+            json!({"uploadId":"same"}),
+            "sessions.attachment.upload",
+            &format!("{first}-other-u0-0")
+        )
+        .is_err());
     }
 
     #[tokio::test]

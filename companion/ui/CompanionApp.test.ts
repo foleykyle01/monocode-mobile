@@ -410,7 +410,7 @@ it("queues a busy follow-up with Send and Stop together, blocks rapid duplicates
   const session = { ...read.session, busy: true, needsApproval: true, turn: 7 };
   fake.sessionsList.mockResolvedValue({ ...base, sessions: [session], capabilities: { queuedFollowUps: true } } as typeof base);
   fake.sessionRead.mockImplementation(async id => id === "session" ? { ...read, session } : defaultRead(id));
-  let acknowledge!: (value: { accepted: boolean; delivery: "queued" }) => void;
+  let acknowledge!: (value: { accepted: boolean; delivery: "queued"; queueId: string }) => void;
   fake.mutate.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   const enter = async (text: string) => act(async () => {
@@ -434,11 +434,13 @@ it("queues a busy follow-up with Send and Stop together, blocks rapid duplicates
     expect(fake.mutate).toHaveBeenCalledExactlyOnceWith("sessions.send", { epoch: "e", sessionId: "session", turn: 7, text: "Follow up without stopping" });
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.disabled).toBe(true);
     await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
-    await act(async () => acknowledge({ accepted: true, delivery: "queued" }));
+    await act(async () => acknowledge({ accepted: true, delivery: "queued", queueId: "companion_e_queued" }));
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Other draft");
     await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("");
-    expect(container.querySelector(".send-receipt")?.textContent).toBe("Queued — waiting for the agent");
+    // The refreshed conversation has no matching queue row, so a historical
+    // acknowledgement cannot leave a false "Queued" status behind.
+    expect(container.querySelector(".send-receipt")?.textContent).toBe("");
     await enter("Keep on failure");
     fake.mutate.mockRejectedValueOnce(new CompanionRequestError("The session turn changed; refresh before acting", false));
     await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));

@@ -55,6 +55,11 @@ pub fn stage(dir: &Path, image: StagedImage) -> Result<AttachmentReference> {
         bytes.len() == image.reference.size,
         "Image size changed while attaching"
     );
+    let (width, height) = image_dimensions(&bytes, &image.reference.mime_type)?;
+    ensure!(
+        width == image.reference.width && height == image.reference.height,
+        "Image dimensions changed while attaching"
+    );
     ensure_dir(dir)?;
     let target = attachment_path(dir, &image.reference.id);
     let temporary = target.with_extension("tmp");
@@ -69,6 +74,62 @@ pub fn stage(dir: &Path, image: StagedImage) -> Result<AttachmentReference> {
         )?;
     }
     Ok(image.reference)
+}
+
+fn image_dimensions(bytes: &[u8], mime_type: &str) -> Result<(u32, u32)> {
+    let invalid = || anyhow::anyhow!("Image data does not match its attachment metadata");
+    match mime_type {
+        "image/png" => {
+            ensure!(bytes.len() >= 24 && &bytes[..8] == b"\x89PNG\r\n\x1a\n" && &bytes[12..16] == b"IHDR", "Image data does not match its attachment metadata");
+            Ok((u32::from_be_bytes(bytes[16..20].try_into().unwrap()), u32::from_be_bytes(bytes[20..24].try_into().unwrap())))
+        }
+        "image/gif" => {
+            ensure!(bytes.len() >= 10 && (&bytes[..6] == b"GIF87a" || &bytes[..6] == b"GIF89a"), "Image data does not match its attachment metadata");
+            Ok((u16::from_le_bytes(bytes[6..8].try_into().unwrap()) as u32, u16::from_le_bytes(bytes[8..10].try_into().unwrap()) as u32))
+        }
+        "image/jpeg" => {
+            ensure!(bytes.len() >= 4 && bytes[..2] == [0xff, 0xd8], "Image data does not match its attachment metadata");
+            let mut offset = 2;
+            while offset + 9 < bytes.len() {
+                ensure!(bytes[offset] == 0xff, "Image data does not match its attachment metadata");
+                offset += 1;
+                while bytes.get(offset) == Some(&0xff) { offset += 1; }
+                let marker = *bytes.get(offset).ok_or_else(invalid)?;
+                offset += 1;
+                if marker == 0xd9 || marker == 0xda { break; }
+                let length = u16::from_be_bytes(bytes.get(offset..offset + 2).ok_or_else(invalid)?.try_into().unwrap()) as usize;
+                ensure!(length >= 2 && offset + length <= bytes.len(), "Image data does not match its attachment metadata");
+                if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf) {
+                    return Ok((u16::from_be_bytes(bytes[offset + 5..offset + 7].try_into().unwrap()) as u32, u16::from_be_bytes(bytes[offset + 3..offset + 5].try_into().unwrap()) as u32));
+                }
+                offset += length;
+            }
+            Err(invalid())
+        }
+        "image/webp" => {
+            ensure!(bytes.len() >= 20 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP", "Image data does not match its attachment metadata");
+            let mut offset = 12;
+            while offset + 8 <= bytes.len() {
+                let kind = &bytes[offset..offset + 4];
+                let size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+                let data = offset + 8;
+                ensure!(data + size <= bytes.len(), "Image data does not match its attachment metadata");
+                if kind == b"VP8X" && size >= 10 {
+                    return Ok((1 + bytes[data + 4] as u32 + ((bytes[data + 5] as u32) << 8) + ((bytes[data + 6] as u32) << 16), 1 + bytes[data + 7] as u32 + ((bytes[data + 8] as u32) << 8) + ((bytes[data + 9] as u32) << 16)));
+                }
+                if kind == b"VP8L" && size >= 5 && bytes[data] == 0x2f {
+                    let bits = u32::from_le_bytes(bytes[data + 1..data + 5].try_into().unwrap());
+                    return Ok((1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)));
+                }
+                if kind == b"VP8 " && size >= 10 && bytes[data + 3..data + 6] == [0x9d, 0x01, 0x2a] {
+                    return Ok(((u16::from_le_bytes(bytes[data + 6..data + 8].try_into().unwrap()) & 0x3fff) as u32, (u16::from_le_bytes(bytes[data + 8..data + 10].try_into().unwrap()) & 0x3fff) as u32));
+                }
+                offset = data + size + size % 2;
+            }
+            Err(invalid())
+        }
+        _ => Err(invalid()),
+    }
 }
 
 pub fn read(dir: &Path, reference: &AttachmentReference) -> Result<Vec<u8>> {
@@ -175,15 +236,17 @@ fn attachment_path(dir: &Path, id: &str) -> PathBuf {
 mod tests {
     use super::*;
 
+    const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9JZCkAAAAASUVORK5CYII=";
+
     fn image(data: &str) -> StagedImage {
         StagedImage {
             reference: AttachmentReference {
                 id: "image-one".into(),
                 name: "Screen.png".into(),
                 mime_type: "image/png".into(),
-                size: 5,
-                width: 2,
-                height: 2,
+                size: 68,
+                width: 1,
+                height: 1,
             },
             data: data.into(),
         }
@@ -196,18 +259,33 @@ mod tests {
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&directory);
-        let reference = stage(&directory, image("aGVsbG8=")).unwrap();
-        assert_eq!(read(&directory, &reference).unwrap(), b"hello");
+        let reference = stage(&directory, image(PNG)).unwrap();
+        assert_eq!(read(&directory, &reference).unwrap().len(), 68);
         assert!(stage(&directory, image("wrong")).is_err());
         clear(&directory, &[reference]);
-        assert!(read(&directory, &image("aGVsbG8=").reference).is_err());
+        assert!(read(&directory, &image(PNG).reference).is_err());
         fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]
     fn validates_persisted_references_without_payloads() {
-        let input = serde_json::json!({"attachments":[{"id":"image-one","name":"Screen.png","mimeType":"image/png","size":5,"width":2,"height":2}]});
+        let input = serde_json::json!({"attachments":[{"id":"image-one","name":"Screen.png","mimeType":"image/png","size":68,"width":1,"height":1}]});
         assert_eq!(references(&input).unwrap().len(), 1);
-        assert!(references(&serde_json::json!({"attachments":[{"id":"../bad","name":"Screen.png","mimeType":"image/png","size":5,"width":2,"height":2}]})).is_err());
+        assert!(references(&serde_json::json!({"attachments":[{"id":"../bad","name":"Screen.png","mimeType":"image/png","size":68,"width":1,"height":1}]})).is_err());
+    }
+
+    #[test]
+    fn native_stage_payload_rejects_browser_preview_fields_and_bad_metadata() {
+        let payload = serde_json::json!({"id":"image-one","name":"Screen.png","mimeType":"image/png","size":68,"width":1,"height":1,"data":PNG});
+        assert!(serde_json::from_value::<StagedImage>(payload.clone()).is_ok());
+        let mut preview = payload.clone();
+        preview["previewUrl"] = serde_json::json!("blob:private");
+        assert!(serde_json::from_value::<StagedImage>(preview).is_err());
+        let mut mismatch = payload;
+        mismatch["width"] = serde_json::json!(2);
+        let directory = std::env::temp_dir().join(format!("monocode-companion-image-metadata-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        assert!(stage(&directory, serde_json::from_value(mismatch).unwrap()).is_err());
+        let _ = fs::remove_dir_all(&directory);
     }
 }

@@ -401,6 +401,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const selectedIdRef = useRef(selectedId);
   useLayoutEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   const [read, setRead] = useState<SessionRead>();
+  const transcriptReadVersion = useRef(0);
   const readSnapshots = useRef(new Map<string, SessionRead>());
   useLayoutEffect(() => { if (read) readSnapshots.current.set(read.session.id, read); }, [read]);
   const [linkedView, setLinkedView] = useState<{ session: CompanionSession; parent: { read: SessionRead; monoId: string; name: string; scrollTop: number } }>();
@@ -409,7 +410,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [restoredPosition, setRestoredPosition] = useState<{ sessionId: string; top: number }>();
   const positions = useRef(new Map<string, number>());
   const [attention, setAttention] = useState<{ id: string; token: number }>();
-  const [sendReceipt, setSendReceipt] = useState<{ id: string; label: string }>();
+  const [sendReceipt, setSendReceipt] = useState<{ id: string; label: string; queueId?: string; queueReadVersion?: number }>();
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
   const historySerial = useRef(0);
@@ -533,6 +534,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     try {
       const result = await client.sessionRead(sessionId);
       if (serial === transcriptSerial.current && selectedIdRef.current === sessionId) {
+        ++transcriptReadVersion.current;
         setRead(previous => mergeLatest(previous?.session.id === sessionId ? previous : readSnapshots.current.get(sessionId), result));
         offlineRef.current = false;
         setOffline(false);
@@ -645,6 +647,11 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const displayReconnecting = demo ? previewConnection === "reconnecting" : reconnecting;
   const displayOnline = demo ? previewConnection !== "offline" : networkOnline;
   const activeRead = read?.session.id === selectedId ? read : undefined;
+  useEffect(() => {
+    if (!sendReceipt?.queueId || activeRead?.session.id !== sendReceipt.id || transcriptReadVersion.current <= (sendReceipt.queueReadVersion ?? 0)) return;
+    if (!activeRead.queuedMessages?.some(message => message.id === sendReceipt.queueId))
+      setSendReceipt(current => current?.queueId === sendReceipt.queueId ? undefined : current);
+  }, [activeRead?.queuedMessages, activeRead?.session.id, sendReceipt]);
   const unreadSessionIds = useSessionActivity(sessions, sessionEpoch, !mobileListOpen && !workspaceView && !settingsOpen && document.visibilityState === "visible" ? activeRead?.session : undefined);
   const selected = activeRead?.session || sessions.find((session) => session.id === selectedId) || (linkedView && linkedView.session.id === selectedId ? linkedView.session : undefined);
   const listedSession = sessions.find(session => session.id === selectedId);
@@ -727,7 +734,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           draftImagesRef.current = next;
           return next;
         });
-        setSendReceipt({ id: input.sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac" });
+        setSendReceipt({ id: input.sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac", queueId: receipt.queueId, queueReadVersion: transcriptReadVersion.current });
       }
       if (action === "sessions.stop") setSendReceipt({ id: input.sessionId, label: "Stop accepted by Mac" });
       if (action === "sessions.create") await openCreatedSession(input.sessionId);
@@ -775,10 +782,18 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
       if (pendingMutation.action === "sessions.stop") setSendReceipt({ id: pendingMutation.input.sessionId, label: "Stop accepted by Mac" });
       if (pendingMutation.action === "sessions.send") {
         const { sessionId, text } = pendingMutation.input;
-        setSendReceipt({ id: sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac" });
+        setSendReceipt({ id: sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac", queueId: receipt.queueId, queueReadVersion: transcriptReadVersion.current });
         setDrafts(current => current[sessionId]?.trim() === text
           ? { ...current, [sessionId]: "" }
           : current);
+        const sent = new Set(pendingMutation.input.attachments?.map(image => image.id));
+        if (sent.size) setDraftImages(current => {
+          const existing = current[sessionId] || [];
+          existing.filter(image => sent.has(image.id)).forEach(releasePhoneImage);
+          const next = { ...current, [sessionId]: existing.filter(image => !sent.has(image.id)) };
+          draftImagesRef.current = next;
+          return next;
+        });
       }
       pendingRef.current = undefined;
       setPendingMutation(undefined);

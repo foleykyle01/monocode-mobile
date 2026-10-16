@@ -191,4 +191,10 @@ export type PendingMutation = {
   error: string;
 };
 
+export type CompanionSendReceipt = {
+  accepted: boolean;
+  delivery?: "queued" | "accepted";
+  queueId?: string;
+};
+
 export type InvokeLike = <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
