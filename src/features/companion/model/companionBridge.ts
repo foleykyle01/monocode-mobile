@@ -207,6 +207,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
   function imageDimensions(bytes: Uint8Array, mimeType: string): { width: number; height: number } {
     const fail = (): never => { throw new Error("Image data does not match its attachment metadata"); };
     const u16be = (offset: number) => (bytes[offset] << 8) | bytes[offset + 1];
+    const u16le = (offset: number) => bytes[offset] | (bytes[offset + 1] << 8);
     const u32be = (offset: number) => ((bytes[offset] * 0x1000000) + (bytes[offset + 1] << 16) + (bytes[offset + 2] << 8) + bytes[offset + 3]) >>> 0;
     if (mimeType === "image/png") {
       if (bytes.length < 24 || ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)
@@ -219,16 +220,19 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     }
     if (mimeType === "image/jpeg") {
       if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) fail();
-      for (let offset = 2; offset + 9 < bytes.length;) {
+      for (let offset = 2; offset < bytes.length;) {
         if (bytes[offset++] !== 0xff) fail();
         while (bytes[offset] === 0xff) ++offset;
         const marker = bytes[offset++];
+        if (marker === undefined) fail();
         if (marker === 0xd9 || marker === 0xda) break;
         if (offset + 1 >= bytes.length) fail();
         const length = u16be(offset);
         if (length < 2 || offset + length > bytes.length) fail();
-        if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf))
+        if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+          if (length < 8) fail();
           return { width: u16be(offset + 5), height: u16be(offset + 3) };
+        }
         offset += length;
       }
       fail();
@@ -246,7 +250,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
           return { width: 1 + (bits & 0x3fff), height: 1 + ((bits >>> 14) & 0x3fff) };
         }
         if (kind === "VP8 " && size >= 10 && bytes[data + 3] === 0x9d && bytes[data + 4] === 0x01 && bytes[data + 5] === 0x2a)
-          return { width: u16be(data + 6) & 0x3fff, height: u16be(data + 8) & 0x3fff };
+          return { width: u16le(data + 6) & 0x3fff, height: u16le(data + 8) & 0x3fff };
         offset = data + size + (size % 2);
       }
     }
@@ -263,7 +267,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       if (input.uploadId !== undefined) throw new Error("Image upload is missing its attachments");
       return { images: [] as Attachment[] };
     }
-    const uploadId = text(input, "uploadId", 56);
+    const uploadId = text(input, "uploadId", 128);
     const scope = uploadScope(requestId, uploadId, false);
     cleanUploads();
     const upload = uploads.get(scope);

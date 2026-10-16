@@ -90,7 +90,7 @@ fn image_dimensions(bytes: &[u8], mime_type: &str) -> Result<(u32, u32)> {
         "image/jpeg" => {
             ensure!(bytes.len() >= 4 && bytes[..2] == [0xff, 0xd8], "Image data does not match its attachment metadata");
             let mut offset = 2;
-            while offset + 9 < bytes.len() {
+            while offset < bytes.len() {
                 ensure!(bytes[offset] == 0xff, "Image data does not match its attachment metadata");
                 offset += 1;
                 while bytes.get(offset) == Some(&0xff) { offset += 1; }
@@ -100,6 +100,7 @@ fn image_dimensions(bytes: &[u8], mime_type: &str) -> Result<(u32, u32)> {
                 let length = u16::from_be_bytes(bytes.get(offset..offset + 2).ok_or_else(invalid)?.try_into().unwrap()) as usize;
                 ensure!(length >= 2 && offset + length <= bytes.len(), "Image data does not match its attachment metadata");
                 if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf) {
+                    ensure!(length >= 8, "Image data does not match its attachment metadata");
                     return Ok((u16::from_be_bytes(bytes[offset + 5..offset + 7].try_into().unwrap()) as u32, u16::from_be_bytes(bytes[offset + 3..offset + 5].try_into().unwrap()) as u32));
                 }
                 offset += length;
@@ -253,6 +254,8 @@ mod tests {
     use super::*;
 
     const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9JZCkAAAAASUVORK5CYII=";
+    const JPEG: &str = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDzqiiivjj+kT//2Q==";
+    const WEBP: &str = "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoBAAEAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=";
 
     fn image(data: &str) -> StagedImage {
         StagedImage {
@@ -266,6 +269,24 @@ mod tests {
             },
             data: data.into(),
         }
+    }
+
+    #[test]
+    fn parses_actual_jpeg_and_lossy_vp8_webp() {
+        for (mime_type, data) in [("image/jpeg", JPEG), ("image/webp", WEBP)] {
+            let bytes = STANDARD.decode(data).unwrap();
+            assert_eq!(image_dimensions(&bytes, mime_type).unwrap(), (1, 1));
+        }
+    }
+
+    #[test]
+    fn rejects_padded_short_jpeg_sof_without_panicking() {
+        let mut malformed = vec![0xff, 0xd8];
+        malformed.extend([0xff; 10]);
+        malformed.extend([0xc0, 0, 2]);
+        assert!(std::panic::catch_unwind(|| image_dimensions(&malformed, "image/jpeg"))
+            .unwrap()
+            .is_err());
     }
 
     #[test]

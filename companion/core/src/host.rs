@@ -412,20 +412,22 @@ mod tests {
     fn device_namespaces_image_upload_and_final_ids_together() {
         let first = "a".repeat(64);
         let second = "b".repeat(64);
-        let input = json!({"uploadId":"same","id":"image","data":"abc"});
+        let raw = "c".repeat(32);
+        let input = json!({"uploadId":raw,"id":"image","data":"abc"});
         let chunk = namespace_upload_id(
             input.clone(),
             "sessions.attachment.upload",
-            &format!("{first}-same-u0-98304"),
+            &format!("{first}-{raw}-u0-98304"),
         )
         .unwrap();
         let final_send =
-            namespace_upload_id(input.clone(), "sessions.send", &format!("{first}-same")).unwrap();
-        let other = namespace_upload_id(input, "sessions.send", &format!("{second}-same")).unwrap();
+            namespace_upload_id(input.clone(), "sessions.send", &format!("{first}-{raw}")).unwrap();
+        let other = namespace_upload_id(input, "sessions.send", &format!("{second}-{raw}")).unwrap();
         assert_eq!(chunk["uploadId"], final_send["uploadId"]);
+        assert_eq!(final_send["uploadId"], format!("{first}-{raw}"));
         assert_ne!(final_send["uploadId"], other["uploadId"]);
         assert!(namespace_upload_id(
-            json!({"uploadId":"same"}),
+            json!({"uploadId":raw}),
             "sessions.attachment.upload",
             &format!("{first}-other-u0-0")
         )
