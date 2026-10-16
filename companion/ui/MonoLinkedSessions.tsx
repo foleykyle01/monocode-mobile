@@ -58,6 +58,8 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
   const pageRef = useRef<CompanionMonoLinkedSessionPage | undefined>(undefined);
   const queue = useRef(Promise.resolve());
   const generation = useRef(0);
+  const refreshQueued = useRef(false);
+  const refreshPending = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -104,6 +106,33 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
     commit(combined, request);
   }, [commit, current, readPage]);
 
+  const scheduleRefresh = useCallback(() => {
+    const request = generation.current;
+    // `undefined` means the first page has not completed; an empty page is a
+    // real result and must keep polling for newly launched children.
+    if (!pageRef.current) return;
+    refreshPending.current = true;
+    if (refreshQueued.current) return;
+    refreshQueued.current = true;
+    setLoading(true);
+    setError(undefined);
+    void enqueue(request, async () => {
+      try {
+        do {
+          refreshPending.current = false;
+          await refreshLoaded(request, Math.max(1, pageRef.current?.items.length ?? 0));
+        } while (current(request) && refreshPending.current);
+      } catch (reason) {
+        if (current(request)) setError(errorMessage(reason));
+      } finally {
+        if (current(request)) {
+          refreshQueued.current = false;
+          setLoading(false);
+        }
+      }
+    });
+  }, [current, enqueue, refreshLoaded]);
+
   const loadMore = useCallback((offset: number) => {
     const request = generation.current;
     setLoadingMore(true);
@@ -131,6 +160,8 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
   useEffect(() => {
     const request = ++generation.current;
     queue.current = Promise.resolve();
+    refreshQueued.current = false;
+    refreshPending.current = false;
     setPage(undefined);
     pageRef.current = undefined;
     setLoading(true);
@@ -153,18 +184,8 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
   // The workspace already polls the Mac. Refresh the loaded pages in order so
   // live sorting cannot discard rows or collapse the sheet after Show more.
   useEffect(() => {
-    const request = generation.current;
-    if (!pageRef.current?.items.length) return;
-    setLoading(true);
-    setError(undefined);
-    void enqueue(request, async () => {
-      const extent = pageRef.current?.items.length;
-      if (!extent) return;
-      try { await refreshLoaded(request, extent); }
-      catch (reason) { if (current(request)) setError(errorMessage(reason)); }
-      finally { if (current(request)) setLoading(false); }
-    });
-  }, [current, enqueue, refreshLoaded, refreshToken]);
+    scheduleRefresh();
+  }, [refreshToken, scheduleRefresh]);
 
   const trapFocus = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
@@ -185,7 +206,7 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
       </header>
       <div ref={body} className="mono-linked-sessions__body" aria-busy={loading}>
         {loading && !page ? <p role="status">Loading linked sessions…</p> : null}
-        {error ? <p className="error-copy" role="alert">{error} <button type="button" onClick={() => { const request = generation.current; setLoading(true); setError(undefined); void enqueue(request, async () => { try { await refreshLoaded(request, Math.max(1, pageRef.current?.items.length ?? 1)); } catch (reason) { if (current(request)) setError(errorMessage(reason)); } finally { if (current(request)) setLoading(false); } }); }}>Retry</button></p> : null}
+        {error ? <p className="error-copy" role="alert">{error} <button type="button" onClick={scheduleRefresh}>Retry</button></p> : null}
         {page && !page.items.length ? <p className="mono-linked-sessions__empty">No linked sessions are available on this Mac.</p> : null}
         {page?.items.length ? <ul aria-label={`${mono.name} linked sessions`}>{page.items.map(session => <li key={session.id}>
           <button type="button" onClick={() => onOpen(session)} aria-label={`Open ${session.title} · ${session.statusLabel}`}>

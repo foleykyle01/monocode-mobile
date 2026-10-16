@@ -17,6 +17,10 @@ function sessions(count: number): CompanionMonoLinkedSession[] {
   }));
 }
 
+function linked(id: string, state: CompanionMonoLinkedSession["state"], statusLabel: string): CompanionMonoLinkedSession {
+  return { id, title: id, state, statusLabel };
+}
+
 function result(items: readonly CompanionMonoLinkedSession[], requested = 0) {
   const offset = Math.min(requested, items.length);
   const end = Math.min(offset + 50, items.length);
@@ -80,6 +84,76 @@ it("queues a refresh behind Show more and recovers a server-clamped page", async
     expect(new Set(rows.map(row => row.getAttribute("aria-label"))).size).toBe(45);
     expect(container.querySelector(".error-copy")).toBeNull();
     expect((client.monoRead as ReturnType<typeof vi.fn>).mock.calls.map((call: unknown[]) => call[2])).toEqual(expect.arrayContaining([0, 50]));
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("refreshes a loaded empty sheet when a linked child starts", async () => {
+  let values: CompanionMonoLinkedSession[] = [];
+  const client = { monoRead: vi.fn(async (_id: string, _section?: string, offset = 0) => result(values, offset)) } as unknown as CompanionClient;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 0, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(container.querySelector(".mono-linked-sessions__empty")).not.toBeNull();
+
+    values = [linked("New child", "working", "Working")];
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 1, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(container.querySelector(".mono-linked-sessions__body li > button")?.textContent).toBe("New childWorking");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("recovers from a populated sheet becoming empty before another child starts", async () => {
+  let values = [linked("Finished child", "done", "Done")];
+  const client = { monoRead: vi.fn(async (_id: string, _section?: string, offset = 0) => result(values, offset)) } as unknown as CompanionClient;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 0, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    values = [];
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 1, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(container.querySelector(".mono-linked-sessions__empty")).not.toBeNull();
+
+    values = [linked("Replacement child", "working", "Working")];
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 2, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(container.querySelector(".mono-linked-sessions__body li > button")?.textContent).toBe("Replacement childWorking");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("coalesces repeated polls while a refresh is delayed", async () => {
+  const stale = [linked("Older child", "done", "Done")];
+  let values = stale;
+  let reads = 0;
+  let resolveRefresh!: (value: ReturnType<typeof result>) => void;
+  const client = { monoRead: vi.fn((_id: string, _section?: string, offset = 0) => {
+    reads += 1;
+    if (reads === 2) return new Promise<ReturnType<typeof result>>(resolve => { resolveRefresh = resolve; });
+    return Promise.resolve(result(values, offset));
+  }) } as unknown as CompanionClient;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 0, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 1, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(reads).toBe(2);
+
+    values = [linked("Newest child", "working", "Working")];
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 2, onOpen: vi.fn(), onClose: vi.fn() })));
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 3, onOpen: vi.fn(), onClose: vi.fn() })));
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 4, onOpen: vi.fn(), onClose: vi.fn() })));
+    expect(reads).toBe(2);
+
+    await act(async () => resolveRefresh(result(stale)));
+    await flush();
+    await flush();
+    expect(reads).toBe(3);
+    expect(container.querySelector(".mono-linked-sessions__body li > button")?.textContent).toBe("Newest childWorking");
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
