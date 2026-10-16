@@ -37,6 +37,7 @@ const EMPTY: FloatingMonoView = {
   monoId: null,
   session: null,
   error: null,
+  errorGeneration: 0,
 };
 const BUTTON =
   "grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content disabled:opacity-30";
@@ -53,6 +54,10 @@ const CARD =
 export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
   const [view, setView] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
+  const [dismissedHostError, setDismissedHostError] = useState<{
+    monoId: string;
+    generation: number;
+  } | null>(null);
   const [focus, setFocus] = useState(0);
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const selectedId = useRef(view.monoId);
@@ -67,6 +72,7 @@ export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
       if (next.monoId !== selected) {
         selected = next.monoId;
         setError(null);
+        setDismissedHostError(null);
         setArtifactId(null);
         setFocus((n) => n + 1);
       }
@@ -151,7 +157,23 @@ export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
     mono?.status && mono.status !== "idle" && mono.status !== parentState.status
       ? { status: mono.status }
       : parentState;
-  const failure = error ?? view.error;
+  const hostErrorDismissed =
+    dismissedHostError?.monoId === view.monoId &&
+    dismissedHostError.generation === view.errorGeneration;
+  const failure = error ?? (hostErrorDismissed ? null : view.error);
+  const dismissFailure = useCallback(() => {
+    if (error) {
+      setError(null);
+      return;
+    }
+    if (!view.error || !view.monoId) return;
+    const generation = view.errorGeneration;
+    setDismissedHostError({ monoId: view.monoId, generation });
+    void invoke("mono_chat_dismiss_error", {
+      monoId: view.monoId,
+      errorGeneration: generation,
+    }).catch(() => undefined);
+  }, [error, view.error, view.errorGeneration, view.monoId]);
   const loading = !mono || !view.session;
 
   // The rail and header stay mounted while switching; only the conversation
@@ -252,19 +274,46 @@ export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
                 className="size-18 object-contain"
               />
             )}
-            <p className="text-[13px] text-content/50">
-              {failure ?? "Loading conversation…"}
-            </p>
+            {failure ? (
+              <div
+                role="alert"
+                className="flex items-center gap-2 text-[13px] text-red-400"
+              >
+                <span>{failure}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss chat error"
+                  title="Dismiss error"
+                  className={BUTTON}
+                  onClick={dismissFailure}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-[13px] text-content/50">
+                Loading conversation…
+              </p>
+            )}
           </div>
         ) : (
           <>
             {failure ? (
-              <p
+              <div
                 role="alert"
-                className="shrink-0 border-b border-content/8 px-3 py-2 text-[12px] text-red-400"
+                className="flex shrink-0 items-center gap-2 border-b border-content/8 px-3 py-2 text-[12px] text-red-400"
               >
-                {failure}
-              </p>
+                <span className="min-w-0 flex-1">{failure}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss chat error"
+                  title="Dismiss error"
+                  className={BUTTON}
+                  onClick={dismissFailure}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
             ) : null}
             <FloatingConversation
               key={view.session!.id}
@@ -448,7 +497,19 @@ function FloatingConversation({
           onApproval={(requestId, decision) =>
             void action({ kind: "approval", requestId, decision })
           }
-          onOpenFile={(path) => void action({ kind: "openFile", path })}
+          onOpenFile={(path, navigation, options) =>
+            void action({
+              kind: "openFile",
+              path,
+              navigation,
+              options: {
+                ...options,
+                ...(options?.sourceCwd
+                  ? {}
+                  : { sourceCwd: sessionWorkCwd(session) }),
+              },
+            })
+          }
           onOpenArtifact={onOpenArtifact}
           onOpenDiff={() => void action({ kind: "reveal" })}
           onShowWork={() => void action({ kind: "reveal" })}
@@ -632,7 +693,9 @@ function ArtifactSheet({
             <article data-artifact-reader={artifact.id}>
               <ArtifactContent
                 artifact={artifact}
-                onOpenFile={(path) => void action({ kind: "openFile", path })}
+                onOpenFile={(path, navigation, options) =>
+                  void action({ kind: "openFile", path, navigation, options })
+                }
               />
               {error ? (
                 <p role="alert" className="mt-3 text-[12px] text-content/60">

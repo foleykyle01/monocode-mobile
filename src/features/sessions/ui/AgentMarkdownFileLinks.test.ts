@@ -23,12 +23,12 @@ describe("markdown file navigation", () => {
     vi.unstubAllGlobals();
   });
 
-  async function render(text: string) {
+  async function render(text: string, cwd = "/repo") {
     await act(async () =>
       root.render(
         createElement(AgentMarkdown, {
           text,
-          cwd: "/repo",
+          cwd,
           onOpenFile,
         }),
       ),
@@ -65,10 +65,11 @@ describe("markdown file navigation", () => {
         new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       ),
     );
-    expect(onOpenFile).toHaveBeenCalledWith("/repo/src/main.ts", {
-      line: 12,
-      column: 3,
-    });
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/repo/src/main.ts",
+      { line: 12, column: 3 },
+      { exact: true, sourceCwd: "/repo" },
+    );
   });
 
   it.each([
@@ -86,7 +87,10 @@ describe("markdown file navigation", () => {
       const link = container.querySelector<HTMLElement>('code[role="link"]');
       expect(link).not.toBeNull();
       await act(async () => link!.click());
-      expect(onOpenFile).toHaveBeenCalledWith(path, navigation);
+      expect(onOpenFile).toHaveBeenCalledWith(path, navigation, {
+        exact: true,
+        sourceCwd: "/repo",
+      });
     },
   );
 
@@ -96,9 +100,11 @@ describe("markdown file navigation", () => {
     await act(async () =>
       container.querySelector<HTMLAnchorElement>("a")!.click(),
     );
-    expect(onOpenFile).toHaveBeenCalledWith("/repo/docs/My Guide.md", {
-      line: 7,
-    });
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/repo/docs/My Guide.md",
+      { line: 7 },
+      { exact: true, sourceCwd: "/repo" },
+    );
   });
 
   it.each(["`main.ts:12`", "[Source](main.ts:12)"])(
@@ -108,7 +114,11 @@ describe("markdown file navigation", () => {
       const link = container.querySelector<HTMLElement>('code[role="link"], a');
       expect(link).not.toBeNull();
       await act(async () => link!.click());
-      expect(onOpenFile).toHaveBeenCalledWith("/repo/main.ts", { line: 12 });
+      expect(onOpenFile).toHaveBeenCalledWith(
+        "/repo/main.ts",
+        { line: 12 },
+        { exact: true, sourceCwd: "/repo" },
+      );
     },
   );
 
@@ -137,7 +147,10 @@ describe("markdown file navigation", () => {
       await act(async () =>
         container.querySelector<HTMLAnchorElement>("a")!.click(),
       );
-      expect(onOpenFile).toHaveBeenCalledWith(path, undefined);
+      expect(onOpenFile).toHaveBeenCalledWith(path, undefined, {
+        exact: true,
+        sourceCwd: "/repo",
+      });
     },
   );
 
@@ -147,9 +160,11 @@ describe("markdown file navigation", () => {
     await act(async () =>
       container.querySelector<HTMLAnchorElement>("a")!.click(),
     );
-    expect(onOpenFile).toHaveBeenCalledWith("/Users/me/My Project/main.ts", {
-      line: 4,
-    });
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/Users/me/My Project/main.ts",
+      { line: 4 },
+      { exact: true, sourceCwd: "/repo" },
+    );
   });
 
   it.each([
@@ -179,7 +194,26 @@ describe("markdown file navigation", () => {
     );
     expect(link).not.toBeNull();
     await act(async () => link!.click());
-    expect(onOpenFile).toHaveBeenCalledWith("/repo/src/main.ts", { line: 12 });
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/repo/src/main.ts",
+      { line: 12 },
+      { exact: true, sourceCwd: "/repo" },
+    );
+  });
+
+  it("keeps a Downloads link exact and owned by the Mono worktree", async () => {
+    await render(
+      "[Workflow](file:///Users/me/Downloads/Workflow%20Diagram%25.html:18:4)",
+      "/Users/me/worktrees/mono",
+    );
+    await act(async () =>
+      container.querySelector<HTMLAnchorElement>("a")!.click(),
+    );
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/Users/me/Downloads/Workflow Diagram%.html",
+      { line: 18, column: 4 },
+      { exact: true, sourceCwd: "/Users/me/worktrees/mono" },
+    );
   });
 
   it("preserves external web links and keeps executable URL schemes blocked", async () => {

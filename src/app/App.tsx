@@ -6536,8 +6536,8 @@ function Workspace({
     (path, navigation, options) => {
       closeMonoView();
       void (async () => {
-        const fileCwd = gitCwdRef.current;
-        const fileProjectCwd = sidebarCwdRef.current;
+        const fileCwd = options?.sourceCwd ?? gitCwdRef.current;
+        const fileProjectCwd = options?.sourceCwd ?? sidebarCwdRef.current;
         const resolved = await resolveFileOpenRequest(fileCwd, path, options);
         rememberOpenedFile(fileCwd, resolved);
         const tab = tabsRef.current.find(

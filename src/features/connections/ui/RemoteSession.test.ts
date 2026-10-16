@@ -38,14 +38,24 @@ vi.mock("../../sessions/ui/AgentTranscript", () => ({
     busy: boolean;
     onSendDraft?: (block: Block) => void;
     onRemoveDraft?: (block: Block) => void;
-    onOpenFile?: (path: string) => void;
+    onOpenFile?: (
+      path: string,
+      navigation?: { line: number; column?: number },
+      options?: { exact?: boolean; sourceCwd?: string },
+    ) => void;
     onOpenDiff?: (path: string) => void;
   }) =>
     createElement(
       "ol",
       { "aria-label": "Transcript", "data-busy": busy },
-      createElement("button", { "aria-label": "Open transcript file", onClick: () => onOpenFile?.("src/app.ts") }),
-      createElement("button", { "aria-label": "Open transcript diff", onClick: () => onOpenDiff?.("src/app.ts") }),
+      createElement("button", {
+        "aria-label": "Open transcript file",
+        onClick: () => onOpenFile?.("src/app.ts", { line: 12, column: 3 }),
+      }),
+      createElement("button", {
+        "aria-label": "Open transcript diff",
+        onClick: () => onOpenDiff?.("src/app.ts"),
+      }),
       blocks.map((block) =>
         createElement(
           "li",
@@ -445,7 +455,11 @@ it("opens transcript files and diffs through the shared remote tabs", async () =
   await send("Inspect files");
   await act(async () => byLabel("Open transcript file")!.click());
   await act(async () => byLabel("Open transcript diff")!.click());
-  expect(onOpenFile).toHaveBeenCalledWith("remote://env/home/me/repo/src/app.ts");
+  expect(onOpenFile).toHaveBeenCalledWith(
+    "remote://env/home/me/repo/src/app.ts",
+    { line: 12, column: 3 },
+    { exact: true, sourceCwd: "remote://env/home/me/repo" },
+  );
   expect(onOpenDiff).toHaveBeenCalledWith("remote://env/home/me/repo/src/app.ts");
 });
 

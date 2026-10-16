@@ -196,6 +196,9 @@ export async function resolveOpenablePath(
 ): Promise<string | undefined> {
   const direct = resolveWorkspacePath(href, cwd);
   if (!direct) return undefined;
+  // Explicit locations must never fall through to a same-named project file.
+  // The index only exists to make short, project-relative references helpful.
+  if (isExplicitFileReference(href)) return direct;
 
   let files: ProjectFile[];
   try {
@@ -236,6 +239,18 @@ export async function resolveOpenablePath(
   if (byName.length === 1) return byName[0].path;
 
   return pickOpenableFile(byName, cwd, relHint).path;
+}
+
+function isExplicitFileReference(href: string): boolean {
+  const value = href.trim();
+  return (
+    value.startsWith("/") ||
+    value.startsWith("file://") ||
+    value.startsWith("remote://") ||
+    value === "~" ||
+    value.startsWith("~/") ||
+    /^[A-Za-z]:[\\/]/.test(value)
+  );
 }
 
 /** Resolve shortened references while preserving paths selected from file UI. */

@@ -86,6 +86,7 @@ import { useMonoTranscript } from "../../monos/hooks/useMonoTranscript";
 import { MONO_PAGE_TURNS } from "../data/sessionStore";
 import { useComposerDockMotion } from "./useComposerDockMotion";
 import { MOD } from "../../../platform/tauri/platform";
+import type { OpenFileFn } from "../../search/model/search";
 import {
   acknowledgeQuoteRequest,
   ADD_TO_CHAT_EVENT,
@@ -228,7 +229,7 @@ export type SessionPaneProps = {
     reply: UserQuestionReply,
   ) => void;
   onQuestionInteraction?: (sessionId: string, requestId: number) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
   onOpenDiff: (
     path?: string,
     session?: { sessionId: string; cwd: string },
@@ -648,6 +649,14 @@ const LocalSessionPane = memo(function LocalSessionPane({
     return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
   }, [addSelectionToChat, addToChatTarget]);
   const workCwd = sessionWorkCwd(session);
+  const onOpenSourceFile = useCallback<OpenFileFn>(
+    (path, navigation, options) =>
+      onOpenFile(path, navigation, {
+        ...options,
+        ...(options?.sourceCwd ? {} : { sourceCwd: workCwd }),
+      }),
+    [onOpenFile, workCwd],
+  );
   const reviewHidden =
     remote ||
     !!session.inboxAsk ||
@@ -791,7 +800,7 @@ const LocalSessionPane = memo(function LocalSessionPane({
         onUsageLimitResumeAtReset(session.id, enabled)
       }
       onUsageLimitDismiss={() => onUsageLimitDismiss(session.id)}
-      onOpenFile={onOpenFile}
+      onOpenFile={onOpenSourceFile}
       busy={!!session.busy}
       editLastTurnSupported={editLastTurnSupported}
       lastTurnRecall={turnRecall}
@@ -1042,7 +1051,7 @@ const LocalSessionPane = memo(function LocalSessionPane({
                     onSaveSelectionNote={
                       notesEnabled ? saveSelectionNote : undefined
                     }
-                    onOpenFile={onOpenFile}
+                    onOpenFile={onOpenSourceFile}
                     onOpenDiff={onOpenDiff}
                     onOpenPlan={openPlan}
                     onBuildPlan={
@@ -1281,7 +1290,7 @@ const LocalSessionPane = memo(function LocalSessionPane({
               ) ?? null
             }
             onSaveNote={notesEnabled ? saveNote : undefined}
-            onOpenFile={onOpenFile}
+            onOpenFile={onOpenSourceFile}
             onOpenDiff={onOpenDiff}
           />
         </div>

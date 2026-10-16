@@ -148,6 +148,7 @@ import {
   type TurnItem,
 } from "../model/transcriptActivity";
 import { lastUserTurnBlock } from "../model/editLastTurn";
+import type { OpenFileFn } from "../../search/model/search";
 import {
   monoCodeToolCall,
   monoCodeWorkSummary,
@@ -233,7 +234,7 @@ type Props = {
   onSendDraft?: (block: Block) => boolean | void;
   onRemoveDraft?: (block: Block) => boolean | void;
   onSaveSelectionNote?: (text: string) => void | Promise<void>;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: OpenFileFn;
   onOpenArtifact?: (id: string) => void;
   onOpenDiff?: (path: string) => void;
   onOpenPlan?: (blockId: string) => void;

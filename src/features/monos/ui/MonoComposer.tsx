@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { isImeComposition } from "../../../shared/lib/keyboard";
-import { ArrowUp, Plus, SmilePlus } from "../../../shared/ui/icons";
+import { ArrowUp, Plus, SmilePlus, X } from "../../../shared/ui/icons";
 import { AttachmentChip } from "../../sessions/ui/AttachmentChip";
 import type { Attachment } from "../../sessions/model/session";
 import {
@@ -384,9 +384,21 @@ export function MonoComposer({
           </div>
         ) : null}
         {dropError ? (
-          <p role="alert" className="px-3 pt-2 text-xs text-red-400">
-            {dropError}
-          </p>
+          <div
+            role="alert"
+            className="flex items-center gap-2 px-3 pt-2 text-xs text-red-400"
+          >
+            <span className="min-w-0 flex-1">{dropError}</span>
+            <button
+              type="button"
+              aria-label="Dismiss composer error"
+              title="Dismiss error"
+              className="grid size-5 shrink-0 place-items-center rounded text-red-400 hover:bg-red-400/10"
+              onClick={() => setDropError(null)}
+            >
+              <X className="size-3" />
+            </button>
+          </div>
         ) : null}
         {attachments.length > 0 ? (
           <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">

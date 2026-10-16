@@ -55,6 +55,16 @@ pub struct View {
     mono_id: Option<String>,
     session: Option<Value>,
     error: Option<String>,
+    error_generation: u64,
+}
+
+impl View {
+    fn set_error(&mut self, error: Option<String>) {
+        if error.is_some() && error != self.error {
+            self.error_generation = self.error_generation.wrapping_add(1);
+        }
+        self.error = error;
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -115,7 +125,7 @@ impl Inner {
             return false;
         };
         view.session = Some(session);
-        view.error = None;
+        view.set_error(None);
         true
     }
 
@@ -396,7 +406,7 @@ pub fn mono_chat_sync(
             view.monos = monos.clone();
             if !monos.iter().any(|m| m.id == *id) {
                 view.session = None;
-                view.error = Some("That Mono is no longer available.".into());
+                view.set_error(Some("That Mono is no longer available.".into()));
             }
         }
         inner.monos = monos;
@@ -484,7 +494,7 @@ pub fn open(app: &AppHandle, mono_id: String) -> Result<(), String> {
                 .lock()
                 .unwrap()
                 .view(&mono_id)
-                .error = Some(error);
+                .set_error(Some(error));
             changed(&handle, &mono_id);
         }
     })
@@ -511,7 +521,7 @@ fn select(app: &AppHandle, mono_id: &str) -> Result<(), String> {
             .shown
             .insert(window.label().to_owned(), mono_id.to_owned());
         let renderer_ready = inner.ready.contains(window.label());
-        inner.view(mono_id).error = None;
+        inner.view(mono_id).set_error(None);
         inner.enqueue(
             owner.clone(),
             mono_id.to_owned(),
@@ -536,7 +546,7 @@ fn switch(app: &AppHandle, window: &WebviewWindow, to: &str) -> Result<(), Strin
         let state = app.state::<MonoChatState>();
         let mut inner = state.0.lock().unwrap();
         inner.shown.insert(window.label().to_owned(), to.to_owned());
-        inner.view(to).error = None;
+        inner.view(to).set_error(None);
         inner.enqueue(owner.clone(), to.to_owned(), json!({"kind": "open"}), None);
     }
     changed(app, to);
@@ -575,7 +585,7 @@ pub fn mono_chat_switch(
                 .lock()
                 .unwrap()
                 .view(&from)
-                .error = Some(error);
+                .set_error(Some(error));
             changed(&handle, &from);
         }
     })
@@ -790,7 +800,9 @@ pub fn mono_chat_reply(
             return Ok(());
         };
         if opening {
-            inner.view(&request.mono_id).error = result.as_ref().err().cloned();
+            inner
+                .view(&request.mono_id)
+                .set_error(result.as_ref().err().cloned());
         }
         let reveal = result.is_ok()
             && matches!(
@@ -810,6 +822,37 @@ pub fn mono_chat_reply(
     }
     changed(&app, &mono_id);
     Ok(())
+}
+
+/// Clears only the error generation the floating chat actually displayed.
+/// A late dismissal cannot erase a newer failure for this Mono or another one.
+#[tauri::command]
+pub fn mono_chat_dismiss_error(
+    app: AppHandle,
+    window: WebviewWindow,
+    mono_id: String,
+    error_generation: u64,
+) -> Result<bool, String> {
+    if panel(&app, &window)? != mono_id {
+        return Err("This action belongs to a different Mono.".into());
+    }
+    let dismissed = {
+        let state = app.state::<MonoChatState>();
+        let mut inner = state.0.lock().unwrap();
+        let Some(view) = inner.views.get_mut(&mono_id) else {
+            return Ok(false);
+        };
+        if view.error.is_none() || view.error_generation != error_generation {
+            false
+        } else {
+            view.set_error(None);
+            true
+        }
+    };
+    if dismissed {
+        changed(&app, &mono_id);
+    }
+    Ok(dismissed)
 }
 
 #[tauri::command]
@@ -1012,5 +1055,16 @@ mod tests {
         );
         inner.pending.retain(|p| p.request.id != id);
         assert!(!inner.accept(id, "main"));
+    }
+
+    #[test]
+    fn a_repeated_error_has_a_new_generation_after_dismissal() {
+        let mut inner = Inner::default();
+        let view = inner.view("mono");
+        view.set_error(Some("Workspace unavailable".into()));
+        let first = view.error_generation;
+        view.set_error(None);
+        view.set_error(Some("Workspace unavailable".into()));
+        assert!(view.error_generation > first);
     }
 }
