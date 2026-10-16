@@ -98,8 +98,16 @@ export function routeFileOpen({
       )
     : owner
       ? (() => {
+          const focusedSession = sessions.find(
+            (session) => session.id === owner.focusedId,
+          );
           const next = tabs.map((tab) =>
-            tab.id === owner.id ? openEditorTab(tab, file, { pin }) : tab,
+            tab.id === owner.id
+              ? openEditorTab(tab, file, {
+                  pin,
+                  split: focusedSession?.blocks.length === 0 ? "left" : "right",
+                })
+              : tab,
           );
           return {
             tabs: next,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "../../sessions/model/session";
-import { newFileTab, newTab, openEditorTab, type WorkspaceTab } from "./layout";
+import { leafIds, newFileTab, newTab, openEditorTab, type WorkspaceTab } from "./layout";
 import { routeFileOpen } from "./fileOpenRoute";
 import { workspaceTabCwd, workspaceTabWorktree } from "./workspaceTabGroups";
 
@@ -65,6 +65,7 @@ describe("routeFileOpen", () => {
     expect(result.tabId).toBe(mono.id);
     expect(result.tabs.find((tab) => tab.id === active.id)).toEqual(active);
     const target = result.tabs.find((tab) => tab.id === mono.id)!;
+    expect(leafIds(target.layout)).toEqual([target.focusedId, "mono-session"]);
     expect(target.editorPanes[0]?.files).toMatchObject([
       { path: downloadsFile, cwd: monoWorktree, projectCwd: monoProject },
     ]);
