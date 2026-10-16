@@ -105,7 +105,7 @@ it("updates an unselected Mono from child commits without opening details or cha
   expect(container.querySelector('[aria-current="true"]')).toBeNull();
   expect(container.querySelector('[aria-label*="Working"]')).not.toBeNull();
   expect(
-    container.querySelector(".motion-safe\\:animate-pulse"),
+    container.querySelector('[data-mono-status-dot="working"].bg-blue-400'),
   ).not.toBeNull();
   await render([
     parent,

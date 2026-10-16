@@ -25,7 +25,9 @@ test("an inactive Mono follows child activity and respects reduced motion", asyn
   await expect(inactive).toHaveAttribute("data-mono-status", "idle");
   await expect(dot).toHaveAttribute("data-mono-status-dot", "done");
   await expect(dot).toHaveAccessibleName("Done, 1 new reply");
-  await expect(dot).toHaveText("1");
+  await expect(dot).toHaveText("");
+  await expect(dot).toHaveCSS("width", "8px");
+  await expect(dot).toHaveCSS("height", "8px");
   await expect(inactive.locator("[data-mono-unread][data-mono-status-dot]")).toHaveCount(1);
   const rowBox = (await inactive.boundingBox())!;
   const dotBox = (await dot.boundingBox())!;

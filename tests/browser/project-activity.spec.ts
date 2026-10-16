@@ -36,7 +36,7 @@ test("status dots stay aligned with Git details, hover, focus and collapsed grou
   expect(await groupDot.boundingBox()).toEqual(before);
 });
 
-test("Mono dots and count bubbles share the project column through hover, focus and selection", async ({ page }) => {
+test("Mono dots match project size, colors and clean edges through hover, focus and selection", async ({ page }) => {
   await page.goto("/tests/browser/project-activity.html");
   const projectDot = page.getByRole("button", { name: /ungrouped.*completed, unread/ }).locator('[role="img"]');
   const projectBox = (await projectDot.boundingBox())!;
@@ -46,7 +46,20 @@ test("Mono dots and count bubbles share the project column through hover, focus 
   for (let i = 0; i < 4; i++) {
     const row = rows.nth(i);
     const badge = row.locator("[data-mono-status-dot]");
-    await expect(badge).toHaveText(["", "1", "12", "99+"][i]);
+    await expect(badge).toHaveText("");
+    const decoration = await badge.evaluate(element => {
+      const style = getComputedStyle(element);
+      return { shadow: style.boxShadow, border: style.borderWidth, animation: style.animationName, opacity: style.opacity };
+    });
+    const projectDecoration = await projectDot.evaluate(element => {
+      const style = getComputedStyle(element);
+      return { shadow: style.boxShadow, border: style.borderWidth, animation: style.animationName, opacity: style.opacity };
+    });
+    expect(decoration).toEqual(projectDecoration);
+    if (i > 0) {
+      const reference = page.locator("[data-project-group-items]").getByRole("img", { name: ["", "1 completed, unread", "1 awaiting input", "1 running"][i], exact: true });
+      expect(await badge.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(await reference.evaluate(el => getComputedStyle(el).backgroundColor));
+    }
     const assertPosition = async () => {
       const box = (await badge.boundingBox())!;
       const rowBox = (await row.boundingBox())!;
@@ -55,7 +68,7 @@ test("Mono dots and count bubbles share the project column through hover, focus 
       return box;
     };
     const initial = await assertPosition();
-    expect(initial.width).toBe(i ? 16 : 8);
+    expect(initial.width).toBe(8);
     expect(initial.height).toBe(initial.width);
     await row.hover();
     const options = row.getByRole("button", { name: /options$/ });
