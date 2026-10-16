@@ -72,10 +72,13 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(scout).toHaveText("ScoutWorking");
   const homeRing = page.locator(".mono-card").filter({ hasText: "Scout" }).locator(".mono-working-spinner");
   await expect(homeRing).toHaveCSS("animation-name", "mono-working-spin");
-  const cardBounds = await page.locator(".mono-card").filter({ hasText: "Scout" }).boundingBox();
-  const homeBounds = await homeRing.boundingBox();
+  // Measure both in one frame: the workspace can still be entering after Back.
   // Engines round the half-pixel card border differently.
-  expect(Math.abs(cardBounds!.x + cardBounds!.width - homeBounds!.x - homeBounds!.width / 2 - 20.5)).toBeLessThanOrEqual(1);
+  expect(await homeRing.evaluate(el => {
+    const card = el.closest(".mono-card")!.getBoundingClientRect();
+    const ring = el.getBoundingClientRect();
+    return Math.abs(card.right - ring.x - ring.width / 2 - 20.5);
+  })).toBeLessThanOrEqual(1);
   const homeTransform = await homeRing.evaluate(el => getComputedStyle(el).transform);
   await expect.poll(() => homeRing.evaluate(el => getComputedStyle(el).transform)).not.toBe(homeTransform);
   await page.screenshot({ path: testInfo.outputPath("home-working.png") });
