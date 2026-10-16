@@ -85,6 +85,33 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(scout).toHaveText("ScoutWorking");
 });
 
+test("a Mono chat header exposes all linked sessions without changing parent controls", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/tests/browser/mono-linked.html?demo=1");
+  await page.locator(".mono-row").filter({ hasText: "Scout" }).click();
+  const draft = page.getByRole("textbox", { name: "Message this session" });
+  await draft.fill("Keep the Mono plan here");
+  const sessions = page.getByRole("button", { name: /Sessions for Scout/ });
+  await expect(sessions).toBeVisible();
+  await sessions.click();
+  const sheet = page.getByRole("dialog", { name: "Sessions" });
+  await expect(sheet).toContainText("Scout’s linked sessions");
+  await expect(sheet.getByRole("button", { name: "Open Build the companion window · Needs input" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Open Review release notes · Done" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("mono-header-sessions.png") });
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(sessions).toBeFocused();
+  await sessions.click();
+  await sheet.getByRole("button", { name: "Open Build the companion window · Needs input" }).click();
+  await expect(page.locator(".conversation-title")).toHaveText("Build the companion window");
+  await page.getByRole("button", { name: "Back to Scout", exact: true }).click();
+  await expect(page.locator(".conversation-title")).toHaveText("Scout");
+  await expect(draft).toHaveValue("Keep the Mono plan here");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
 for (const theme of ["dark", "light"]) test(`Needs you opens the next pending item with minimal ${theme} home cards`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });

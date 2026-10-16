@@ -27,6 +27,61 @@ function fixture() {
 }
 
 describe("desktop companion owner boundary", () => {
+  it("keeps app-authored Mono prompts and drafts out of phone transcript snapshots", async () => {
+    const { bridge, session } = fixture();
+    session.blocks = [
+      { id: "literal", role: "user", text: "Please explain this system prompt literal to me." },
+      {
+        id: "completion", role: "user", text: "INTERNAL_UPDATER_HANDOFF originalPrompt={\\n...}", internal: true,
+        monoSessionCompletion: { sessionId: "worker", title: "Review", status: "completed" },
+        tool: { detail: "INTERNAL_TOOL_DETAIL", preview: { kind: "shell", output: "INTERNAL_PREVIEW" } },
+      },
+      { id: "report", role: "assistant", text: "The linked review completed successfully." },
+      { id: "legacy", role: "user", text: "INTERNAL_LEGACY_COMPLETION", internal: true },
+      { id: "draft", role: "user", text: "UNSENT_DESKTOP_DRAFT", draft: true },
+      { id: "approval", role: "tool", text: "Approve the deploy?", approval: { requestId: 9 } },
+    ];
+
+    const result = await bridge.handle("read", "sessions.read", { sessionId: session.id }) as { blocks: { id: string; text: string; approval?: unknown }[] };
+    expect(result.blocks.map(block => block.id)).toEqual(["literal", "report", "approval"]);
+    expect(result.blocks.map(block => block.text).join("\n")).toContain("system prompt literal");
+    expect(JSON.stringify(result)).not.toMatch(/INTERNAL_|UNSENT_DESKTOP_DRAFT/);
+    expect(result.blocks.at(-1)?.approval).toEqual({ requestId: 9 });
+  });
+
+  it("keeps raw history cursors and launch-card anchors correct around hidden blocks", async () => {
+    const { bridge, session, sessions } = fixture();
+    const child: Session = {
+      id: "child", harness: "codex", model: "test-model", modelSettings: {}, runtimeMode: "supervised",
+      title: "Linked review", cwd: "/tmp/child", busy: true, blocks: [],
+    };
+    sessions.push(child);
+    const launch: MonoSpawnedSession = {
+      sessionId: child.id, cwd: child.cwd, title: child.title, harness: child.harness, model: child.model,
+    };
+    session.blocks = [
+      { id: "hidden-start", role: "user", text: "hidden", internal: true },
+      { id: "prompt", role: "user", text: "Start the review", monoSpawnedSessions: [launch] },
+      { id: "receipt", role: "tool", text: "Started linked review" },
+      { id: "hidden-completion", role: "user", text: "hidden completion", internal: true },
+      { id: "report", role: "assistant", text: "The parent report is visible." },
+    ];
+    const linked = await bridge.handle("linked", "sessions.read", { sessionId: session.id }) as { blocks: { id: string; spawnedSessions?: { id: string }[] }[] };
+    expect(linked.blocks.map(block => block.id)).toEqual(["prompt", "receipt", "report"]);
+    expect(linked.blocks.find(block => block.id === "receipt")?.spawnedSessions).toMatchObject([{ id: child.id }]);
+
+    session.blocks = [
+      { id: "older-visible", role: "assistant", text: "Older visible reply" },
+      { id: "older-draft", role: "user", text: "draft", draft: true },
+      ...Array.from({ length: 100 }, (_, index) => ({ id: `hidden-${index}`, role: "user" as const, text: "hidden", internal: true })),
+    ];
+    const newest = await bridge.handle("newest", "sessions.read", { sessionId: session.id }) as { blocks: unknown[]; nextBefore: number | null; totalBlocks: number };
+    expect(newest).toMatchObject({ blocks: [], nextBefore: 2, totalBlocks: 102 });
+    const older = await bridge.handle("older", "sessions.read", { sessionId: session.id, before: newest.nextBefore }) as { blocks: { id: string }[]; nextBefore: number | null };
+    expect(older).toMatchObject({ nextBefore: null });
+    expect(older.blocks.map(block => block.id)).toEqual(["older-visible"]);
+  });
+
   it("accepts queued follow-ups once during work, preserves existing messages and reports the actual queue", async () => {
     const { bridge, session, owner, input } = fixture();
     session.busy = true;

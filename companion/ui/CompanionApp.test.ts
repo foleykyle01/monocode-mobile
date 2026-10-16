@@ -39,6 +39,7 @@ const defaultRead = fake.sessionRead.getMockImplementation()!;
 const defaultInboxList = fake.inboxList.getMockImplementation()!;
 const defaultInboxRead = fake.inboxRead.getMockImplementation()!;
 const defaultChangesList = fake.changesList.getMockImplementation()!;
+const defaultMonoRead = fake.monoRead.getMockImplementation()!;
 function swipeBack(element: Element) {
   for (const [type, x] of [["touchstart", 8], ["touchmove", 130], ["touchend", 150]] as const) {
     const point = { identifier: 1, clientX: x, clientY: 200 };
@@ -56,6 +57,7 @@ beforeEach(() => {
   fake.inboxList.mockImplementation(defaultInboxList);
   fake.inboxRead.mockImplementation(defaultInboxRead);
   fake.changesList.mockImplementation(defaultChangesList);
+  fake.monoRead.mockImplementation(defaultMonoRead);
   fake.currentEpoch.mockReturnValue("e");
   fake.status.mockResolvedValue({ paired: true, hostId: "host" });
   fake.mutate.mockReset().mockResolvedValue({ accepted: true });
@@ -106,6 +108,49 @@ it("uses full controls for a linked session outside the list and restores the Mo
     await act(async () => swipeBack(container.querySelector(".session-detail")!));
     expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
   } finally { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it("opens an idle Mono's header Sessions button, follows a linked child, and restores the Mono draft", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({ matches: query === "(max-width: 700px)", media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true }));
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const child = { ...await defaultRead("session"), session: { ...(await defaultRead("session")).session, id: "header-child", title: "Working review", busy: true, needsApproval: false, turn: 3 }, blocks: [{ id: "child-reply", role: "assistant", text: "Reviewing now." }], totalBlocks: 1 };
+  fake.sessionRead.mockImplementation(async id => id === "header-child" ? structuredClone(child) : defaultRead(id));
+  fake.monoRead.mockImplementation(async (_monoId: string, section?: string) => section === "sessions"
+    ? {
+        epoch: "e",
+        mono: { id: "scout", name: "Scout", mascot: "ghost", color: "#fff", projectIds: ["/app"], status: "idle" as const, statusLabel: "Idle", canChat: true, busy: false, needsApproval: false },
+        scope: { projects: [{ id: "/app", name: "App" }] },
+        sessions: { offset: 0, total: 3, truncated: false, items: [
+          { id: "header-child", title: "Working review", state: "working" as const, statusLabel: "Working" },
+          { id: "waiting-child", title: "Choose scope", state: "input" as const, statusLabel: "Needs input" },
+          { id: "done-child", title: "Finished notes", state: "done" as const, statusLabel: "Done" },
+        ] },
+      }
+    : defaultMonoRead(_monoId, section as never));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const enter = async (text: string) => act(async () => {
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, text);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
+    await enter("Keep this Mono draft");
+    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Sessions for Scout"]')!;
+    expect(trigger.disabled).toBe(false);
+    await act(async () => trigger.click());
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Working review");
+    const rows = [...container.querySelectorAll<HTMLButtonElement>(".mono-linked-sessions__body li > button")];
+    expect(rows.map(row => row.textContent)).toEqual(expect.arrayContaining(["Working reviewWorking", "Choose scopeNeeds input", "Finished notesDone"]));
+    await act(async () => rows[0].click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Working review");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to Scout"]')!.click());
+    expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
+    expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Keep this Mono draft");
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
 it("ignores a late linked-session read after returning to the Mono", async () => {

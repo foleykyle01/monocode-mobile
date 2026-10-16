@@ -93,6 +93,12 @@ function snapshotBlock(block: Block) {
   };
 }
 
+/** Match the desktop transcript: app-authored turns and unsent drafts are
+ * retained for the runtime, but are never phone-visible conversation rows. */
+function visibleTranscriptBlock(block: Block) {
+  return !block.internal && !block.draft;
+}
+
 export class CompanionCommandUncertain extends Error {
   readonly outcomeUnknown = true;
   constructor(reason: unknown) {
@@ -228,7 +234,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       if (!owner.monoRead) throw new Error("Mono details are unavailable; update the Mac companion");
       fields(input, ["monoId", "section", "offset"]);
       const section = input.section;
-      if (section !== undefined && section !== "soul" && section !== "memory" && section !== "habits")
+      if (section !== undefined && section !== "soul" && section !== "memory" && section !== "habits" && section !== "sessions")
         throw new Error("Invalid Mono detail section");
       const request: CompanionMonoReadInput = {
         monoId: text(input, "monoId", 128),
@@ -282,11 +288,13 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
         ...summary(session, navigation),
       },
       ...(owner.configuration ? { configuration: owner.configuration(session) } : {}),
-      // Deliberately bounded text-only snapshots for the feasibility client.
-      blocks: session.blocks.slice(start, end).map((block, offset) => {
+      // Keep cursors in raw storage coordinates. Filtering before slicing
+      // would skip hidden-only pages or attach a card to the wrong row.
+      blocks: session.blocks.slice(start, end).flatMap((block, offset) => {
+        if (!visibleTranscriptBlock(block)) return [];
         const snapshot = snapshotBlock(block);
         const spawnedSessions = spawnedCards.get(start + offset);
-        return spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot;
+        return [spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot];
       }),
       nextBefore: start || null,
       totalBlocks: session.blocks.length,

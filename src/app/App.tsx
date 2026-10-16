@@ -10881,6 +10881,7 @@ function Workspace({
       sessions: () => sessionsRef.current,
       navigation: companionNavigation,
       canChat: companionEligible,
+      listable: (session) => !isMonoSession(session.id),
       activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       configuration: companionConfiguration,
     });
