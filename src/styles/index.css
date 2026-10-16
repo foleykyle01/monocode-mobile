@@ -361,6 +361,15 @@ html.has-native-glass:not(.theme-light) #root {
   color: var(--color-content);
 }
 
+/* Selectable project/Mono rows own feedback across their padding too. */
+.reorder-item.project-reorder-item > button:first-of-type {
+  background-color: transparent;
+}
+
+.reorder-item.project-reorder-item:not([data-reordering]):is(:active, :has(> button:first-of-type:active)):not(:has([data-no-drag]:active)) {
+  background-color: var(--color-selection-hover);
+}
+
 /* Keep project controls from appearing as rows pass beneath the pointer. */
 .project-reorder-item[data-reordering] [data-no-drag] {
   visibility: hidden;
