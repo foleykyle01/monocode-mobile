@@ -26,9 +26,20 @@ vi.mock("../../sessions/ui/AgentTranscript", () => ({
   AgentTranscript: ({
     blocks,
     onOpenArtifact,
+    onOpenFile,
   }: {
     blocks: { text: string }[];
     onOpenArtifact: (id: string) => void;
+    onOpenFile: (
+      path: string,
+      navigation?: { line: number; column?: number },
+      options?: {
+        exact?: boolean;
+        sourceCwd?: string;
+        sourceProjectCwd?: string;
+        sourceSessionId?: string;
+      },
+    ) => void;
   }) =>
     createElement(
       "div",
@@ -38,6 +49,19 @@ vi.mock("../../sessions/ui/AgentTranscript", () => ({
         "button",
         { "data-open-doc": "", onClick: () => onOpenArtifact("doc-1") },
         "Open document",
+      ),
+      createElement(
+        "button",
+        {
+          "data-open-file": "",
+          onClick: () =>
+            onOpenFile(
+              "/Users/me/Downloads/Workflow Diagram%.html",
+              { line: 18, column: 4 },
+              { exact: true, sourceCwd: "/Users/me/worktrees/mono" },
+            ),
+        },
+        "Open file",
       ),
     ),
 }));
@@ -70,6 +94,7 @@ function snapshot(index: number): FloatingMonoView {
     monos,
     monoId: monos[index].id,
     error: null,
+    errorGeneration: 0,
     session: {
       ...newSession("codex", "/tmp", "default", "auto"),
       id: monos[index].sessionId,
@@ -289,6 +314,89 @@ it("keeps the draft when the workspace rejects delivery", async () => {
   expect(field.value).toBe("Please keep this");
   expect(container.querySelector('[role="alert"]')?.textContent).toContain(
     "Workspace unavailable",
+  );
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[aria-label="Dismiss chat error"]')!
+      .click(),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(field.value).toBe("Please keep this");
+});
+
+it("forwards an exact outside file link and its source worktree to the owner", async () => {
+  await render();
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>("[data-open-file]")!.click(),
+  );
+  expect(native.invoke).toHaveBeenCalledWith("mono_chat_action", {
+    monoId: "first",
+    action: {
+      kind: "openFile",
+      path: "/Users/me/Downloads/Workflow Diagram%.html",
+      navigation: { line: 18, column: 4 },
+      options: {
+        exact: true,
+        sourceCwd: "/Users/me/worktrees/mono",
+        sourceProjectCwd: "/tmp",
+        sourceSessionId: "chat-a",
+      },
+    },
+  });
+});
+
+it("keeps a dismissed host error hidden through refreshes but shows a new generation", async () => {
+  await render();
+  const failed = {
+    ...snapshot(0),
+    error: "Couldn't open Workflow Diagram.html",
+    errorGeneration: 4,
+  };
+  act(() => receive({ payload: failed }));
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "Couldn't open",
+  );
+
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[aria-label="Dismiss chat error"]')!
+      .click(),
+  );
+  expect(native.invoke).toHaveBeenCalledWith("mono_chat_dismiss_error", {
+    monoId: "first",
+    errorGeneration: 4,
+  });
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+
+  act(() => receive({ payload: failed }));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+
+  act(() => receive({ payload: { ...failed, errorGeneration: 5 } }));
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "Couldn't open",
+  );
+});
+
+it("does not carry a dismissed error into another Mono", async () => {
+  await render();
+  const failed = { ...snapshot(0), error: "Workspace unavailable", errorGeneration: 2 };
+  act(() => receive({ payload: failed }));
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[aria-label="Dismiss chat error"]')!
+      .click(),
+  );
+  act(() =>
+    receive({
+      payload: {
+        ...snapshot(1),
+        error: "Scout needs attention",
+        errorGeneration: 2,
+      },
+    }),
+  );
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "Scout needs attention",
   );
 });
 

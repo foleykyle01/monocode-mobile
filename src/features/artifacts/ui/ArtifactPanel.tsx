@@ -6,6 +6,7 @@ import { MonoSidebarHeader } from "../../monos/ui/MonoSidebar";
 import { PageHeader } from "../../monos/ui/monoPanelParts";
 import { artifactLabel, deleteArtifact } from "../artifacts";
 import { ArtifactContent, useArtifact } from "./ArtifactContent";
+import type { OpenFileFn } from "../../search/model/search";
 
 /**
  * A document's title, body and actions. With `onBack` it is a page over a
@@ -20,7 +21,7 @@ export function ArtifactReader({
   id: string;
   onBack?: () => void;
   onClose: () => void;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: OpenFileFn;
 }) {
   const leave = onBack ?? onClose;
   const { artifact, loaded, error, setError } = useArtifact(id);

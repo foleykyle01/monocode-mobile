@@ -72,10 +72,13 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(scout).toHaveText("ScoutWorking");
   const homeRing = page.locator(".mono-card").filter({ hasText: "Scout" }).locator(".mono-working-spinner");
   await expect(homeRing).toHaveCSS("animation-name", "mono-working-spin");
-  const cardBounds = await page.locator(".mono-card").filter({ hasText: "Scout" }).boundingBox();
-  const homeBounds = await homeRing.boundingBox();
+  // Measure both in one frame: the workspace can still be entering after Back.
   // Engines round the half-pixel card border differently.
-  expect(Math.abs(cardBounds!.x + cardBounds!.width - homeBounds!.x - homeBounds!.width / 2 - 20.5)).toBeLessThanOrEqual(1);
+  expect(await homeRing.evaluate(el => {
+    const card = el.closest(".mono-card")!.getBoundingClientRect();
+    const ring = el.getBoundingClientRect();
+    return Math.abs(card.right - ring.x - ring.width / 2 - 20.5);
+  })).toBeLessThanOrEqual(1);
   const homeTransform = await homeRing.evaluate(el => getComputedStyle(el).transform);
   await expect.poll(() => homeRing.evaluate(el => getComputedStyle(el).transform)).not.toBe(homeTransform);
   await page.screenshot({ path: testInfo.outputPath("home-working.png") });
@@ -83,6 +86,45 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(homeRing).toBeVisible();
   await expect(homeRing).toHaveCSS("animation-name", "none");
   await expect(scout).toHaveText("ScoutWorking");
+});
+
+test("a Mono chat header exposes all linked sessions without changing parent controls", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/tests/browser/mono-linked.html?demo=1");
+  await page.locator(".mono-row").filter({ hasText: "Scout" }).click();
+  const draft = page.getByRole("textbox", { name: "Message this session" });
+  await draft.fill("Keep the Mono plan here");
+  const sessions = page.getByRole("button", { name: /Sessions for Scout/ });
+  await expect(sessions).toBeVisible();
+  await sessions.click();
+  const sheet = page.getByRole("dialog", { name: "Sessions" });
+  await expect(sheet).toContainText("Scout’s linked sessions");
+  await expect(sheet.getByRole("button", { name: "Open Build the companion window · Needs input" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Open Review release notes · Done" })).toBeVisible();
+  await expect(page.locator(".workspace-grid")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByRole("textbox", { name: "Message this session" })).toHaveCount(0);
+  const close = sheet.getByRole("button", { name: "Close sessions", exact: true });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  expect(await page.evaluate(() => !!document.activeElement?.closest(".mono-linked-sessions"))).toBe(true);
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath("mono-header-sessions.png") });
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(sessions).toBeFocused();
+  await sessions.click();
+  await page.locator(".mono-linked-sessions__scrim").click({ position: { x: 4, y: 4 } });
+  await expect(sheet).toHaveCount(0);
+  await expect(sessions).toBeFocused();
+  await sessions.click();
+  await sheet.getByRole("button", { name: "Open Build the companion window · Needs input" }).click();
+  await expect(page.locator(".conversation-title")).toHaveText("Build the companion window");
+  await page.getByRole("button", { name: "Back to Scout", exact: true }).click();
+  await expect(page.locator(".conversation-title")).toHaveText("Scout");
+  await expect(draft).toHaveValue("Keep the Mono plan here");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 for (const theme of ["dark", "light"]) test(`Needs you opens the next pending item with minimal ${theme} home cards`, async ({ page }, testInfo) => {

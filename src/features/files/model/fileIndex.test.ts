@@ -96,6 +96,21 @@ describe("resolveOpenablePath", () => {
     ).resolves.toBe(ignored);
     expect(list).not.toHaveBeenCalled();
   });
+
+  it("does not replace a missing explicit outside file with a project basename", async () => {
+    const outside = "/Users/me/Downloads/Workflow Diagram%.html";
+    list.mockResolvedValue([
+      ...files,
+      {
+        name: "Workflow Diagram%.html",
+        path: `${cwd}/docs/Workflow Diagram%.html`,
+        relative: "docs/Workflow Diagram%.html",
+      },
+    ]);
+
+    await expect(resolveFileOpenRequest(cwd, outside)).resolves.toBe(outside);
+    expect(list).not.toHaveBeenCalled();
+  });
 });
 
 describe("loadProjectFiles", () => {

@@ -3,10 +3,12 @@ import type { Session } from "../../sessions/model/session";
 import { createCompanionMonoReader } from "./companionMono";
 
 const readAgentFile = vi.hoisted(() => vi.fn());
+const getMonoTranscriptPage = vi.hoisted(() => vi.fn());
 vi.mock("../../monos/model/monoFiles", () => ({
   readAgentFile,
   defaultSoul: (instructions?: string) => `# Soul\n\n## Standing instructions\n${instructions?.trim() || "- (Add anything it should always keep in mind.)"}\n`,
 }));
+vi.mock("../../sessions/data/sessionStore", () => ({ getMonoTranscriptPage }));
 
 const session = {
   id: "mono-session",
@@ -33,11 +35,18 @@ function reader(
   currentMono = mono,
   currentSession = session,
   activityState?: NonNullable<Parameters<typeof createCompanionMonoReader>[0]>["activityState"],
+  options: {
+    sessions?: Session[];
+    canChat?: (entry: Session) => boolean;
+    listable?: (entry: Session) => boolean;
+  } = {},
 ) {
   return createCompanionMonoReader({
     monos: () => [currentMono],
-    sessions: () => [currentSession],
+    sessions: () => options.sessions ?? [currentSession],
     navigation: () => ({ projects: [{ id: "/work/app", name: "App", path: "/work/app/" }] }),
+    canChat: options.canChat,
+    listable: options.listable,
     activityState,
     configuration: () => ({
       models: [{ harness: "claude", id: "opus", label: "Opus" }],
@@ -48,6 +57,7 @@ function reader(
 
 beforeEach(() => {
   readAgentFile.mockClear();
+  getMonoTranscriptPage.mockReset().mockResolvedValue({ blocks: [], before: null, hasNewer: false });
   readAgentFile.mockImplementation(async (_id: string, path: string) => {
     if (path === "SOUL.md") return { text: [...Array.from({ length: 121 }, (_, index) => `line ${index}`), "token=ghp_12345678901234567890"].join("\n") };
     if (path === "MEMORY.md") return { text: "# Memory\n- user likes tests\n" };
@@ -101,6 +111,92 @@ describe("companion Mono read projection", () => {
       needsApproval: false,
     });
     expect(result.mono).not.toHaveProperty("activity");
+  });
+
+  it("pages only eligible linked sessions from the full Mono history with live states", async () => {
+    const launch = (id: string, title: string) => ({ sessionId: id, cwd: "/work/app", title, harness: "claude" as const, model: "opus" });
+    const historical = launch("working", "Historical working review");
+    const input = { ...session, id: "input", title: "Needs an answer", blocks: [{ id: "approval", role: "tool" as const, text: "Approve", approval: { requestId: 2 } }] };
+    const working = { ...session, id: "working", title: "Historical working review", busy: true, blocks: [] };
+    const done = { ...session, id: "done", title: "Completed check", busy: false, blocks: [{ id: "done-prompt", role: "user" as const, text: "Run", durationMs: 4 }] };
+    const unavailable = { ...session, id: "unavailable", title: "Private", busy: true, blocks: [] };
+    const internal = { ...session, id: "internal", title: "Mono child", busy: true, blocks: [] };
+    const parent = {
+      ...session,
+      busy: false,
+      monoTranscript: { before: 7, firstBlockId: "tail" },
+      blocks: [{ id: "tail", role: "user" as const, text: "Launch", monoSpawnedSessions: [launch(input.id, input.title), launch(done.id, done.title), launch(unavailable.id, unavailable.title), launch(internal.id, internal.title)] }],
+    };
+    getMonoTranscriptPage.mockResolvedValueOnce({ blocks: [{ id: "old", role: "user", text: "Launch", internal: true, monoSpawnedSessions: [historical] }], before: null, hasNewer: false });
+    const all = [parent, working, input, done, unavailable, internal] as Session[];
+    const source = reader(mono, parent, undefined, {
+      sessions: all,
+      canChat: entry => entry.id !== unavailable.id,
+      listable: entry => entry.id !== internal.id,
+    });
+
+    const first = await source.read({ monoId: mono.id, section: "sessions" });
+    expect(getMonoTranscriptPage).toHaveBeenCalledWith(parent.id, { before: 7 });
+    expect(first.sessions?.items).toEqual([
+      { id: working.id, title: working.title, state: "working", statusLabel: "Working" },
+      { id: input.id, title: input.title, state: "input", statusLabel: "Needs input" },
+      { id: done.id, title: done.title, state: "done", statusLabel: "Done" },
+    ]);
+    expect(JSON.stringify(first.sessions)).not.toMatch(/Private|Mono child/);
+
+    input.busy = false;
+    input.blocks = [{ id: "input-done", role: "user", text: "Answer", durationMs: 3 }];
+    const settled = await source.read({ monoId: mono.id, section: "sessions" });
+    expect(settled.sessions?.items.find(item => item.id === input.id)?.state).toBe("done");
+    all.splice(all.findIndex(entry => entry.id === working.id), 1);
+    const removed = await source.read({ monoId: mono.id, section: "sessions" });
+    expect(removed.sessions?.items.map(item => item.id)).not.toContain(working.id);
+  });
+
+  it("paginates linked sessions without falling back to the workspace-wide list", async () => {
+    const parent = {
+      ...session,
+      busy: false,
+      blocks: Array.from({ length: 51 }, (_, index) => ({
+        id: `launch-${index}`, role: "user" as const, text: "Launch",
+        monoSpawnedSessions: [{ sessionId: `child-${index}`, cwd: "/work/app", title: `Child ${index}`, harness: "claude" as const, model: "opus" }],
+      })),
+    };
+    const children = Array.from({ length: 51 }, (_, index) => ({
+      ...session, id: `child-${index}`, title: `Child ${index}`, busy: false,
+      blocks: [{ id: `prompt-${index}`, role: "user" as const, text: "Run", durationMs: 1 }],
+    }));
+    const source = reader(mono, parent, undefined, { sessions: [parent, ...children] as Session[] });
+    const first = await source.read({ monoId: mono.id, section: "sessions" });
+    expect(first.sessions).toMatchObject({ offset: 0, total: 51, nextOffset: 50, truncated: true });
+    expect(first.sessions?.items).toHaveLength(50);
+    const last = await source.read({ monoId: mono.id, section: "sessions", offset: 50 });
+    expect(last.sessions).toMatchObject({ offset: 50, total: 51, truncated: false });
+    expect(last.sessions?.items).toEqual([{ id: "child-50", title: "Child 50", state: "done", statusLabel: "Done" }]);
+  });
+
+  it("rechecks live child eligibility and parent identity after historical reads", async () => {
+    const launch = { sessionId: "child", cwd: "/work/app", title: "Historical child", harness: "claude" as const, model: "opus" };
+    const parent = { ...session, busy: false, monoTranscript: { before: 3, firstBlockId: "tail" }, blocks: [{ id: "tail", role: "assistant" as const, text: "Working" }] };
+    const child = { ...session, id: "child", title: "Historical child", busy: true, blocks: [] };
+    let childAllowed = true;
+    let resolveFirst!: (value: { blocks: Session["blocks"]; before: null; hasNewer: false }) => void;
+    getMonoTranscriptPage.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve; }));
+    const live = [parent, child] as Session[];
+    const source = reader(mono, parent, undefined, { sessions: live, canChat: entry => entry.id !== child.id || childAllowed });
+    const reading = source.read({ monoId: mono.id, section: "sessions" });
+    childAllowed = false;
+    resolveFirst({ blocks: [{ id: "launch", role: "user", text: "Launch", monoSpawnedSessions: [launch] }], before: null, hasNewer: false });
+    expect((await reading).sessions?.items).toEqual([]);
+
+    let resolveSecond!: (value: { blocks: Session["blocks"]; before: null; hasNewer: false }) => void;
+    getMonoTranscriptPage.mockReturnValueOnce(new Promise(resolve => { resolveSecond = resolve; }));
+    const current = [parent, child] as Session[];
+    const replacementSource = reader(mono, parent, undefined, { sessions: current });
+    const replacing = replacementSource.read({ monoId: mono.id, section: "sessions" });
+    current[0] = { ...parent };
+    resolveSecond({ blocks: [{ id: "launch", role: "user", text: "Launch", monoSpawnedSessions: [launch] }], before: null, hasNewer: false });
+    expect((await replacing).sessions?.items).toEqual([]);
   });
 
   it("marks oversized lines as content-truncated while keeping the response bounded", async () => {

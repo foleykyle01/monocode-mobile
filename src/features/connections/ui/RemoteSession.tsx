@@ -1212,7 +1212,16 @@ function ConnectedRemoteSession({
       updateConfiguration((current) => ({ ...current, settings })),
     onRuntimeModeChange: (_, mode) =>
       updateConfiguration((current) => ({ ...current, mode })),
-    onOpenFile: (path) => onOpenFile(hostFilePath(path)),
+    onOpenFile: (path, navigation, options) =>
+      onOpenFile(hostFilePath(path), navigation, {
+        ...options,
+        exact: true,
+        ...(options?.sourceCwd
+          ? {}
+          : { sourceCwd: session.worktreeCwd ?? session.cwd }),
+        ...(options?.sourceProjectCwd ? {} : { sourceProjectCwd: session.cwd }),
+        ...(options?.sourceSessionId ? {} : { sourceSessionId: session.id }),
+      }),
     onOpenDiff: (path) => onOpenDiff(path ? hostFilePath(path) : undefined),
     // This computer's features do not apply to a host session.
     onCwdChange: noop,

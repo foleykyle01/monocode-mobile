@@ -1,6 +1,11 @@
 import type { ApprovalDecision } from "../../../integrations/harness";
 import type { Attachment, Session } from "../../sessions/model/session";
 import type { UserQuestionReply } from "../../sessions/model/userQuestion";
+import type {
+  EditorNavigation,
+  FileOpenOptions,
+  OpenFileFn,
+} from "../../search/model/search";
 import { displayAttachments } from "../../sessions/model/attachments";
 import {
   listMonos,
@@ -26,6 +31,7 @@ export type FloatingMonoView = {
   monoId: string | null;
   session: Session | null;
   error: string | null;
+  errorGeneration: number;
 };
 export type FloatingMonoAction =
   | { kind: "open" }
@@ -36,7 +42,12 @@ export type FloatingMonoAction =
   | { kind: "question"; requestId: number; reply: UserQuestionReply }
   | { kind: "questionInteraction"; requestId: number }
   | { kind: "reveal" }
-  | { kind: "openFile"; path: string }
+  | {
+      kind: "openFile";
+      path: string;
+      navigation?: EditorNavigation;
+      options?: FileOpenOptions;
+    }
   | { kind: "openArtifact"; id: string }
   | { kind: "resume" };
 export type FloatingMonoRequest = {
@@ -116,7 +127,7 @@ export type FloatingMonoHost = {
   ): void;
   questionInteraction(sessionId: string, requestId: number): void;
   reveal(monoId: string): Promise<void>;
-  openFile(path: string): void | Promise<void>;
+  openFile: OpenFileFn;
   openArtifact?(monoId: string, id: string): void | Promise<void>;
   resume(sessionId: string): void;
   /** Add a Mono and show it in place of the chat that asked. */
@@ -158,7 +169,7 @@ export async function deliverFloatingMonoRequest(
       await host.reveal(request.monoId);
       break;
     case "openFile":
-      await host.openFile(action.path);
+      await host.openFile(action.path, action.navigation, action.options);
       break;
     case "openArtifact":
       if (!host.openArtifact) throw new Error("Artifacts are unavailable.");

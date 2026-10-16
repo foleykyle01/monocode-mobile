@@ -11,7 +11,14 @@ import {
   type MonoState,
 } from "../../monos/model/mono";
 import { parseHabits, type Habit } from "../../monos/model/monoHabits";
-import type { Session } from "../../sessions/model/session";
+import { getMonoTranscriptPage } from "../../sessions/data/sessionStore";
+import type { Block, Session } from "../../sessions/model/session";
+import {
+  LAUNCHED_SESSION_LABELS,
+  launchedSessionState,
+  monoSpawnedSessions,
+  type LaunchedSessionState,
+} from "../../monos/model/monoSpawnedSessions";
 
 const MONO_ID = /^[A-Za-z0-9-]{1,128}$/;
 const PAGE_LINES = 120;
@@ -22,6 +29,7 @@ const HABIT_TEXT_LIMIT = 4_000;
 const HABIT_ERROR_LIMIT = 1_000;
 const HABIT_REPORT_LIMIT = 4_000;
 const MAX_OFFSET = 100_000;
+const LINKED_SESSION_PAGE_SIZE = 50;
 
 export type CompanionMonoProject = { id: string; name: string };
 
@@ -81,7 +89,23 @@ export type CompanionMonoHabitPage = {
   truncated: boolean;
 };
 
-export type CompanionMonoReadSection = "soul" | "memory" | "habits";
+/** A live, eligible session explicitly linked from this Mono's own history. */
+export type CompanionMonoLinkedSession = {
+  id: string;
+  title: string;
+  state: LaunchedSessionState;
+  statusLabel: string;
+};
+
+export type CompanionMonoLinkedSessionPage = {
+  items: CompanionMonoLinkedSession[];
+  offset: number;
+  total: number;
+  nextOffset?: number;
+  truncated: boolean;
+};
+
+export type CompanionMonoReadSection = "soul" | "memory" | "habits" | "sessions";
 
 export type CompanionMonoReadInput = {
   monoId: string;
@@ -102,6 +126,7 @@ export type CompanionMonoRead = {
   soul?: CompanionMonoTextPage;
   memory?: CompanionMonoTextPage;
   habits?: CompanionMonoHabitPage;
+  sessions?: CompanionMonoLinkedSessionPage;
 };
 
 export type CompanionMonoConfiguration = {
@@ -114,6 +139,8 @@ export type CompanionMonoReaderSource = {
   sessions: () => readonly Session[];
   navigation: () => Pick<CompanionNavigation, "projects">;
   canChat?: (session: Session) => boolean;
+  /** Keep internal Mono sessions out of linked child navigation. */
+  listable?: (session: Session) => boolean;
   /** Shared Mono activity is presentation-only; controls keep the parent state. */
   activityState?: (mono: Mono) => MonoState | undefined;
   configuration?: (session: Session) => CompanionMonoConfiguration | undefined;
@@ -225,6 +252,22 @@ function habitPage(values: readonly Habit[], start: number): CompanionMonoHabitP
   };
 }
 
+function linkedSessionPage(
+  values: readonly CompanionMonoLinkedSession[],
+  start: number,
+): CompanionMonoLinkedSessionPage {
+  const offset = Math.min(start, values.length);
+  const end = Math.min(offset + LINKED_SESSION_PAGE_SIZE, values.length);
+  const truncated = end < values.length;
+  return {
+    items: values.slice(offset, end),
+    offset,
+    total: values.length,
+    ...(truncated ? { nextOffset: end } : {}),
+    truncated,
+  };
+}
+
 function summary(mono: Mono, source: CompanionMonoReaderSource): CompanionMonoSummary {
   const navigation = source.navigation();
   const look = monoLook(mono);
@@ -274,10 +317,98 @@ function settings(session: Session, source: CompanionMonoReaderSource) {
 
 /** Read-only projection of a Mono's desktop profile and bounded local files. */
 export function createCompanionMonoReader(source: CompanionMonoReaderSource) {
+  // Old Mono windows only retain their newest blocks in memory. Cache the
+  // immutable older pages by their cursor, then resolve their linked ids
+  // against the current live session list on every read.
+  const olderBlocks = new Map<string, Promise<readonly Block[]>>();
+
+  async function historyFor(session: Session): Promise<readonly Block[]> {
+    if (session.monoTranscript?.before === null) return session.blocks;
+    const before = session.monoTranscript?.before;
+    const key = `${session.id}:${before ?? "start"}`;
+    let pending = olderBlocks.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const blocks: Block[] = [];
+        let cursor = before;
+        do {
+          const page = await getMonoTranscriptPage(session.id, { before: cursor });
+          blocks.unshift(...page.blocks);
+          const next = page.before ?? undefined;
+          if (next === cursor) break;
+          cursor = next;
+        } while (cursor !== undefined);
+        return blocks;
+      })();
+      olderBlocks.set(key, pending);
+    }
+    let historical: readonly Block[];
+    try {
+      historical = await pending;
+    } catch (error) {
+      // A transient local-store read must not make the sheet permanently
+      // unavailable; its Retry button starts a fresh bounded read.
+      if (olderBlocks.get(key) === pending) olderBlocks.delete(key);
+      throw error;
+    }
+    // The newest saved page can overlap a live tail. Preserve the live block
+    // object while retaining original chronology and never duplicate a link.
+    const combined = new Map<string, Block>();
+    for (const block of historical) combined.set(block.id, block);
+    for (const block of session.blocks) combined.set(block.id, block);
+    return [...combined.values()];
+  }
+
+  async function linkedSessions(mono: Mono): Promise<CompanionMonoLinkedSession[]> {
+    const initialParent = mono.sessionId
+      ? source.sessions().find((session) => session.id === mono.sessionId)
+      : undefined;
+    if (!initialParent || source.canChat?.(initialParent) === false) return [];
+
+    const launches = monoSpawnedSessions(await historyFor(initialParent));
+    // The history store is asynchronous. Resolve the live targets only after
+    // it returns, and never project a parent instance that was replaced while
+    // reading its older blocks.
+    const parent = source.sessions().find((session) => session.id === initialParent.id);
+    if (!parent || parent !== initialParent || source.canChat?.(parent) === false) return [];
+
+    const targets = new Map(
+      source.sessions()
+        .filter((session) =>
+          session.id !== parent.id &&
+          (source.canChat?.(session) ?? true) &&
+          (source.listable?.(session) ?? true),
+        )
+        .map((session) => [session.id, session]),
+    );
+    const stateOrder: Record<LaunchedSessionState, number> = {
+      working: 0,
+      input: 1,
+      draft: 2,
+      unknown: 3,
+      failed: 4,
+      stopped: 5,
+      done: 6,
+    };
+    return launches.flatMap((launch, index) => {
+      const target = targets.get(launch.sessionId);
+      if (!target) return [];
+      const state = launchedSessionState(target);
+      return [{
+        id: target.id,
+        title: target.title.slice(0, 300) || "Untitled session",
+        state,
+        statusLabel: LAUNCHED_SESSION_LABELS[state],
+        index,
+      }];
+    }).sort((left, right) => stateOrder[left.state] - stateOrder[right.state] || left.index - right.index)
+      .map(({ index: _index, ...session }) => session);
+  }
+
   return {
     async read(input: CompanionMonoReadInput): Promise<CompanionMonoRead> {
       if (!input || !MONO_ID.test(input.monoId)) throw new Error("Invalid Mono ID");
-      if (input.section !== undefined && !["soul", "memory", "habits"].includes(input.section)) throw new Error("Invalid Mono detail section");
+      if (input.section !== undefined && !["soul", "memory", "habits", "sessions"].includes(input.section)) throw new Error("Invalid Mono detail section");
       const mono = source.monos().find((entry) => entry.id === input.monoId);
       if (!mono) throw new Error("Mono is not available to this companion");
       const start = offset(input.offset);
@@ -298,6 +429,7 @@ export function createCompanionMonoReader(source: CompanionMonoReaderSource) {
       }
       if (!section || section === "memory") result.memory = pageText((await readAgentFile(mono.id, "MEMORY.md")).text ?? "", start);
       if (!section || section === "habits") result.habits = habitPage(parseHabits((await readAgentFile(mono.id, "habits.json")).text), start);
+      if (section === "sessions") result.sessions = linkedSessionPage(await linkedSessions(mono), start);
       return result;
     },
   };

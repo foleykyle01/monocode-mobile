@@ -621,6 +621,8 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             mono_chat::mono_chat_action,
             #[cfg(target_os = "macos")]
+            mono_chat::mono_chat_dismiss_error,
+            #[cfg(target_os = "macos")]
             mono_chat::mono_chat_take,
             #[cfg(target_os = "macos")]
             mono_chat::mono_chat_accept,

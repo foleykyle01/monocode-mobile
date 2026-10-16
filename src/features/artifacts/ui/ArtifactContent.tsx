@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AgentMarkdown } from "../../sessions/ui/AgentMarkdown";
+import type { OpenFileFn } from "../../search/model/search";
 import { HtmlArtifactFrame } from "./HtmlArtifactFrame";
 import {
   ARTIFACTS_CHANGED_EVENT,
@@ -52,7 +53,7 @@ export function ArtifactContent({
   onOpenFile,
 }: {
   artifact: Artifact;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: OpenFileFn;
 }) {
   switch (artifact.kind) {
     case "document":

@@ -585,9 +585,21 @@ export const AgentMarkdown = memo(function AgentMarkdown({
     },
     [],
   );
+  // This parser has already resolved the link against its transcript/document
+  // cwd. Preserve that exact result instead of letting the active project
+  // search reinterpret an outside file by basename.
+  const onResolvedFile = useCallback<OpenFileFn>(
+    (path, navigation, options) =>
+      onOpenFile?.(path, navigation, {
+        ...options,
+        exact: true,
+        ...(options?.sourceCwd || !cwd ? {} : { sourceCwd: cwd }),
+      }),
+    [cwd, onOpenFile],
+  );
   const fileOpen = useMemo(
-    () => ({ cwd, onOpenFile, onFileContextMenu }),
-    [cwd, onOpenFile, onFileContextMenu],
+    () => ({ cwd, onOpenFile: onResolvedFile, onFileContextMenu }),
+    [cwd, onResolvedFile, onFileContextMenu],
   );
   const remarkPlugins = useMemo<PluggableList>(
     () => [
@@ -636,8 +648,8 @@ export const AgentMarkdown = memo(function AgentMarkdown({
     setFileActionError(null);
 
     if (id === "open-monocode") {
-      if (fileMenu.navigation) onOpenFile?.(path, fileMenu.navigation);
-      else onOpenFile?.(path);
+      if (fileMenu.navigation) onResolvedFile(path, fileMenu.navigation);
+      else onResolvedFile(path);
       return;
     }
 

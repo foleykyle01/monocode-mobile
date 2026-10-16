@@ -14,6 +14,8 @@ export type {
   CompanionMonoHabitRun,
   CompanionMonoHabit,
   CompanionMonoHabitPage,
+  CompanionMonoLinkedSession,
+  CompanionMonoLinkedSessionPage,
   CompanionMonoReadSection,
   CompanionMonoReadInput,
   CompanionMonoRead,

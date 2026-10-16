@@ -93,6 +93,12 @@ function snapshotBlock(block: Block) {
   };
 }
 
+/** Match the desktop transcript: app-authored turns and unsent drafts are
+ * retained for the runtime, but are never phone-visible conversation rows. */
+function visibleTranscriptBlock(block: Block) {
+  return !block.internal && !block.draft;
+}
+
 export class CompanionCommandUncertain extends Error {
   readonly outcomeUnknown = true;
   constructor(reason: unknown) {
@@ -156,7 +162,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
   /**
    * Resolve Mono launch cards against the live owner session list. The launch
    * receipt can be older than the transcript page currently being returned,
-   * so anchor each card to the end of its full user turn before slicing.
+   * so anchor each card to its turn's final phone-visible block before slicing.
    */
   function spawnedSessionCards(session: Session, start: number, end: number, navigation?: CompanionNavigation) {
     const knownLaunches = monoSpawnedSessions(session.blocks);
@@ -173,9 +179,13 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     let turnStart: number | undefined;
     const finishTurn = (turnEnd: number) => {
       if (turnStart === undefined) return;
-      const anchor = turnEnd - 1;
-      // A card belongs to the final block of its turn. If that block is not
-      // in this page, leave it to the page that contains the anchor.
+      let anchor = turnEnd - 1;
+      while (anchor >= turnStart && !visibleTranscriptBlock(session.blocks[anchor])) --anchor;
+      // A wholly hidden turn has no row to decorate. Its child remains
+      // discoverable in the Mono header's linked-sessions list.
+      if (anchor < turnStart) return;
+      // If the visible continuation is not in this page, leave its card to
+      // the page containing that block rather than duplicating it elsewhere.
       if (anchor < start || anchor >= end) return;
       const launches = monoSpawnedSessions(session.blocks.slice(turnStart, turnEnd), knownLaunches);
       const cards: ReturnType<typeof summary>[] = [];
@@ -228,7 +238,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       if (!owner.monoRead) throw new Error("Mono details are unavailable; update the Mac companion");
       fields(input, ["monoId", "section", "offset"]);
       const section = input.section;
-      if (section !== undefined && section !== "soul" && section !== "memory" && section !== "habits")
+      if (section !== undefined && section !== "soul" && section !== "memory" && section !== "habits" && section !== "sessions")
         throw new Error("Invalid Mono detail section");
       const request: CompanionMonoReadInput = {
         monoId: text(input, "monoId", 128),
@@ -282,11 +292,13 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
         ...summary(session, navigation),
       },
       ...(owner.configuration ? { configuration: owner.configuration(session) } : {}),
-      // Deliberately bounded text-only snapshots for the feasibility client.
-      blocks: session.blocks.slice(start, end).map((block, offset) => {
+      // Keep cursors in raw storage coordinates. Filtering before slicing
+      // would skip hidden-only pages or attach a card to the wrong row.
+      blocks: session.blocks.slice(start, end).flatMap((block, offset) => {
+        if (!visibleTranscriptBlock(block)) return [];
         const snapshot = snapshotBlock(block);
         const spawnedSessions = spawnedCards.get(start + offset);
-        return spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot;
+        return [spawnedSessions ? { ...snapshot, spawnedSessions } : snapshot];
       }),
       nextBefore: start || null,
       totalBlocks: session.blocks.length,

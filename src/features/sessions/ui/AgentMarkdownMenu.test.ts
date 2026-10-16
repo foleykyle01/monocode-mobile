@@ -91,7 +91,11 @@ describe("AgentMarkdown file link context menu", () => {
 
   it("runs internal-open, external-open, reveal, and copy actions", async () => {
     await pick("Open in MonoCode");
-    expect(props.onOpenFile).toHaveBeenCalledWith("/repo/docs/guide.md");
+    expect(props.onOpenFile).toHaveBeenCalledWith(
+      "/repo/docs/guide.md",
+      undefined,
+      { exact: true, sourceCwd: "/repo" },
+    );
 
     await pick("Open in Default App");
     expect(actions.openPathWithDefaultApp).toHaveBeenCalledWith("/repo/docs/guide.md");
@@ -170,6 +174,7 @@ describe("AgentMarkdown file link context menu", () => {
       expect(props.onOpenFile).toHaveBeenCalledWith(
         "/repo/src/main.ts",
         navigation,
+        { exact: true, sourceCwd: "/repo" },
       );
       await pick("Copy Path", link);
       expect(actions.copyText).toHaveBeenCalledWith("/repo/src/main.ts");

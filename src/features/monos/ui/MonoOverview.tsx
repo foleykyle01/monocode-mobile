@@ -36,6 +36,7 @@ import {
 import { HARNESSES, type HarnessId } from "../../sessions/model/session";
 import { MonoSidebar, MonoSidebarHeader } from "./MonoSidebar";
 import type { SessionChangeTotals } from "../../sessions/ui/SessionReview";
+import type { OpenFileFn } from "../../search/model/search";
 import { MonoChangesView, type MonoChangesRequest } from "./MonoChangesView";
 
 export type MonoOverviewTab = "sessions" | "habits" | "documents" | "changes";
@@ -85,7 +86,7 @@ type Props = {
   /** A document it wrote, open over the list until Back. */
   shownDocumentId?: string;
   onBackFromDocument?: () => void;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: OpenFileFn;
   onOpenDocument: (id: string) => void;
   onClose: () => void;
   windowControls?: ReactNode;

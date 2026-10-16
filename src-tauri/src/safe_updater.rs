@@ -29,6 +29,8 @@ struct Inner {
     admissions: usize,
     prepared: Option<PreparedUpdate>,
     probes: HashMap<String, Probe>,
+    // Keep proven-idle prompts parked after successful installation until exit.
+    terminal_leases: Vec<crate::pty::RestartLease>,
 }
 
 /// One process-wide admission lock. It is deliberately held from before the
@@ -109,8 +111,11 @@ fn begin_restart(updater: &SafeUpdater) -> Result<PreparedUpdate, String> {
         .inner
         .lock()
         .map_err(|_| "Update service unavailable")?;
-    if inner.restarting || inner.downloading || inner.admissions != 0 {
+    if inner.restarting || inner.downloading {
         return Err("An update operation is already in progress".into());
+    }
+    if inner.admissions != 0 {
+        return Err("Agent or terminal input is being prepared. Wait for it to finish, then retry the update".into());
     }
     let prepared = inner
         .prepared
@@ -327,27 +332,26 @@ pub async fn safe_update_install_and_restart(
     }
     let prepared = begin_restart(&updater)?;
 
+    let mut terminal_leases = Vec::new();
     let result = async {
-        if !control.restart_safe()
-            || !pty.restart_safe()
-            || !crate::worktree_lifecycle::restart_safe()
-        {
-            return Err("Finish or stop active agent work before installing this update".into());
+        control.restart_ready()?;
+        if !crate::worktree_lifecycle::restart_safe() {
+            return Err("Project preparation is still active. Wait for it to finish before updating".into());
         }
+        terminal_leases = pty.prepare_restart()?;
         ready_windows(&app, &updater).await?;
         // Recheck after the renderer replies: the admission lock stops new
         // turns, and this catches already-authorized helpers/control work.
-        if !control.restart_safe()
-            || !pty.restart_safe()
-            || !crate::worktree_lifecycle::restart_safe()
-        {
-            return Err("Agent work changed while the update was being prepared".into());
+        control.restart_ready()?;
+        if !crate::worktree_lifecycle::restart_safe() {
+            return Err("Project preparation changed while the update was being prepared; retry when it finishes".into());
         }
         Ok(())
     }
     .await;
 
     if let Err(error) = result {
+        drop(terminal_leases);
         if let Ok(mut inner) = updater.inner.lock() {
             inner.prepared = Some(prepared);
         }
@@ -369,12 +373,14 @@ pub async fn safe_update_install_and_restart(
     let (prepared, install) = match install_result {
         Ok(result) => result,
         Err(error) => {
+            drop(terminal_leases);
             release_restart_lock(&app, &updater);
             return Err(error.to_string());
         }
     };
 
     if let Err(error) = install {
+        drop(terminal_leases);
         if let Ok(mut inner) = updater.inner.lock() {
             inner.prepared = Some(prepared);
         }
@@ -384,6 +390,9 @@ pub async fn safe_update_install_and_restart(
 
     // Keep the admission lock set until this process exits so no turn starts
     // in the narrow gap before the relaunch.
+    if let Ok(mut inner) = updater.inner.lock() {
+        inner.terminal_leases = terminal_leases;
+    }
     app.request_restart();
     Ok(())
 }
@@ -399,7 +408,7 @@ mod tests {
         assert_eq!(updater.inner.lock().unwrap().admissions, 1);
         assert_eq!(
             begin_restart(&updater).err().as_deref(),
-            Some("An update operation is already in progress")
+            Some("Agent or terminal input is being prepared. Wait for it to finish, then retry the update")
         );
         drop(admission);
         assert_eq!(updater.inner.lock().unwrap().admissions, 0);
@@ -416,6 +425,25 @@ mod tests {
         assert!(admit(&updater).is_err());
         clear_restart_lock(&updater);
         assert!(admit(&updater).is_ok());
+    }
+
+    #[test]
+    fn terminal_input_is_refused_before_lookup_during_restart_and_unblocked_on_cancel() {
+        let updater = SafeUpdater::default();
+        let terminal = crate::pty::PtyHost::new();
+        updater.inner.lock().unwrap().restarting = true;
+        assert!(terminal
+            .write_terminal(&updater, "term", "run\n")
+            .unwrap_err()
+            .contains("restarting"));
+        clear_restart_lock(&updater);
+        assert_eq!(
+            terminal
+                .write_terminal(&updater, "term", "run\n")
+                .unwrap_err(),
+            "Terminal is not running"
+        );
+        assert_eq!(updater.inner.lock().unwrap().admissions, 0);
     }
 
     #[test]

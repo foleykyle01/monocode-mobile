@@ -221,7 +221,6 @@ import {
   leafIds,
   movePane,
   neighborLeafId,
-  newEditorWorkspaceTab,
   newFileTab,
   newPlanTab,
   newTab,
@@ -234,7 +233,6 @@ import {
   openEditorTab,
   openSessionChangesTab,
   pinEditorFile,
-  openWorkspaceFile,
   previewWorkspaceFile,
   openTerminalTab,
   removePane,
@@ -455,6 +453,7 @@ import {
   workspaceTabWorktree,
   focusedWorkspaceTabCwd,
 } from "../features/workspace/model/workspaceTabGroups";
+import { routeFileOpen } from "../features/workspace/model/fileOpenRoute";
 import { applyAddToChatRequest } from "../features/sessions/model/addChatToWorkspace";
 import { newWorkspaceSession } from "./model/newWorkspaceSession";
 import {
@@ -6534,16 +6533,14 @@ function Workspace({
 
   const onOpenFile = useCallback<OpenFileFn>(
     (path, navigation, options) => {
-      closeMonoView();
       void (async () => {
-        const fileCwd = gitCwdRef.current;
-        const fileProjectCwd = sidebarCwdRef.current;
+        const fileCwd = options?.sourceCwd ?? gitCwdRef.current;
+        const fileProjectCwd =
+          options?.sourceProjectCwd ??
+          options?.sourceCwd ??
+          sidebarCwdRef.current;
         const resolved = await resolveFileOpenRequest(fileCwd, path, options);
         rememberOpenedFile(fileCwd, resolved);
-        const tab = tabsRef.current.find(
-          (entry) => entry.id === activeTabIdRef.current,
-        );
-        if (!tab) return;
         const file = newFileTab(
           resolved,
           fileCwd,
@@ -6552,66 +6549,42 @@ function Workspace({
           fileProjectCwd,
         );
         const pin = !!options?.pin;
-        if (loadFileTabMode() === "workspace") {
-          // Built once: the updater may run twice in StrictMode.
-          const created = newEditorWorkspaceTab(
-            pin ? file : { ...file, preview: true },
-          );
-          let target: { tabId: string; paneId?: string } | undefined;
-          // Select inside the updater, not from `tabsRef`: two opens resuming
-          // before a render would otherwise both miss the preview and append
-          // twice. flushSync runs the updater now so `target` is set below.
-          flushSync(() => {
-            setTabs((prev) => {
-              const result = openWorkspaceFile(
-                prev,
-                file,
-                created,
-                (tabs, tab) => insertBesideActive(tabs, tab, fileProjectCwd),
-                pin,
-              );
-              target = result;
-              return result.tabs;
-            });
-          });
-          if (target?.paneId) activateTab(target.tabId, target.paneId);
-          else if (target) setActiveTabId(target.tabId);
-          setProjectTerminalFocused(false);
-          setComposerFocused(false);
-          if (navigation) {
-            editorNavigationToken.current += 1;
-            setEditorNavigation({
-              path: resolved,
-              ...navigation,
-              token: editorNavigationToken.current,
-            });
-          }
-          return;
-        }
-        setTabs((prev) =>
-          prev.map((entry) => {
-            if (entry.id !== tab.id) return entry;
-            const focusedSession = sessionsRef.current.find(
-              (session) => session.id === entry.focusedId,
-            );
-            return openEditorTab(entry, file, {
-              split: focusedSession?.blocks.length === 0 ? "left" : "right",
+        let route: ReturnType<typeof routeFileOpen> | undefined;
+        // Run the route in the updater so repeated opens see the latest tabs.
+        flushSync(() => {
+          setTabs((prev) => {
+            const nextRoute = routeFileOpen({
+              tabs: prev,
+              sessions: sessionsRef.current,
+              activeTabId: activeTabIdRef.current,
+              file,
+              navigation,
+              sourceSessionId: options?.sourceSessionId,
+              sourceCwd: options?.sourceCwd,
+              sourceProjectCwd: options?.sourceProjectCwd,
+              workspaceMode: loadFileTabMode() === "workspace",
+              insert: (tabs, tab) =>
+                insertBesideActive(tabs, tab, fileProjectCwd),
               pin,
             });
-          }),
-        );
-        if (navigation) {
+            route = nextRoute;
+            return nextRoute.tabs;
+          });
+        });
+        if (!route) return;
+        activateTab(route.tabId, route.paneId);
+        setProjectTerminalFocused(false);
+        setComposerFocused(false);
+        if (route.navigation) {
           editorNavigationToken.current += 1;
           setEditorNavigation({
-            path: resolved,
-            ...navigation,
+            ...route.navigation,
             token: editorNavigationToken.current,
           });
         }
-        setComposerFocused(false);
       })();
     },
-    [activateTab, insertBesideActive, closeMonoView],
+    [activateTab, insertBesideActive],
   );
 
   const onOpenPlan = useCallback(
@@ -10881,6 +10854,7 @@ function Workspace({
       sessions: () => sessionsRef.current,
       navigation: companionNavigation,
       canChat: companionEligible,
+      listable: (session) => !isMonoSession(session.id),
       activityState: (mono) => companionMonoStatesRef.current.get(mono.id),
       configuration: companionConfiguration,
     });

@@ -40,6 +40,7 @@ const initial: FloatingMonoView = {
   ],
   monoId: "first",
   error: null,
+  errorGeneration: 0,
   session: {
     ...newSession("codex", "/tmp", "default", "auto"),
     id: "motion-chat",

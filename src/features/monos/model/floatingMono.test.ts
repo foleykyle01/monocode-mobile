@@ -76,6 +76,29 @@ describe("floating Mono delivery", () => {
     expect(runtime.approval).toHaveBeenCalledWith(session.id, 7, "deny");
   });
 
+  it("preserves exact file navigation and its source worktree", async () => {
+    const runtime = host();
+    await deliverFloatingMonoRequest(
+      {
+        id: 3,
+        monoId: "mono",
+        action: {
+          kind: "openFile",
+          path: "/Users/me/Downloads/Workflow Diagram%.html",
+          navigation: { line: 18, column: 4 },
+          options: { exact: true, sourceCwd: "/Users/me/worktrees/mono" },
+        },
+      },
+      runtime,
+      async () => true,
+    );
+    expect(runtime.openFile).toHaveBeenCalledWith(
+      "/Users/me/Downloads/Workflow Diagram%.html",
+      { line: 18, column: 4 },
+      { exact: true, sourceCwd: "/Users/me/worktrees/mono" },
+    );
+  });
+
   it("does not deliver a request that expired while its Mono was loading", async () => {
     const runtime = host();
     await deliverFloatingMonoRequest(

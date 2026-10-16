@@ -40,6 +40,12 @@ export type EditorNavigationTarget = EditorNavigation & {
 export type FileOpenOptions = {
   /** The caller obtained this concrete path from the filesystem or file index. */
   exact?: boolean;
+  /** Working copy that produced a transcript or document file reference. */
+  sourceCwd?: string;
+  /** Project owning sourceCwd when the source is a linked worktree. */
+  sourceProjectCwd?: string;
+  /** Session that owns the request, so it cannot open in an unrelated tab. */
+  sourceSessionId?: string;
   /** Open as a permanent tab instead of the pane's preview tab. */
   pin?: boolean;
 };

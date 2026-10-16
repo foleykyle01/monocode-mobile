@@ -188,6 +188,25 @@ it("waits for delivery and keeps a rejected message available to retry", async (
   expect(onSubmit).toHaveBeenCalledTimes(2);
 });
 
+it("dismisses a local delivery error without clearing the draft", async () => {
+  render({ onSubmit: () => Promise.reject(new Error("Workspace unavailable")) });
+  type("Keep this draft");
+  await act(async () => {
+    submit();
+    await Promise.resolve();
+  });
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    "Workspace unavailable",
+  );
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[aria-label="Dismiss composer error"]')!
+      .click(),
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(field().value).toBe("Keep this draft");
+});
+
 it("follows the composer autocorrect setting", () => {
   render();
   expect(field().getAttribute("spellcheck")).toBe("true");

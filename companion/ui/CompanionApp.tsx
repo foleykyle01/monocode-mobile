@@ -6,6 +6,7 @@ import type {
   CompanionBlock,
   CompanionAppearance,
   CompanionNavigation,
+  CompanionMonoLinkedSession,
   CompanionMonoRead,
   CompanionMutationAction,
   SessionConfiguration,
@@ -18,8 +19,9 @@ import type {
 import "./companion.css";
 import { Transcript } from "./Transcript";
 import { SessionChanges } from "./SessionChanges";
-import { attentionTargets, NeedsYou, MonoMascot, MonoWorkingIndicator, Navigation } from "./Navigation";
+import { attentionTargets, NeedsYou, MonoMascot, Navigation } from "./Navigation";
 import { MonoDetailsView } from "./MonoDetailsView";
+import { MonoLinkedSessions } from "./MonoLinkedSessions";
 import { ConnectionNotice } from "./ConnectionNotice";
 import { SessionSettings } from "./SessionSettings";
 import { NotificationSettings } from "./NotificationSettings";
@@ -32,7 +34,7 @@ import { InboxView } from "./InboxView";
 import { ChangesView } from "./ChangesView";
 import { useEdgeSwipeBack } from "./useEdgeSwipeBack";
 import { useSessionActivity } from "./sessionActivity";
-import { ChevronLeft, ChevronRight, Search, Settings, X, ArrowUp, Inbox } from "../../src/shared/ui/icons";
+import { ChevronLeft, ChevronRight, Search, Settings, X, ArrowUp, Inbox, ListEnd, Loader } from "../../src/shared/ui/icons";
 import "./glass.css";
 import { createWorkspaceDemo } from "./workspaceDemo";
 
@@ -89,6 +91,7 @@ const DEMO_SESSIONS: CompanionSession[] = [
     busy: false,
     turn: 8,
     needsApproval: false,
+    lifecycle: "done",
   },
   {
     id: "demo-scratch",
@@ -182,6 +185,18 @@ function demoClient() {
         const mono = navigation().monos.find(entry => entry.id === input.monoId);
         if (!mono) return { ok: false, error: "Sample Mono unavailable" } as T;
         const session = sessions.find(entry => entry.id === mono.sessionId)!;
+        const sessionState = (entry: CompanionSession) => entry.needsApproval || entry.needsQuestion ? "input" as const : entry.busy ? "working" as const : entry.lifecycle ?? "unknown";
+        const sessionOrder = { working: 0, input: 1, draft: 2, unknown: 3, failed: 4, stopped: 5, done: 6 } as const;
+        const linked = (blocks[session.id] || []).flatMap(block => block.spawnedSessions || [])
+          .flatMap(link => sessions.filter(target => target.id === link.id))
+          .filter((target, index, all) => all.findIndex(candidate => candidate.id === target.id) === index)
+          .map((target, index) => ({ id: target.id, title: target.title, state: sessionState(target), statusLabel: ({ working: "Working", input: "Needs input", draft: "Draft", failed: "Failed", stopped: "Stopped", done: "Done", unknown: "Status unknown" } as const)[sessionState(target)], index }))
+          .sort((left, right) => sessionOrder[left.state] - sessionOrder[right.state] || left.index - right.index);
+        if (input.section === "sessions") {
+          const offset = typeof input.offset === "number" ? Math.min(Math.max(0, input.offset), linked.length) : 0;
+          const end = Math.min(offset + 50, linked.length);
+          return { ok: true, result: { epoch, mono: { ...mono, canChat: !!mono.canChat }, scope: { projects: DEMO_NAVIGATION.projects.filter(project => mono.projectIds.includes(project.id)) }, sessions: { items: linked.slice(offset, end).map(({ index: _index, ...item }) => item), offset, total: linked.length, ...(end < linked.length ? { nextOffset: end } : {}), truncated: end < linked.length } } } as T;
+        }
         const result: CompanionMonoRead = {
           mono: { ...mono, canChat: !!mono.canChat }, scope: { projects: DEMO_NAVIGATION.projects.filter(project => mono.projectIds.includes(project.id)) },
           model: { harness: session.harness, id: session.model, label: session.model, settings: { effort: "high" } },
@@ -344,6 +359,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   };
   const [sessions, setSessions] = useState<CompanionSession[]>([]);
   const [sessionEpoch, setSessionEpoch] = useState<string>();
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [navigation, setNavigation] = useState<CompanionNavigation>();
   const [creationEpoch, setCreationEpoch] = useState<string>();
   const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false, queuedFollowUps: false });
@@ -395,10 +411,12 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [acting, setActing] = useState(false);
   const [appearance, setAppearance] = useState<CompanionAppearance>();
   const [mobileListOpen, setMobileListOpen] = useState(true);
+  const [linkedSessionsOpen, setLinkedSessionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsBack = useRef<HTMLButtonElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
+  const linkedSessionsButton = useRef<HTMLButtonElement>(null);
   const [forgetOpen, setForgetOpen] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const [forgetError, setForgetError] = useState<string>();
@@ -445,6 +463,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
         if (serial !== refreshSerial.current) return;
         setSessions(list.sessions);
         setSessionEpoch(list.epoch);
+        setWorkspaceRevision(revision => revision + 1);
         setNavigation(list.navigation);
         setCreationEpoch(list.capabilities?.createSession ? list.epoch : undefined);
         setWorkspaceCapabilities({ inbox: !!list.capabilities?.inbox, changes: !!list.capabilities?.changes, queuedFollowUps: !!list.capabilities?.queuedFollowUps });
@@ -553,6 +572,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     setAttention(previous => previous?.id === selectedId ? previous : undefined);
+    setLinkedSessionsOpen(false);
     setRead(previous => previous?.session.id === selectedId ? previous : undefined);
     setRestoredPosition(previous => previous?.sessionId === selectedId ? previous : undefined);
     if (linkedViewRef.current && linkedViewRef.current.session.id !== selectedId) setLinkedView(undefined);
@@ -814,11 +834,19 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const workspaceProject = workspaceView?.kind === "changes" ? navigation?.projects.find(project => project.id === workspaceView.projectId) : undefined;
   const backToWorkspace = () => { setWorkspaceView(undefined); setMobileListOpen(true); };
   const linkedParent = linkedView && linkedView.session.id === selectedId && !workspaceView ? linkedView.parent : undefined;
-  const openLinkedSession = (session: CompanionSession, scrollTop: number) => {
+  const openLinkedSession = (session: CompanionSession | CompanionMonoLinkedSession, scrollTop: number) => {
     if (!selectedMono || !activeRead || session.id === selectedId || actingRef.current) return;
-    const next = { session, parent: { read: activeRead, monoId: selectedMono.id, name: selectedMono.name, scrollTop } };
+    const preview: CompanionSession = "state" in session
+      ? {
+          id: session.id, title: session.title, cwd: "", harness: "", model: "",
+          busy: session.state === "working", turn: 0,
+          needsApproval: session.state === "input", lifecycle: session.state,
+        }
+      : session;
+    const next = { session: preview, parent: { read: activeRead, monoId: selectedMono.id, name: selectedMono.name, scrollTop } };
     linkedViewRef.current = next;
     setLinkedView(next);
+    setLinkedSessionsOpen(false);
     setRestoredPosition(undefined);
     ++transcriptSerial.current;
     selectedIdRef.current = session.id;
@@ -839,11 +867,20 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     linkedViewRef.current = undefined;
     setLinkedView(undefined);
   };
-  const swipeSurface = useEdgeSwipeBack(backToConversation, !mobileListOpen && !settingsOpen && workspaceView?.kind !== "inbox" && workspaceView?.kind !== "changes", detailMono?.id || selectedId);
+  const closeLinkedSessions = () => {
+    setLinkedSessionsOpen(false);
+    requestAnimationFrame(() => linkedSessionsButton.current?.focus({ preventScroll: true }));
+  };
+  const backFromConversation = () => {
+    if (linkedSessionsOpen) { closeLinkedSessions(); return; }
+    backToConversation();
+  };
+  const swipeSurface = useEdgeSwipeBack(backFromConversation, !mobileListOpen && !settingsOpen && workspaceView?.kind !== "inbox" && workspaceView?.kind !== "changes", detailMono?.id || selectedId);
   const recoveryBanner = pendingMutation ? <div className="recovery-banner" role="alert"><strong>Command status is uncertain.</strong><span>{pendingMutation.action.replace("sessions.", "")} may have reached the Mac.</span>{error ? <p className="recovery-banner__error">{error}</p> : null}<div><button className="button button--small button--primary" type="button" onClick={() => void retryPending()} disabled={acting || offline}>Retry same command</button><button className="button button--small button--quiet" type="button" onClick={() => void refreshPendingConversation()} disabled={acting}>{pendingMutation.action === "sessions.create" ? "Review project" : "Refresh conversation"}</button><button className="button button--small button--quiet" type="button" onClick={() => void clearPendingAfterReview()} disabled={acting || offline}>I checked — clear</button></div><small>{pendingMutation.action === "sessions.create" ? "A new session may already exist. Review this project on the Mac before clearing; retry uses the same session ID." : "We refresh the original session before removing this saved command. New commands stay blocked until then."}</small></div> : null;
 
   const connectionLabel = !displayOnline ? "This device is offline" : displayReconnecting ? "Reconnecting to your Mac" : displayOffline ? "Can’t reach your Mac" : "Connected to your Mac";
   const connectionDot = `status-dot ${displayReconnecting && displayOnline ? "status-dot--reconnecting" : displayOffline ? "status-dot--offline" : "status-dot--connected"}`;
+  const monoHeaderWorking = !!selectedMono && (selectedMono.status ? selectedMono.status === "working" : selectedMono.busy);
 
   return (
     <main className={`companion-shell companion-shell--workspace ${displayedAppearance?.scheme === "light" ? "companion-shell--light" : ""}`} style={appearanceStyle}>
@@ -870,10 +907,10 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           </div>
         </div>
       </section>
-      <div className="app-header" hidden={settingsOpen}>
+      <div className="app-header" hidden={settingsOpen} aria-hidden={linkedSessionsOpen || undefined} inert={linkedSessionsOpen || undefined}>
         {pendingMutation?.action === "sessions.create" ? recoveryBanner : null}
       </div>
-      <div className="workspace-grid" hidden={settingsOpen}>
+      <div className="workspace-grid" hidden={settingsOpen} aria-hidden={linkedSessionsOpen || undefined} inert={linkedSessionsOpen || undefined}>
         <aside className={`session-panel ${mobileListOpen ? "mobile-list-open" : ""}`} aria-label="Workspace">
           <div className="workspace-toolbar"><h1 className="workspace-title">MonoCode Mobile</h1><button ref={searchButton} className="search-toggle" type="button" aria-label={searchOpen ? "Close workspace search" : "Search workspace"} aria-expanded={searchOpen} onClick={() => { setSearchOpen(open => !open); if (searchOpen) { setQuery("");  } }}>{searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}</button><button ref={settingsButton} className="settings-toggle" type="button" aria-label="Settings" aria-describedby="companion-connection-status" aria-expanded={settingsOpen} aria-controls="workspace-settings-title" onClick={() => setSettingsOpen(true)}><Settings size={19} aria-hidden="true" /><span id="companion-connection-status" className="connection-indicator" role="status" aria-label={connectionLabel} title={connectionLabel}><span className={connectionDot} aria-hidden="true" /></span></button></div>
           {searchOpen ? <div className="session-search" onKeyDown={event => { if (event.key === "Escape") { setSearchOpen(false); setQuery("");  searchButton.current?.focus(); } }}><input type="search" aria-label="Search workspace" placeholder="Search workspace" autoFocus value={query} onChange={event => { setQuery(event.target.value); if (event.target.value.trim()) setMonosExpanded(true); }} /></div> : null}
@@ -893,7 +930,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               <button className={`back-button ${linkedParent ? "back-button--linked" : ""}`} type="button" aria-label={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} title={linkedParent ? `Back to ${linkedParent.name}` : "Back to workspace"} onClick={backToConversation}><ChevronLeft size={20} aria-hidden="true" /></button>
               {selectedMono ? <MonoMascot mono={selectedMono} /> : null}
               <h2 className="conversation-title" title={selectedMono?.name || selected.title || "Untitled session"}>{selectedMono?.name || selected.title || "Untitled session"}</h2>
-              {selectedMono ? <MonoWorkingIndicator mono={selectedMono} /> : null}
+              {selectedMono ? <button ref={linkedSessionsButton} className="mono-sessions-button" type="button" data-working={monoHeaderWorking || undefined} aria-label={`Sessions for ${selectedMono.name}${monoHeaderWorking ? " — working" : ""}`} title={`Sessions for ${selectedMono.name}`} aria-haspopup="dialog" aria-expanded={linkedSessionsOpen} disabled={displayOffline || !activeRead} onClick={() => setLinkedSessionsOpen(true)}>{monoHeaderWorking ? <><Loader className="mono-working-spinner" size={18} aria-hidden="true" /><span className="mono-sessions-button__status" role="status" aria-label={`${selectedMono.name} is working`} /></> : <ListEnd size={19} aria-hidden="true" />}</button> : null}
             </header>
             {displayOffline ? <div className="chat-connection" role="status"><span className={connectionDot} aria-hidden="true" /><span>{!displayOnline ? "Offline" : displayReconnecting ? "Reconnecting…" : "Mac unavailable"}</span>{displayOnline && !displayReconnecting ? <button type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()}>Retry</button> : null}</div> : null}
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
@@ -915,6 +952,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>
+      {linkedSessionsOpen && selectedMono && activeRead ? <MonoLinkedSessions client={client} mono={selectedMono} refreshToken={workspaceRevision} onOpen={session => openLinkedSession(session, positions.current.get(activeRead.session.id) ?? 0)} onClose={closeLinkedSessions} /> : null}
     </main>
   );
 }
