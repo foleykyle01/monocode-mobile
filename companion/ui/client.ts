@@ -238,7 +238,13 @@ export function createCompanionClient(
       await discardStagedImages(attachments);
       throw error;
     }
-    return mutate("sessions.send", { ...safeInput, ...(attachments.length ? { attachments } : {}) });
+    try {
+      return await mutate("sessions.send", { ...safeInput, ...(attachments.length ? { attachments } : {}) });
+    } catch (error) {
+      if (error instanceof CompanionRequestError && !error.uncertain)
+        await discardStagedImages(attachments);
+      throw error;
+    }
   }
 
   return {

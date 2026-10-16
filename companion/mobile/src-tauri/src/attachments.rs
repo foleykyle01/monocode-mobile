@@ -155,6 +155,22 @@ pub fn discard(dir: &Path, references: &[AttachmentReference]) -> Result<()> {
     Ok(())
 }
 
+/** Recovery keeps only files named by the one durable uncertain request. */
+pub fn clear_orphans(dir: &Path, references: &[AttachmentReference]) {
+    let keep = references
+        .iter()
+        .map(|reference| reference.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let Ok(entries) = fs::read_dir(dir) else { return; };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(id) = path.file_stem().and_then(|value| value.to_str()) else { continue; };
+        if path.extension().and_then(|value| value.to_str()) == Some("image") && !keep.contains(id) {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 fn validate_references(references: &[AttachmentReference]) -> Result<()> {
     ensure!(
         references.len() <= IMAGE_COUNT_LIMIT,
@@ -286,6 +302,20 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("monocode-companion-image-metadata-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&directory);
         assert!(stage(&directory, serde_json::from_value(mismatch).unwrap()).is_err());
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn recovery_keeps_only_the_uncertain_request_images() {
+        let directory = std::env::temp_dir().join(format!("monocode-companion-image-orphan-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        let keep = stage(&directory, image(PNG)).unwrap();
+        let mut orphan = image(PNG);
+        orphan.reference.id = "old-image".into();
+        stage(&directory, orphan).unwrap();
+        clear_orphans(&directory, &[keep.clone()]);
+        assert!(read(&directory, &keep).is_ok());
+        assert!(!attachment_path(&directory, "old-image").exists());
         let _ = fs::remove_dir_all(&directory);
     }
 }

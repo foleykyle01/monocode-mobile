@@ -308,4 +308,23 @@ describe("companion client mutation recovery", () => {
     await expect(client.send({ epoch: "e", sessionId: "s", turn: 1, text: "Images" }, [image("one"), image("two")])).rejects.toThrow("disk full");
     expect(discarded).toEqual([{ references: [{ id: "one", name: "Screen.png", mimeType: "image/png", size: 5, width: 1, height: 1 }] }]);
   });
+
+  it("clears staged bytes after a definite preflight rejection but retains uncertain retries", async () => {
+    const discarded: unknown[] = [];
+    const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command === "companion_stage_attachment") {
+        const { data: _data, ...reference } = args?.image as Record<string, unknown>;
+        return reference as T;
+      }
+      if (command === "companion_discard_staged_attachments") { discarded.push(args); return undefined as T; }
+      if (command === "companion_request" && args?.action === "sessions.list") return { ok: true, result: { epoch: "e", sessions: [] } } as T;
+      if (command === "companion_request") return { ok: false, error: "The session turn changed; refresh before acting", outcomeUnknown: false } as T;
+      throw new Error(`Unexpected ${command}`);
+    }, { native: true });
+    await client.sessionsList();
+    const image = { id: "one", name: "Screen.png", mimeType: "image/png", size: 5, width: 1, height: 1, data: "aGVsbG8=" };
+    const { data: _data, ...reference } = image;
+    await expect(client.send({ epoch: "e", sessionId: "s", turn: 1, text: "Image" }, [image])).rejects.toMatchObject({ uncertain: false });
+    expect(discarded).toEqual([{ references: [reference] }]);
+  });
 });

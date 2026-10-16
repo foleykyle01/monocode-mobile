@@ -355,10 +355,18 @@ async fn companion_request(
 }
 
 #[tauri::command]
-async fn companion_pending(state: State<'_, Mutex<ClientState>>) -> Result<Value, String> {
+async fn companion_pending(state: State<'_, Mutex<ClientState>>, app: AppHandle) -> Result<Value, String> {
     let _state = state.lock().await;
     let result = (|| -> Result<Value> {
-        let Some(saved) = load_private::<PendingCommand>(PENDING_ACCOUNT)? else {
+        let saved = load_private::<PendingCommand>(PENDING_ACCOUNT)?;
+        let references = saved.as_ref()
+            .filter(|pending| pending.action == "sessions.send")
+            .and_then(|pending| attachments::references(&pending.input).ok())
+            .unwrap_or_default();
+        if let Ok(directory) = attachment_directory(&app) {
+            attachments::clear_orphans(&directory, &references);
+        }
+        let Some(saved) = saved else {
             return Ok(json!([]));
         };
         let credentials = load_credentials()?.context("Saved command needs its paired Mac")?;
