@@ -39,7 +39,7 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   expect(stopBounds!.height).toBeGreaterThanOrEqual(44);
   expect(sendBounds!.x).toBeGreaterThanOrEqual(stopBounds!.x + stopBounds!.width);
   await send.click();
-  await expect(page.getByText("Follow-up queued on Mac", { exact: true })).toBeVisible();
+  await expect(page.locator(".send-receipt.state-acknowledged")).toHaveText("Queued — waiting for the agent");
   await expect(page.getByRole("region", { name: "Queued follow-ups" })).toContainText("Keep working and check accessibility");
   await expect(page.getByRole("button", { name: "Stop agent", exact: true })).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath("send-and-stop.png") });
@@ -86,6 +86,27 @@ test("a Mono opens its project sessions with normal chat controls and returns to
   await expect(homeRing).toBeVisible();
   await expect(homeRing).toHaveCSS("animation-name", "none");
   await expect(scout).toHaveText("ScoutWorking");
+});
+
+test("the phone composer previews a picked image and keeps its queued delivery recoverable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/mono-linked.html?demo=1");
+  await page.locator(".mono-row").filter({ hasText: "Scout" }).click();
+  await page.getByRole("button", { name: "Build the companion window monocode · Needs input", exact: true }).click();
+
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  await page.locator(".composer-image-input").setInputFiles({ name: "Pasted.png", mimeType: "image/png", buffer: png });
+  await expect(page.locator(".composer-images")).toContainText("Pasted.png");
+  await page.getByRole("button", { name: "Remove Pasted.png" }).click();
+  await expect(page.locator(".composer-images")).toHaveCount(0);
+  await page.locator(".composer-image-input").setInputFiles({ name: "Pasted.png", mimeType: "image/png", buffer: png });
+  await page.getByRole("textbox", { name: "Message this session" }).fill("Please inspect this screenshot");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Queued follow-ups" })).toContainText("Image attached · Pasted.png");
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Queued follow-ups" })).toContainText("Queue paused");
+  await page.getByRole("button", { name: "Resume delivery", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Queued follow-ups" })).toContainText("Queued — waiting for the agent");
 });
 
 test("a Mono chat header exposes all linked sessions without changing parent controls", async ({ page }, testInfo) => {

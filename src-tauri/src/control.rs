@@ -222,6 +222,8 @@ fn companion_action(action: &str) -> bool {
         "sessions.list"
             | "sessions.read"
             | "sessions.send"
+            | "sessions.attachment.upload"
+            | "sessions.queue.resume"
             | "sessions.approve"
             | "sessions.answer"
             | "sessions.review.list"
@@ -242,6 +244,7 @@ fn companion_starts_or_resumes_work(action: &str) -> bool {
     matches!(
         action,
         "sessions.send"
+            | "sessions.queue.resume"
             | "sessions.approve"
             | "sessions.answer"
             | "sessions.question.keepOpen"

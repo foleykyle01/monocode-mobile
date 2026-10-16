@@ -14,8 +14,8 @@ function fixture() {
   let turn = 1;
   const owner: CompanionOwner = {
     sessions: () => sessions, eligible: () => true, flush: vi.fn(), turn: () => turn,
-    send: vi.fn(async (_id, prompt, requestId) => {
-      session.blocks.push({ id: requestId, role: "user", text: prompt });
+    send: vi.fn(async (_id, prompt, attachments, requestId) => {
+      session.blocks.push({ id: requestId, role: "user", text: prompt, attachments });
       session.busy = true; turn++; return true;
     }),
     approve: vi.fn(),
@@ -125,8 +125,8 @@ describe("desktop companion owner boundary", () => {
     session.queuedMessages = [{ id: "desktop", text: "Existing", attachments: [] }];
     session.blocks.push({ id: "approval", role: "tool", text: "Allow?", approval: { requestId: 2 } });
     owner.queuedFollowUps = true;
-    owner.send = vi.fn(async (_id, prompt, requestId) => {
-      Object.assign(session, queueCompanionFollowUp(session, prompt, requestId));
+    owner.send = vi.fn(async (_id, prompt, attachments, requestId) => {
+      Object.assign(session, queueCompanionFollowUp(session, prompt, requestId, attachments));
       return "queued" as const;
     });
     const command = { ...input(), text: "Next" };
@@ -152,6 +152,36 @@ describe("desktop companion owner boundary", () => {
     session.busy = true;
     await expect(bridge.handle("old-owner", "sessions.send", { ...input(), text: "Next" })).rejects.toThrow("update the Mac");
     expect(owner.send).not.toHaveBeenCalled();
+  });
+
+  it("accepts bounded staged images exactly once and only projects their metadata", async () => {
+    const { bridge, owner, input } = fixture();
+    const image = { id: "image-one", name: "Screen.png", mimeType: "image/png", size: 5, width: 2, height: 2 };
+    const send = { ...input(), text: "What does this show?", attachments: [image], uploadId: "image-send" };
+
+    await expect(bridge.handle("image-send-u0-0", "sessions.attachment.upload", {
+      ...input(), uploadId: "image-send", ...image, offset: 0, data: "aGVsbG8=",
+    })).resolves.toEqual({ accepted: true });
+    await expect(bridge.handle("image-send", "sessions.send", send)).resolves.toMatchObject({ accepted: true, delivery: "accepted" });
+    expect(owner.send).toHaveBeenCalledExactlyOnceWith("test-session", "What does this show?", [expect.objectContaining({ id: image.id, name: image.name, mimeType: image.mimeType, size: image.size, kind: "image", data: "aGVsbG8=" })], "companion:test-epoch:image-send");
+
+    const transcript = await bridge.handle("image-read", "sessions.read", { sessionId: "test-session" });
+    expect(transcript).toMatchObject({ blocks: expect.arrayContaining([expect.objectContaining({ attachments: [{ name: image.name, mimeType: image.mimeType, size: image.size }] })]) });
+    expect(JSON.stringify(transcript)).not.toContain("aGVsbG8=");
+    await expect(bridge.handle("unbound-image", "sessions.send", { ...input(), text: "No bytes", attachments: [image], uploadId: "other" }))
+      .rejects.toThrow("bound");
+  });
+
+  it("exposes only the existing paused-queue recovery and refuses unsafe retries", async () => {
+    const { bridge, session, owner, input } = fixture();
+    session.queuedMessages = [{ id: "companion_waiting", text: "Keep going", attachments: [], error: "Connection lost" }];
+    session.queueStatus = "paused";
+    owner.resumeQueue = vi.fn(() => true);
+
+    await expect(bridge.handle("resume", "sessions.queue.resume", input())).resolves.toMatchObject({ accepted: true });
+    expect(owner.resumeQueue).toHaveBeenCalledExactlyOnceWith(session.id);
+    owner.resumeQueue = vi.fn(() => false);
+    await expect(bridge.handle("unsafe-resume", "sessions.queue.resume", input())).rejects.toThrow("cannot be resumed");
   });
 
   it.each(["failed", "stopped", "draft", "done", "unknown"] as const)("exports the authoritative %s outcome", async state => {
@@ -609,7 +639,7 @@ describe("desktop companion owner boundary", () => {
       bridge.handle("same-command", "sessions.send", command),
     ]);
     expect(first).toEqual(second);
-    expect(owner.send).toHaveBeenCalledExactlyOnceWith("test-session", "Continue", "companion:test-epoch:same-command");
+    expect(owner.send).toHaveBeenCalledExactlyOnceWith("test-session", "Continue", [], "companion:test-epoch:same-command");
     await expect(bridge.handle("same-command", "sessions.send", { ...command, text: "Different" })).rejects.toThrow("different input");
   });
 

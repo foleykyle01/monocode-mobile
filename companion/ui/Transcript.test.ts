@@ -61,10 +61,19 @@ describe("phone transcript controls", () => {
   });
 
   it("shows queued, paused and failed follow-ups as undelivered", async () => {
-    await render([], vi.fn(), { queuedMessages: [{ id: "1", text: "Next", state: "queued" }, { id: "2", text: "Then", state: "paused" }, { id: "3", text: "Retry", state: "failed" }] });
-    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Queued on Mac");
+    const resume = vi.fn();
+    await render([], vi.fn(), { queuedMessages: [{ id: "1", text: "Next", state: "queued" }, { id: "2", text: "Then", state: "paused" }, { id: "3", text: "Retry", state: "failed", attachments: [{ name: "Screen.png", mimeType: "image/png", size: 5 }] }], onResumeQueue: resume });
+    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Queued — waiting for the agent");
     expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Queue paused");
     expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Delivery failed");
+    expect(container.querySelector(".queued-follow-ups")?.textContent).toContain("Image attached · Screen.png");
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>(".queued-follow-ups button")].find(button => button.textContent === "Resume delivery")!.click());
+    expect(resume).toHaveBeenCalledOnce();
+  });
+
+  it("shows image attachment status after the Mac accepts a user message", async () => {
+    await render([{ id: "image", role: "user", text: "", attachments: [{ name: "Screen.png", mimeType: "image/png", size: 5 }] }]);
+    expect(container.querySelector(".message__attachments")?.textContent).toBe("Image attached · Screen.png");
   });
   it("opens a linked live project session with its current status and reading position", async () => {
     const session = { id: "child", title: "Check access", cwd: "/work/Power Platform", harness: "claude", model: "opus", busy: true, turn: 4, needsApproval: true };

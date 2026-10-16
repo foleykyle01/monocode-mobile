@@ -6947,7 +6947,7 @@ function Workspace({
             storedCurrent.blocks.some(block => block.draft)) return false;
         if (storedCurrent.busy || storedCurrent.queuedMessages?.length) {
           const next = sessionsRef.current.map(session => session.id === sessionId
-            ? queueCompanionFollowUp(session, text, options.appRequestId!) : session);
+            ? queueCompanionFollowUp(session, text, options.appRequestId!, attachments) : session);
           sessionsRef.current = next;
           setSessions(next);
           return true;
@@ -9151,7 +9151,7 @@ function Workspace({
         session.queueStatus !== "paused" ||
         !session.queuedMessages?.length
       ) {
-        return;
+        return false;
       }
       if (monoForSession(sessionId)) {
         setSessions((prev) =>
@@ -9170,7 +9170,7 @@ function Workspace({
               : entry,
           ),
         );
-        return;
+        return true;
       }
       setSessions((prev) =>
         prev.map((entry) =>
@@ -9179,7 +9179,7 @@ function Workspace({
             : entry,
         ),
       );
-      onSubmit(sessionId, CONTINUE_PROMPT, [], {
+      return onSubmit(sessionId, CONTINUE_PROMPT, [], {
         followUpBehavior: "steer",
       });
     },
@@ -10904,10 +10904,10 @@ function Workspace({
             eligible: companionEligible,
             turn: (id) => turnGen.current.get(id) ?? 0,
             queuedFollowUps: true,
-            send: async (id, prompt, appRequestId) => {
+            send: async (id, prompt, attachments, appRequestId) => {
               let accepted: SubmissionAcceptance = false;
               flushSync(() => {
-                accepted = submitSessionRef.current(id, prompt, [], {
+                accepted = submitSessionRef.current(id, prompt, attachments, {
                   appRequestId,
                   companionFollowUp: true,
                 });
@@ -10918,6 +10918,11 @@ function Workspace({
                 return "queued";
               }
               return await accepted;
+            },
+            resumeQueue: (id) => {
+              let resumed = false;
+              flushSync(() => { resumed = onResumeQueue(id); });
+              return resumed;
             },
             approve: onApproval,
             answer: onQuestionReply,

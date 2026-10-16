@@ -36,7 +36,7 @@ function actionSummary(text: string) {
   return text.trim().split("\n")[0].slice(0, 300) || "Action";
 }
 
-export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop, onPositionChange, attentionToken, queuedMessages }: {
+export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop, onPositionChange, attentionToken, queuedMessages, onResumeQueue }: {
   blocks: CompanionBlock[];
   loading: boolean;
   onApprove: (block: CompanionBlock, decision: "allow" | "deny") => void;
@@ -61,6 +61,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   onPositionChange?: (top: number) => void;
   attentionToken?: number;
   queuedMessages?: SessionRead["queuedMessages"];
+  onResumeQueue?: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -179,6 +180,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
             {tool && !pending ? <details className="action-details"><summary><span className="action-details__summary">{actionSummary(block.text)}</span><small>{actionStatus(block)}</small></summary>{body}</details> : <>
               {pending ? <div className="message__meta"><span className="approval-label">Needs approval</span></div> : null}
               {body}
+              {block.attachments?.length ? <p className="message__attachments">{block.attachments.map(attachment => `Image attached · ${attachment.name}`).join(" · ")}</p> : null}
               {pending ? <div className="approval-card"><p>{block.truncated ? "Review on your Mac before allowing." : "Allow this action on your Mac?"}</p><div className="approval-actions">
                 <button className="button button--primary" type="button" onClick={() => onApprove(block, "allow")} disabled={mutationsDisabled || approvalBusy || block.truncated}>Allow</button>
                 <button className="button button--quiet" type="button" onClick={() => onApprove(block, "deny")} disabled={mutationsDisabled || approvalBusy}>Deny</button>
@@ -187,7 +189,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
           </article>{sessionCards(block)}</Fragment>;
         })}
         {pendingQuestion && onAnswer && onQuestionInteraction ? <div data-pending-question tabIndex={-1}><QuestionCard key={`${questionKey}:${pendingQuestion.requestId}`} prompt={pendingQuestion} disabled={mutationsDisabled || approvalBusy} onAnswer={onAnswer} onInteraction={onQuestionInteraction} /></div> : null}
-        {queuedMessages?.length ? <section className="queued-follow-ups" aria-label="Queued follow-ups">{queuedMessages.map(message => <div key={message.id}><small>{message.state === "failed" ? "Delivery failed · review on Mac" : message.state === "paused" ? "Queue paused · review on Mac" : "Queued on Mac"}</small><p>{message.text}</p></div>)}</section> : null}
+        {queuedMessages?.length ? <section className="queued-follow-ups" aria-label="Queued follow-ups">{queuedMessages.map(message => <div key={message.id}><small>{message.state === "failed" ? "Delivery failed" : message.state === "paused" ? "Queue paused" : "Queued — waiting for the agent"}</small><p>{message.text || "Image attached"}</p>{message.attachments?.length ? <p className="queued-follow-ups__attachments">{message.attachments.map(attachment => `Image attached · ${attachment.name}`).join(" · ")}</p> : null}{message.error ? <p className="queued-follow-ups__error">{message.error}</p> : null}{message.state !== "queued" && onResumeQueue ? <button type="button" onClick={onResumeQueue} disabled={mutationsDisabled || approvalBusy}>{message.state === "failed" ? "Retry delivery" : "Resume delivery"}</button> : null}</div>)}</section> : null}
         {questionUnavailable ? <p data-pending-question tabIndex={-1} className="truncated-note" role="status">The agent has a question. Open this session on your Mac to answer it.</p> : null}
         {changes}
         {showWorking ? <p className="transcript-working" role="status" data-transcript-working>

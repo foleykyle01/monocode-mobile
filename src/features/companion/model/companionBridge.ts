@@ -1,4 +1,4 @@
-import type { Block, Session } from "../../sessions/model/session";
+import type { Attachment, Block, Session } from "../../sessions/model/session";
 import { sessionWorkCwd } from "../../sessions/model/session";
 import { isPreparingHandoff } from "../../sessions/model/handoff";
 import { MAX_PREVIEW_LINES } from "../../../integrations/harness/core/preview";
@@ -11,6 +11,13 @@ import { companionQuestion, validateQuestionReply } from "./companionQuestion";
 import type { UserQuestionReply } from "../../sessions/model/userQuestion";
 import { toolCallLabel, toolCallState } from "../../sessions/model/transcriptActivity";
 import { launchedSessionState, monoSpawnedSessions } from "../../monos/model/monoSpawnedSessions";
+import {
+  COMPANION_IMAGE_COUNT_LIMIT,
+  COMPANION_IMAGE_TOTAL_BYTES_LIMIT,
+  validCompanionImageAttachment,
+  validateCompanionImages,
+  type CompanionImageAttachment,
+} from "./companionAttachments";
 
 export type CompanionConfiguration = {
   models: { harness: string; id: string; label: string }[];
@@ -23,8 +30,9 @@ export type CompanionOwner = {
   sessions(): readonly Session[];
   eligible(session: Session): boolean;
   turn(sessionId: string): number;
-  send(sessionId: string, text: string, requestId: string): Promise<boolean | "queued">;
+  send(sessionId: string, text: string, attachments: Attachment[], requestId: string): Promise<boolean | "queued">;
   queuedFollowUps?: boolean;
+  resumeQueue?(sessionId: string): boolean | void;
   approve(sessionId: string, requestId: number, decision: "allow" | "deny"): void;
   answer?(sessionId: string, requestId: number, reply: UserQuestionReply): void;
   keepQuestionOpen?(sessionId: string, requestId: number): void;
@@ -51,8 +59,11 @@ const READ_LIMIT = 100;
 const TEXT_LIMIT = 8_192;
 const RECEIPT_LIMIT = 512;
 const SPAWNED_SESSION_LIMIT = 20;
+const UPLOAD_TTL_MS = 10 * 60_000;
+const UPLOAD_BYTES_LIMIT = COMPANION_IMAGE_TOTAL_BYTES_LIMIT * 2;
 const MUTATIONS = new Set([
   "sessions.send",
+  "sessions.queue.resume",
   "sessions.approve",
   "sessions.answer",
   "sessions.question.keepOpen",
@@ -78,6 +89,9 @@ function snapshotBlock(block: Block) {
     id: block.id, role: block.role, text: fullText.slice(0, TEXT_LIMIT),
     truncated: fullText.length > TEXT_LIMIT || previewIncomplete,
     approval: block.approval,
+    ...(block.attachments?.length ? { attachments: block.attachments.slice(0, COMPANION_IMAGE_COUNT_LIMIT).map((file) => ({
+      name: file.name.slice(0, 255), mimeType: file.mimeType, size: file.size,
+    })) } : {}),
     ...((block.tool || block.role === "tool") ? { activity: {
       label: toolCallLabel(block).slice(0, 300), state: toolCallState(block),
       kind: block.tool?.kind?.slice(0, 80),
@@ -92,6 +106,18 @@ function snapshotBlock(block: Block) {
     } } : {}),
   };
 }
+
+type UploadedImage = CompanionImageAttachment & {
+  chunks: Map<number, string>;
+  received: number;
+};
+
+type ImageUpload = {
+  sessionId: string;
+  turn: number;
+  expiresAt: number;
+  images: Map<string, UploadedImage>;
+};
 
 /** Match the desktop transcript: app-authored turns and unsent drafts are
  * retained for the runtime, but are never phone-visible conversation rows. */
@@ -131,7 +157,103 @@ function pageOffset(value: unknown): number {
 export function createCompanionBridge(owner: CompanionOwner, epoch: string = crypto.randomUUID()) {
   const receipts = new Map<string, { signature: string; result: Promise<unknown> }>();
   const answered = new Set<string>();
+  const uploads = new Map<string, ImageUpload>();
   let queue = Promise.resolve();
+
+  function cleanUploads() {
+    const now = Date.now();
+    for (const [key, upload] of uploads) if (upload.expiresAt <= now) uploads.delete(key);
+  }
+
+  function uploadScope(requestId: string, uploadId: string, chunk: boolean) {
+    if (chunk
+      ? !new RegExp(`^${uploadId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-u\\d+-\\d+$`).test(requestId)
+      : requestId !== uploadId)
+      throw new Error("Image upload is not bound to this request");
+    return uploadId;
+  }
+
+  function decodedBytes(data: unknown) {
+    if (typeof data !== "string" || data.length === 0 || data.length > 131_072)
+      throw new Error("Invalid image chunk");
+    try {
+      const bytes = atob(data);
+      if (btoa(bytes) !== data) throw new Error();
+      return bytes.length;
+    } catch {
+      throw new Error("Invalid image chunk");
+    }
+  }
+
+  function uploadedImages(input: Record<string, unknown>, requestId: string) {
+    if (input.attachments === undefined) {
+      if (input.uploadId !== undefined) throw new Error("Image upload is missing its attachments");
+      return { images: [] as Attachment[] };
+    }
+    const images = validateCompanionImages(input.attachments);
+    if (images.length === 0) {
+      if (input.uploadId !== undefined) throw new Error("Image upload is missing its attachments");
+      return { images: [] as Attachment[] };
+    }
+    const uploadId = text(input, "uploadId", 56);
+    const scope = uploadScope(requestId, uploadId, false);
+    cleanUploads();
+    const upload = uploads.get(scope);
+    if (!upload || upload.sessionId !== input.sessionId || upload.turn !== input.turn)
+      throw new Error("Image upload expired. Send the message again.");
+    const attachments = images.map((image) => {
+      const received = upload.images.get(image.id);
+      if (!received || received.received !== image.size || received.name !== image.name || received.mimeType !== image.mimeType || received.width !== image.width || received.height !== image.height)
+        throw new Error("Image upload is incomplete. Send the message again.");
+      return { id: image.id, name: image.name, mimeType: image.mimeType, kind: "image" as const, size: image.size, data: [...received.chunks.entries()].sort(([left], [right]) => left - right).map(([, data]) => data).join("") };
+    });
+    return { images: attachments, scope };
+  }
+
+  function uploadImage(requestId: string, input: Record<string, unknown>) {
+    fields(input, ["epoch", "sessionId", "turn", "uploadId", "id", "name", "mimeType", "size", "width", "height", "offset", "data"]);
+    if (input.epoch !== epoch) throw new Error("Desktop connection changed; refresh before attaching an image");
+    const sessionId = text(input, "sessionId");
+    if (!Number.isSafeInteger(input.turn) || input.turn !== owner.turn(sessionId))
+      throw new Error("The session turn changed; refresh before attaching an image");
+    current(sessionId);
+    const image = { id: text(input, "id", 80), name: text(input, "name", 255), mimeType: input.mimeType, size: input.size, width: input.width, height: input.height };
+    if (!validCompanionImageAttachment(image)) throw new Error("Invalid image attachment");
+    if (!Number.isSafeInteger(input.offset) || (input.offset as number) < 0) throw new Error("Invalid image offset");
+    const bytes = decodedBytes(input.data);
+    const offset = input.offset as number;
+    if (offset + bytes > image.size) throw new Error("Image upload is too large");
+    const uploadId = text(input, "uploadId", 56);
+    const scope = uploadScope(requestId, uploadId, true);
+    cleanUploads();
+    let upload = uploads.get(scope);
+    if (!upload) {
+      if (uploads.size >= 8) throw new Error("Too many images are waiting to send");
+      upload = { sessionId, turn: input.turn as number, expiresAt: Date.now() + UPLOAD_TTL_MS, images: new Map() };
+      uploads.set(scope, upload);
+    }
+    if (upload.sessionId !== sessionId || upload.turn !== input.turn) throw new Error("Image upload belongs to another session");
+    let received = upload.images.get(image.id);
+    if (!received) {
+      if (upload.images.size >= COMPANION_IMAGE_COUNT_LIMIT) throw new Error("Too many images");
+      received = { ...image, chunks: new Map(), received: 0 };
+      upload.images.set(image.id, received);
+    }
+    if (received.name !== image.name || received.mimeType !== image.mimeType || received.size !== image.size || received.width !== image.width || received.height !== image.height)
+      throw new Error("Image upload metadata changed");
+    const existing = received.chunks.get(offset);
+    if (existing !== undefined) {
+      if (existing !== input.data) throw new Error("Image retry does not match uploaded bytes");
+      return { accepted: true };
+    }
+    const buffered = [...uploads.values()].reduce((total, entry) => total + [...entry.images.values()].reduce((size, candidate) => size + candidate.received, 0), 0);
+    if (buffered + bytes > UPLOAD_BYTES_LIMIT) throw new Error("Too many images are waiting to send");
+    if (offset !== received.received) throw new Error("Image chunks are out of order");
+    received.chunks.set(offset, input.data as string);
+    received.received += bytes;
+    upload.expiresAt = Date.now() + UPLOAD_TTL_MS;
+    return { accepted: true };
+  }
 
   function current(id: string) {
     const session = owner.sessions().find((entry) => entry.id === id);
@@ -266,7 +388,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
         sessions: sessions.slice(0, 200).map((session) => summary(session, navigation)),
         truncated: sessions.length > 200,
         appearance: owner.appearance?.(),
-        capabilities: { createSession: !!owner.createSession, inbox: !!owner.inbox, changes: !!owner.changes, queuedFollowUps: !!owner.queuedFollowUps },
+        capabilities: { createSession: !!owner.createSession, inbox: !!owner.inbox, changes: !!owner.changes, queuedFollowUps: !!owner.queuedFollowUps, imageAttachments: true, queueRecovery: !!owner.resumeQueue },
         ...(navigation ? { navigation } : {}),
       };
     }
@@ -309,6 +431,8 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       queuedMessages: session.queuedMessages?.filter(message => !message.monoSessionCompletion).map(message => ({
         id: message.id, text: message.text.slice(0, TEXT_LIMIT),
         state: message.error ? "failed" : session.queueStatus === "paused" ? "paused" : "queued",
+        ...(message.error ? { error: message.error.slice(0, TEXT_LIMIT) } : {}),
+        ...(message.attachments.length ? { attachments: message.attachments.slice(0, COMPANION_IMAGE_COUNT_LIMIT).map(file => ({ name: file.name.slice(0, 255), mimeType: file.mimeType, size: file.size })) } : {}),
       })),
     };
   }
@@ -338,18 +462,31 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       throw new Error("Session is changing its provider or workspace");
 
     if (action === "sessions.send") {
-      fields(input, ["epoch", "sessionId", "turn", "text"]);
-      const prompt = text(input, "text", 32_768);
+      fields(input, ["epoch", "sessionId", "turn", "text", "attachments", "uploadId"]);
+      if (typeof input.text !== "string" || input.text.length > 32_768)
+        throw new Error("Invalid text");
+      const uploaded = uploadedImages(input, requestId);
+      const prompt = input.text.trim();
+      if (!prompt && uploaded.images.length === 0) throw new Error("Message or image is required");
       if (!owner.queuedFollowUps && (session.busy || session.queuedMessages?.length))
         throw new Error("Queued follow-ups are unavailable; update the Mac companion");
       if (session.blocks.some((block) => block.draft))
         throw new Error("Resolve this session's existing draft or queued messages first");
       let accepted: boolean | "queued";
-      try { accepted = await owner.send(id, prompt, `companion:${epoch}:${requestId}`); }
+      try { accepted = await owner.send(id, prompt, uploaded.images, `companion:${epoch}:${requestId}`); }
       catch (error) { throw new CompanionCommandUncertain(error); }
       if (!accepted)
         throw new Error("Desktop did not accept the follow-up");
+      if (uploaded.scope) uploads.delete(uploaded.scope);
       return { epoch, sessionId: id, accepted: true, turn: owner.turn(id), delivery: accepted === "queued" ? "queued" : "accepted" };
+    } else if (action === "sessions.queue.resume") {
+      fields(input, ["epoch", "sessionId", "turn"]);
+      if (!owner.resumeQueue || session.queueStatus !== "paused" || !session.queuedMessages?.length)
+        throw new Error("Queued delivery cannot be resumed here");
+      let resumed: boolean | void;
+      try { resumed = owner.resumeQueue(id); }
+      catch (error) { throw new CompanionCommandUncertain(error); }
+      if (resumed === false) throw new Error("Queued delivery cannot be resumed here");
     } else if (action === "sessions.approve") {
       fields(input, ["epoch", "sessionId", "turn", "blockId", "decision"]);
       const blockId = text(input, "blockId");
@@ -428,6 +565,8 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
       try {
         if (!input || Array.isArray(input) || typeof input !== "object")
           throw new Error("Invalid input");
+        if (action === "sessions.attachment.upload")
+          return Promise.resolve(uploadImage(requestId, input));
         if (!MUTATIONS.has(action)) return Promise.resolve(read(action, input));
         if (input.epoch !== epoch) throw new Error("Desktop connection changed; refresh before acting");
         if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) throw new Error("Invalid request ID");

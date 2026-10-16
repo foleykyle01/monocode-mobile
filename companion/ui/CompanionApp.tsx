@@ -16,6 +16,8 @@ import type {
   PendingMutation,
   SessionRead,
 } from "./types";
+import type { PhoneImageDraft } from "./imageAttachments";
+import { phoneImagesFromFiles, releasePhoneImage } from "./imageAttachments";
 import "./companion.css";
 import { Transcript } from "./Transcript";
 import { SessionChanges } from "./SessionChanges";
@@ -34,7 +36,7 @@ import { InboxView } from "./InboxView";
 import { ChangesView } from "./ChangesView";
 import { useEdgeSwipeBack } from "./useEdgeSwipeBack";
 import { useSessionActivity } from "./sessionActivity";
-import { ChevronLeft, ChevronRight, Search, Settings, X, ArrowUp, Inbox, ListEnd, Loader } from "../../src/shared/ui/icons";
+import { ChevronLeft, ChevronRight, Search, Settings, X, ArrowUp, Inbox, ListEnd, Loader, File as FileIcon } from "../../src/shared/ui/icons";
 import "./glass.css";
 import { createWorkspaceDemo } from "./workspaceDemo";
 
@@ -148,6 +150,15 @@ function isIosDevice() {
   return /iPad|iPhone|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
+function pastedImages(clipboard: DataTransfer) {
+  const files = Array.from(clipboard.files).filter(file => file.type.startsWith("image/"));
+  if (files.length) return files;
+  return Array.from(clipboard.items).flatMap(item => {
+    const file = item.kind === "file" && item.type.startsWith("image/") ? item.getAsFile() : null;
+    return file ? [file] : [];
+  });
+}
+
 function demoClient() {
   const epoch = DEMO_EPOCH;
   const sessions = DEMO_SESSIONS.map((session) => ({ ...session }));
@@ -175,12 +186,18 @@ function demoClient() {
     if (command === "companion_pair") return DEMO_STATUS as T;
     if (command === "companion_pending") return [] as T;
     if (command === "companion_dismiss_pending") return undefined as T;
+    if (command === "companion_discard_staged_attachments") return undefined as T;
+    if (command === "companion_stage_attachment") {
+      const image = args?.image as Record<string, unknown> | undefined;
+      const { data: _data, ...reference } = image || {};
+      return reference as T;
+    }
     if (command === "companion_forget") return undefined as T;
     if (command === "companion_reconnect") return undefined as T;
     if (command === "companion_request") {
       const action = args?.action;
       const input = (args?.input || {}) as Record<string, unknown>;
-      if (action === "sessions.list") return { ok: true, result: { epoch, sessions: sessions.map(session => ({ ...session })), navigation: navigation(), capabilities: { createSession: true, inbox: true, changes: true, queuedFollowUps: true }, truncated: false } } as T;
+      if (action === "sessions.list") return { ok: true, result: { epoch, sessions: sessions.map(session => ({ ...session })), navigation: navigation(), capabilities: { createSession: true, inbox: true, changes: true, queuedFollowUps: true, imageAttachments: true, queueRecovery: true }, truncated: false } } as T;
       if (action === "monos.read") {
         const mono = navigation().monos.find(entry => entry.id === input.monoId);
         if (!mono) return { ok: false, error: "Sample Mono unavailable" } as T;
@@ -243,6 +260,10 @@ function demoClient() {
       if (!session) return { ok: false, error: "Sample session unavailable" } as T;
       if (action === "sessions.review.list") return { ok: true, result: { epoch, turn: session.turn, total: session.id === "demo-docs" ? 2 : 0, files: session.id === "demo-docs" ? [{ relative: "README.md", additions: 3, deletions: 1, exact: true }, { relative: "src/tasks.json", additions: 2, deletions: 0, exact: false }] : [], additions: 5, deletions: 1, truncated: false } } as T;
       if (action === "sessions.review.read") return { ok: true, result: { epoch, turn: session.turn, relative: input.relative, original: "# Taskboard\nOld section\n", current: "# Taskboard\n\n## Sections\nGroup related tasks into sections.\n", unavailable: false } } as T;
+      if (action === "sessions.queue.resume") {
+        queued[session.id]?.forEach(message => { message.state = "queued"; });
+        return { ok: true, result: { epoch, sessionId: session.id, accepted: true, turn: session.turn } } as T;
+      }
       if (action === "sessions.answer") {
         question = undefined; session.busy = false; session.needsApproval = false; session.needsQuestion = false;
         blocks[session.id].push({ id: "question-replied", role: "assistant", text: "Answer received in this preview. The live app sends your choice back to the agent on your Mac." });
@@ -253,11 +274,11 @@ function demoClient() {
         if (typeof input.runtimeMode === "string") session.runtimeMode = input.runtimeMode;
       } else if (action === "sessions.send") {
         if (session.busy) {
-          (queued[session.id] ??= []).push({ id: String(args?.requestId), text: String(input.text), state: "queued" });
+          (queued[session.id] ??= []).push({ id: String(args?.requestId), text: String(input.text), state: "queued", ...(Array.isArray(input.attachments) ? { attachments: input.attachments as NonNullable<SessionRead["queuedMessages"]>[number]["attachments"] } : {}) });
           return { ok: true, result: { epoch, sessionId: session.id, accepted: true, turn: session.turn, delivery: "queued" } } as T;
         }
         blocks[session.id] ||= [];
-        blocks[session.id].push({ id: crypto.randomUUID(), role: "user", text: String(input.text) }, { id: crypto.randomUUID(), role: "assistant", text: "Preview response — your message stays in this sample conversation. No agent was contacted." });
+        blocks[session.id].push({ id: crypto.randomUUID(), role: "user", text: String(input.text), ...(Array.isArray(input.attachments) ? { attachments: input.attachments as CompanionBlock["attachments"] } : {}) }, { id: crypto.randomUUID(), role: "assistant", text: "Preview response — your message stays in this sample conversation. No agent was contacted." });
         session.turn += 1;
         session.lifecycle = "done";
       } else if (action === "sessions.stop" || action === "sessions.approve") {
@@ -362,7 +383,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [navigation, setNavigation] = useState<CompanionNavigation>();
   const [creationEpoch, setCreationEpoch] = useState<string>();
-  const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false, queuedFollowUps: false });
+  const [workspaceCapabilities, setWorkspaceCapabilities] = useState({ inbox: false, changes: false, queuedFollowUps: false, imageAttachments: false, queueRecovery: false });
   const [workspaceView, setWorkspaceView] = useState<{ kind: "inbox" } | { kind: "changes"; projectId: string } | { kind: "mono"; monoId: string }>();
   const availableSessionIds = useRef(new Set<string>());
   const notificationSelection = useRef<string | undefined>(undefined);
@@ -401,6 +422,12 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const setComposer = (text: string) => {
     if (selectedId) setDrafts((current) => ({ ...current, [selectedId]: text }));
   };
+  const [draftImages, setDraftImages] = useState<Record<string, PhoneImageDraft[]>>({});
+  const draftImagesRef = useRef(draftImages);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const composerImages = selectedId ? draftImages[selectedId] || [] : [];
+  useEffect(() => { draftImagesRef.current = draftImages; }, [draftImages]);
+  useEffect(() => () => { Object.values(draftImagesRef.current).flat().forEach(releasePhoneImage); }, []);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -466,7 +493,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
         setWorkspaceRevision(revision => revision + 1);
         setNavigation(list.navigation);
         setCreationEpoch(list.capabilities?.createSession ? list.epoch : undefined);
-        setWorkspaceCapabilities({ inbox: !!list.capabilities?.inbox, changes: !!list.capabilities?.changes, queuedFollowUps: !!list.capabilities?.queuedFollowUps });
+        setWorkspaceCapabilities({ inbox: !!list.capabilities?.inbox, changes: !!list.capabilities?.changes, queuedFollowUps: !!list.capabilities?.queuedFollowUps, imageAttachments: !!list.capabilities?.imageAttachments, queueRecovery: !!list.capabilities?.queueRecovery });
         availableSessionIds.current = new Set(list.sessions.map(session => session.id));
         setLastSeen(Date.now());
         setAppearance(list.appearance);
@@ -623,7 +650,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const listedSession = sessions.find(session => session.id === selectedId);
   const staleRead = !!activeRead && (activeRead.epoch !== sessionEpoch || !!listedSession && activeRead.session.turn !== listedSession.turn);
   const mutationsDisabled = displayOffline || !networkOnline || reconnecting || !!pendingMutation || acting || staleRead;
-  const canSend = !!selected && !!activeRead && (!selected.busy || workspaceCapabilities.queuedFollowUps) && !!composer.trim() && !mutationsDisabled;
+  const canSend = !!selected && !!activeRead && (!selected.busy || workspaceCapabilities.queuedFollowUps) && (!!composer.trim() || composerImages.length > 0) && !mutationsDisabled;
   const waiting = attentionTargets(sessions, navigation);
   const openAttention = (id: string) => {
     if (mutationsDisabled) return;
@@ -670,12 +697,12 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     }
   }
 
-  async function action(action: CompanionMutationAction, input: MutationInput) {
+  async function action(action: CompanionMutationAction, input: MutationInput, images: PhoneImageDraft[] = []) {
     if (actingRef.current || pendingRef.current || offlineRef.current || displayOffline || !networkOnline || reconnecting || (action !== "sessions.create" && staleRead)) return;
     if (action === "sessions.create") {
       if (!creationEpoch || input.epoch !== creationEpoch) return;
     } else if (!activeRead || activeRead.session.id !== selectedId || input.sessionId !== selectedIdRef.current) return;
-    if (action === "sessions.send" && ((selected?.busy && !workspaceCapabilities.queuedFollowUps) || !input.text?.trim() || input.text.length > 32_768)) return;
+    if (action === "sessions.send" && ((selected?.busy && !workspaceCapabilities.queuedFollowUps) || (!input.text?.trim() && images.length === 0) || (input.text?.length ?? 0) > 32_768 || (images.length > 0 && !workspaceCapabilities.imageAttachments))) return;
     if (action === "sessions.approve") {
       const block = activeRead?.blocks.find((entry) => entry.id === input.blockId);
       if (!block?.approval || block.approval.decided || input.decision === undefined || (input.decision === "allow" && block.truncated)) return;
@@ -685,12 +712,22 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     if (action !== "sessions.question.keepOpen") setActing(true);
     setError(undefined);
     try {
-      const receipt = await client.mutate(action, input);
+      const receipt = action === "sessions.send" && images.length
+        ? await client.send(input, images)
+        : await client.mutate(action, input);
       pendingRef.current = undefined;
       setPendingMutation(undefined);
       if (action === "sessions.send") {
         setDrafts(current => current[input.sessionId]?.trim() === input.text ? { ...current, [input.sessionId]: "" } : current);
-        setSendReceipt({ id: input.sessionId, label: receipt.delivery === "queued" ? "Follow-up queued on Mac" : "Message accepted by Mac" });
+        if (images.length) setDraftImages(current => {
+          const existing = current[input.sessionId] || [];
+          if (!images.every(image => existing.some(candidate => candidate.id === image.id))) return current;
+          images.forEach(releasePhoneImage);
+          const next = { ...current, [input.sessionId]: existing.filter(image => !images.some(sent => sent.id === image.id)) };
+          draftImagesRef.current = next;
+          return next;
+        });
+        setSendReceipt({ id: input.sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac" });
       }
       if (action === "sessions.stop") setSendReceipt({ id: input.sessionId, label: "Stop accepted by Mac" });
       if (action === "sessions.create") await openCreatedSession(input.sessionId);
@@ -738,7 +775,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
       if (pendingMutation.action === "sessions.stop") setSendReceipt({ id: pendingMutation.input.sessionId, label: "Stop accepted by Mac" });
       if (pendingMutation.action === "sessions.send") {
         const { sessionId, text } = pendingMutation.input;
-        setSendReceipt({ id: sessionId, label: receipt.delivery === "queued" ? "Follow-up queued on Mac" : "Message accepted by Mac" });
+        setSendReceipt({ id: sessionId, label: receipt.delivery === "queued" ? "Queued — waiting for the agent" : "Message accepted by Mac" });
         setDrafts(current => current[sessionId]?.trim() === text
           ? { ...current, [sessionId]: "" }
           : current);
@@ -824,10 +861,45 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     }
   }
 
+  async function addImages(files: File[]) {
+    const sessionId = selectedId;
+    if (!sessionId) return;
+    if (!workspaceCapabilities.imageAttachments) {
+      setError("Update MonoCode on your Mac to attach images from this iPhone.");
+      return;
+    }
+    try {
+      const images = await phoneImagesFromFiles(files, draftImagesRef.current[sessionId] || []);
+      if (selectedIdRef.current !== sessionId) { images.forEach(releasePhoneImage); return; }
+      setDraftImages(current => {
+        const next = { ...current, [sessionId]: [...(current[sessionId] || []), ...images] };
+        draftImagesRef.current = next;
+        return next;
+      });
+      setError(undefined);
+      setSendReceipt(undefined);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not attach that image.");
+    }
+  }
+
+  function removeImage(imageId: string) {
+    if (!selectedId) return;
+    setDraftImages(current => {
+      const images = current[selectedId] || [];
+      const removed = images.find(image => image.id === imageId);
+      if (!removed) return current;
+      releasePhoneImage(removed);
+      const next = { ...current, [selectedId]: images.filter(image => image.id !== imageId) };
+      draftImagesRef.current = next;
+      return next;
+    });
+  }
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selected || !activeRead || !composer.trim() || mutationsDisabled) return;
-    void action("sessions.send", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, text: composer.trim() });
+    if (!selected || !activeRead || (!composer.trim() && composerImages.length === 0) || mutationsDisabled) return;
+    void action("sessions.send", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, text: composer.trim() }, composerImages);
   };
 
   const detailMono = workspaceView?.kind === "mono" ? navigation?.monos.find(mono => mono.id === workspaceView.monoId) : !workspaceView && selectedMono && !selectedMono.canChat ? selectedMono : undefined;
@@ -942,13 +1014,27 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               onPositionChange={top => positions.current.set(selected.id, top)}
               attentionToken={attention?.id === selected.id ? attention.token : undefined}
               queuedMessages={activeRead?.queuedMessages}
+              onResumeQueue={workspaceCapabilities.queueRecovery && activeRead ? () => { void action("sessions.queue.resume", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); } : undefined}
               pendingQuestion={activeRead?.pendingQuestion} questionUnavailable={activeRead?.questionUnavailable}
               questionKey={`${activeRead?.epoch}:${activeRead?.session.turn}`}
               changes={activeRead?.reviewAvailable ? <SessionChanges key={selected.id} client={client} sessionId={selected.id} epoch={activeRead.epoch} turn={activeRead.session.turn} busy={selected.busy} offline={displayOffline} /> : undefined}
               onQuestionInteraction={async questionId => { if (activeRead) return action("sessions.question.keepOpen", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId }); }}
               onAnswer={(questionId, reply) => { if (activeRead) void action("sessions.answer", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, questionId, reply }); }}
               onApprove={(block, decision) => { if (block.approval && activeRead) void action("sessions.approve", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, blockId: block.id, decision }); }} />
-            <form className="composer" onSubmit={submit}><div className="composer-input"><div className="composer-field"><textarea value={composer} onChange={(event) => { setComposer(event.target.value); setSendReceipt(undefined); }} placeholder={selected.busy ? "Send a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} /><div className="composer-measure" aria-hidden="true">{composer + " "}</div></div>{selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : null}<button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button></div><p key={sendReceipt?.id === selected.id ? sendReceipt.label : "idle"} className={`send-receipt ${sendReceipt?.id === selected.id ? "state-acknowledged" : ""}`} role="status">{sendReceipt?.id === selected.id ? sendReceipt.label : ""}</p>{selected.busy && !workspaceCapabilities.queuedFollowUps ? <p className="send-receipt">Update the Mac companion to send while working.</p> : null}<SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} /></form>
+            <form className="composer" onSubmit={submit}>
+              {composerImages.length ? <div className="composer-images" aria-label="Images to send">{composerImages.map(image => <figure key={image.id}><img src={image.previewUrl} alt={image.name} /><figcaption>{image.name}</figcaption><button type="button" aria-label={`Remove ${image.name}`} onClick={() => removeImage(image.id)} disabled={acting}>×</button></figure>)}</div> : null}
+              <div className="composer-input">
+                <input ref={imageInput} className="composer-image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" tabIndex={-1} aria-hidden="true" onChange={event => { const files = Array.from(event.currentTarget.files || []); event.currentTarget.value = ""; void addImages(files); }} />
+                <button className="composer-attach" type="button" aria-label="Attach image" title={workspaceCapabilities.imageAttachments ? "Attach image" : "Update MonoCode on your Mac to attach images"} disabled={mutationsDisabled || !workspaceCapabilities.imageAttachments} onClick={() => imageInput.current?.click()}><FileIcon size={18} aria-hidden="true" /></button>
+                <div className="composer-field"><textarea value={composer} onChange={(event) => { setComposer(event.target.value); setSendReceipt(undefined); }} onPaste={event => { const images = pastedImages(event.clipboardData); if (images.length) { event.preventDefault(); void addImages(images); } }} placeholder={selected.busy ? "Send a follow-up…" : selectedMono ? `Message ${selectedMono.name}…` : "Message…"} rows={1} disabled={acting} maxLength={32768} aria-label="Message this session" onKeyDown={(event) => { if (!isIosDevice() && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(event); } }} /><div className="composer-measure" aria-hidden="true">{composer + " "}</div></div>
+                {selected.busy ? <button className="send-button send-button--stop" type="button" aria-label="Stop agent" title="Stop agent" disabled={mutationsDisabled || !activeRead} onClick={() => { if (activeRead) void action("sessions.stop", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); }}><span className="stop-icon" aria-hidden="true" /></button> : null}
+                <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message"><ArrowUp size={18} aria-hidden="true" /></button>
+              </div>
+              <p key={sendReceipt?.id === selected.id ? sendReceipt.label : "idle"} className={`send-receipt ${sendReceipt?.id === selected.id ? "state-acknowledged" : ""}`} role="status">{sendReceipt?.id === selected.id ? sendReceipt.label : ""}</p>
+              {selected.busy && !workspaceCapabilities.queuedFollowUps ? <p className="send-receipt">Update the Mac companion to send while working.</p> : null}
+              {!workspaceCapabilities.imageAttachments ? <p className="send-receipt">Update the Mac companion to attach images from this iPhone.</p> : null}
+              <SessionSettings key={selected.id} session={selected} configuration={activeRead?.configuration} disabled={mutationsDisabled || !activeRead} onApply={async change => { if (!activeRead) throw new Error("Refresh this conversation before changing settings."); const result = await action("sessions.configure", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn, ...change }); if (result !== true) throw new Error(typeof result === "string" ? result : "Wait for the connection or current command before changing settings."); }} />
+            </form>
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>

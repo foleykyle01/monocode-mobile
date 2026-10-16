@@ -7,6 +7,7 @@ import type {
   InvokeLike,
   MutationInput,
   PendingMutation,
+  CompanionImageAttachment,
   SessionRead,
   SessionsList,
   CompanionInboxList, CompanionInboxRead, CompanionChangesTarget, CompanionChangesList, CompanionChangeRead,
@@ -40,6 +41,7 @@ export class CompanionRequestError extends Error {
 }
 
 export type CompanionClient = ReturnType<typeof createCompanionClient>;
+export type CompanionImageDraft = CompanionImageAttachment & { data: string };
 
 export function createCompanionClient(
   invoke: InvokeLike = tauriInvoke as InvokeLike,
@@ -100,7 +102,7 @@ export function createCompanionClient(
       const saved = await call<PendingMutation[]>("companion_pending");
       if (!Array.isArray(saved) || saved.length > 1) throw new CompanionRequestError("Saved command recovery is unavailable");
       for (const item of saved) {
-        if (!item || typeof item.requestId !== "string" || !["sessions.send", "sessions.approve", "sessions.answer", "sessions.question.keepOpen", "sessions.stop", "sessions.configure", "sessions.create"].includes(item.action) || typeof item.input?.sessionId !== "string" || (item.action === "sessions.create" && typeof item.input.projectId !== "string")) {
+        if (!item || typeof item.requestId !== "string" || !["sessions.send", "sessions.queue.resume", "sessions.approve", "sessions.answer", "sessions.question.keepOpen", "sessions.stop", "sessions.configure", "sessions.create"].includes(item.action) || typeof item.input?.sessionId !== "string" || (item.action === "sessions.create" && typeof item.input.projectId !== "string")) {
           throw new CompanionRequestError("Saved command recovery is invalid");
         }
       }
@@ -206,6 +208,37 @@ export function createCompanionClient(
     return mutate(mutation.action, mutation.input, mutation.requestId);
   }
 
+  async function stageImage(image: CompanionImageDraft) {
+    if (!native) throw new CompanionRequestError("Image messages are available in the iPhone app", false);
+    try {
+      return await invoke<CompanionImageAttachment>("companion_stage_attachment", { image });
+    } catch (error) {
+      throw new CompanionRequestError(errorText(error), false);
+    }
+  }
+
+  async function discardStagedImages(attachments: CompanionImageAttachment[]) {
+    if (!attachments.length) return;
+    try {
+      await invoke("companion_discard_staged_attachments", { attachments });
+    } catch {
+      // The native command only removes the phone's private staging files.
+    }
+  }
+
+  async function send(input: MutationInput, images: CompanionImageDraft[]) {
+    const safeInput = mutationInput(input);
+    if (pending.size) throw new CompanionRequestError("Review the pending command before sending another");
+    const attachments: CompanionImageAttachment[] = [];
+    try {
+      for (const image of images) attachments.push(await stageImage(image));
+    } catch (error) {
+      await discardStagedImages(attachments);
+      throw error;
+    }
+    return mutate("sessions.send", { ...safeInput, ...(attachments.length ? { attachments } : {}) });
+  }
+
   return {
     native,
     status,
@@ -229,6 +262,7 @@ export function createCompanionClient(
     changesList: (target: CompanionChangesTarget) => request<CompanionChangesList & { epoch: string }>("changes.list", target),
     changesRead: (target: CompanionChangesTarget, relative: string, kind: "staged" | "unstaged") => request<CompanionChangeRead & { epoch: string }>("changes.read", { ...target, relative, kind }),
     mutate,
+    send,
     retry,
     pendingMutations: () => [...pending.values()],
     dismissPending,

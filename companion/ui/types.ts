@@ -80,9 +80,19 @@ export type CompanionBlock = {
   text: string;
   truncated?: boolean;
   approval?: CompanionApproval;
+  attachments?: { name: string; mimeType: string; size: number }[];
   spawnedSessions?: CompanionSession[];
   activity?: { label: string; state: "pending" | "accepted" | "rejected"; kind?: string; name?: string;
     steps?: { id: string; label: string; state: "pending" | "accepted" | "rejected" }[]; stepsTruncated?: boolean };
+};
+
+export type CompanionImageAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  width: number;
+  height: number;
 };
 
 export type SessionsList = {
@@ -91,7 +101,7 @@ export type SessionsList = {
   truncated: boolean;
   appearance?: CompanionAppearance;
   navigation?: CompanionNavigation;
-  capabilities?: { createSession?: boolean; inbox?: boolean; changes?: boolean; queuedFollowUps?: boolean };
+  capabilities?: { createSession?: boolean; inbox?: boolean; changes?: boolean; queuedFollowUps?: boolean; imageAttachments?: boolean; queueRecovery?: boolean };
 };
 
 export type CompanionProject = { id: string; name: string; path: string; groupId?: string; mascot?: string; color?: string; logo?: string };
@@ -119,7 +129,7 @@ export type SessionRead = {
   pendingQuestion?: import("../../src/features/sessions/model/userQuestion").UserQuestionPrompt;
   questionUnavailable?: boolean;
   reviewAvailable?: boolean;
-  queuedMessages?: { id: string; text: string; state: "queued" | "paused" | "failed" }[];
+  queuedMessages?: { id: string; text: string; state: "queued" | "paused" | "failed"; error?: string; attachments?: { name: string; mimeType: string; size: number }[] }[];
 };
 
 export type SessionConfiguration = {
@@ -144,6 +154,7 @@ export type CompanionAction =
   | "sessions.list"
   | "sessions.read"
   | "sessions.send"
+  | "sessions.queue.resume"
   | "sessions.approve"
   | "sessions.stop"
   | "sessions.configure";
@@ -152,6 +163,7 @@ export type CompanionMutationAction =
   | "sessions.answer" | "sessions.question.keepOpen"
   | "sessions.create"
   | "sessions.send"
+  | "sessions.queue.resume"
   | "sessions.approve"
   | "sessions.stop"
   | "sessions.configure";
@@ -162,6 +174,7 @@ export type MutationInput = {
   turn?: number;
   projectId?: string;
   text?: string;
+  attachments?: CompanionImageAttachment[];
   blockId?: string;
   decision?: "allow" | "deny";
   harness?: string;

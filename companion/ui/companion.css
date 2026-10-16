@@ -376,7 +376,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .composer { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 44px; margin: 6px max(10px, 5vw) 8px; padding: 5px 5px 3px 10px; border: 1px solid color-mix(in srgb, var(--companion-content) 14%, transparent); border-radius: 8px; background: var(--companion-panel); }
 .composer-input { display: contents; }
 .composer { flex-shrink: 0; }
-.composer-field { display: grid; grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+.composer-field { display: grid; grid-column: 1 / -1; grid-row: 1; min-width: 0; padding-left: 44px; }
 /* Size in one layout pass; collapsing a focused textarea makes WebKit move the caret viewport. */
 .composer-field textarea, .composer-measure { grid-area: 1 / 1; min-width: 0; min-height: 40px; max-height: 128px; padding: 9px 0; font: max(16px, calc(16px * var(--companion-ui-scale)))/calc(22px * var(--companion-ui-scale)) var(--companion-sans); white-space: pre-wrap; overflow-wrap: break-word; }
 .composer-measure { visibility: hidden; overflow: hidden; pointer-events: none; }
@@ -385,6 +385,16 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .composer textarea { min-width: 0; min-height: 40px; max-height: 128px; border: 0; border-radius: 0; padding: 9px 0; background: transparent; font-size: calc(15px * var(--companion-ui-scale)); line-height: calc(22px * var(--companion-ui-scale)); }
 .composer textarea:focus, .composer textarea:focus-visible { box-shadow: none; outline: none; }
 .composer textarea::placeholder { color: var(--companion-muted); }
+.composer-attach { z-index: 1; grid-column: 1; grid-row: 1; display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--companion-muted); cursor: pointer; }
+.composer-attach:focus-visible, .composer-images button:focus-visible { outline: 2px solid var(--companion-accent); outline-offset: 2px; }
+.composer-attach:disabled { cursor: default; opacity: .45; }
+.composer-image-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.composer-images { grid-column: 1 / -1; grid-row: 1; display: flex; gap: 8px; overflow-x: auto; padding: 4px 4px 8px; }
+.composer:has(.composer-images) .composer-field, .composer:has(.composer-images) .composer-attach { grid-row: 2; }
+.composer-images figure { position: relative; flex: 0 0 76px; width: 76px; margin: 0; }
+.composer-images img { display: block; width: 76px; height: 58px; border-radius: 6px; object-fit: cover; background: var(--companion-raised); }
+.composer-images figcaption { overflow: hidden; margin-top: 3px; color: var(--companion-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.composer-images button { position: absolute; top: -10px; right: -10px; display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--companion-stroke); border-radius: 50%; background: var(--companion-panel); color: var(--companion-content); font: 18px/1 sans-serif; cursor: pointer; }
 .send-button { grid-column: 2; grid-row: 2; position: relative; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 44px; height: 44px; margin: 0; border: 0; border-radius: 6px; background: transparent; color: var(--companion-send-ink, var(--companion-bg)); cursor: pointer; }
 .send-button::before { position: absolute; content: ""; inset: 8px; border-radius: 6px; background: var(--companion-send-bg, var(--companion-content)); }
 .send-button svg { position: relative; }
@@ -393,6 +403,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .send-button--stop .stop-icon { position: relative; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 .composer:has(.send-button--stop) { grid-template-columns: minmax(0, 1fr) 44px 44px; }
 .composer:has(.send-button--stop) .send-button[type="submit"] { grid-column: 3; }
+.composer:has(.composer-images) .send-button, .composer:has(.composer-images) .session-settings { grid-row: 3; }
 .send-button--stop { color: var(--companion-content); }
 .send-button--stop::before { background: var(--companion-raised); }
 .send-receipt { min-height: 17px; line-height: 17px; grid-column: 1 / -1; margin: 4px 0; color: var(--companion-muted); font-size: 12px; }
