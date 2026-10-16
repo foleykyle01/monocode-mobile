@@ -306,7 +306,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .mono-sessions-button:hover { background: var(--companion-panel); color: var(--companion-content); }
 .mono-sessions-button .mono-working-indicator { flex: 0 0 auto; }
 .mono-sessions-button__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-.mono-linked-sessions { position: absolute; z-index: 4; inset: 0; display: flex; align-items: end; justify-content: center; color: var(--companion-content); }
+.mono-linked-sessions { position: fixed; z-index: 4; inset: 0; display: flex; align-items: end; justify-content: center; color: var(--companion-content); }
 .mono-linked-sessions__scrim { position: absolute; inset: 0; border: 0; background: color-mix(in srgb, #000 48%, transparent); cursor: default; }
 .mono-linked-sessions__surface { position: relative; display: flex; width: min(100%, 640px); max-height: min(72%, 620px); flex-direction: column; border: 1px solid var(--companion-stroke); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--companion-bg); box-shadow: 0 -12px 36px color-mix(in srgb, #000 28%, transparent); animation: menu-enter var(--motion-surface-duration) var(--motion-ease-out); }
 .mono-linked-sessions__surface > header { display: flex; min-height: 60px; align-items: center; gap: 12px; border-bottom: 1px solid var(--companion-stroke); padding: 8px 12px 8px 16px; }

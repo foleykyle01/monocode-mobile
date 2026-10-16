@@ -360,10 +360,17 @@ export function createCompanionMonoReader(source: CompanionMonoReaderSource) {
   }
 
   async function linkedSessions(mono: Mono): Promise<CompanionMonoLinkedSession[]> {
-    const parent = mono.sessionId
+    const initialParent = mono.sessionId
       ? source.sessions().find((session) => session.id === mono.sessionId)
       : undefined;
-    if (!parent || source.canChat?.(parent) === false) return [];
+    if (!initialParent || source.canChat?.(initialParent) === false) return [];
+
+    const launches = monoSpawnedSessions(await historyFor(initialParent));
+    // The history store is asynchronous. Resolve the live targets only after
+    // it returns, and never project a parent instance that was replaced while
+    // reading its older blocks.
+    const parent = source.sessions().find((session) => session.id === initialParent.id);
+    if (!parent || parent !== initialParent || source.canChat?.(parent) === false) return [];
 
     const targets = new Map(
       source.sessions()
@@ -374,7 +381,6 @@ export function createCompanionMonoReader(source: CompanionMonoReaderSource) {
         )
         .map((session) => [session.id, session]),
     );
-    const launches = monoSpawnedSessions(await historyFor(parent));
     const stateOrder: Record<LaunchedSessionState, number> = {
       working: 0,
       input: 1,

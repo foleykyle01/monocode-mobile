@@ -127,7 +127,7 @@ describe("companion Mono read projection", () => {
       monoTranscript: { before: 7, firstBlockId: "tail" },
       blocks: [{ id: "tail", role: "user" as const, text: "Launch", monoSpawnedSessions: [launch(input.id, input.title), launch(done.id, done.title), launch(unavailable.id, unavailable.title), launch(internal.id, internal.title)] }],
     };
-    getMonoTranscriptPage.mockResolvedValueOnce({ blocks: [{ id: "old", role: "user", text: "Launch", monoSpawnedSessions: [historical] }], before: null, hasNewer: false });
+    getMonoTranscriptPage.mockResolvedValueOnce({ blocks: [{ id: "old", role: "user", text: "Launch", internal: true, monoSpawnedSessions: [historical] }], before: null, hasNewer: false });
     const all = [parent, working, input, done, unavailable, internal] as Session[];
     const source = reader(mono, parent, undefined, {
       sessions: all,
@@ -173,6 +173,30 @@ describe("companion Mono read projection", () => {
     const last = await source.read({ monoId: mono.id, section: "sessions", offset: 50 });
     expect(last.sessions).toMatchObject({ offset: 50, total: 51, truncated: false });
     expect(last.sessions?.items).toEqual([{ id: "child-50", title: "Child 50", state: "done", statusLabel: "Done" }]);
+  });
+
+  it("rechecks live child eligibility and parent identity after historical reads", async () => {
+    const launch = { sessionId: "child", cwd: "/work/app", title: "Historical child", harness: "claude" as const, model: "opus" };
+    const parent = { ...session, busy: false, monoTranscript: { before: 3, firstBlockId: "tail" }, blocks: [{ id: "tail", role: "assistant" as const, text: "Working" }] };
+    const child = { ...session, id: "child", title: "Historical child", busy: true, blocks: [] };
+    let childAllowed = true;
+    let resolveFirst!: (value: { blocks: Session["blocks"]; before: null; hasNewer: false }) => void;
+    getMonoTranscriptPage.mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve; }));
+    const live = [parent, child] as Session[];
+    const source = reader(mono, parent, undefined, { sessions: live, canChat: entry => entry.id !== child.id || childAllowed });
+    const reading = source.read({ monoId: mono.id, section: "sessions" });
+    childAllowed = false;
+    resolveFirst({ blocks: [{ id: "launch", role: "user", text: "Launch", monoSpawnedSessions: [launch] }], before: null, hasNewer: false });
+    expect((await reading).sessions?.items).toEqual([]);
+
+    let resolveSecond!: (value: { blocks: Session["blocks"]; before: null; hasNewer: false }) => void;
+    getMonoTranscriptPage.mockReturnValueOnce(new Promise(resolve => { resolveSecond = resolve; }));
+    const current = [parent, child] as Session[];
+    const replacementSource = reader(mono, parent, undefined, { sessions: current });
+    const replacing = replacementSource.read({ monoId: mono.id, section: "sessions" });
+    current[0] = { ...parent };
+    resolveSecond({ blocks: [{ id: "launch", role: "user", text: "Launch", monoSpawnedSessions: [launch] }], before: null, hasNewer: false });
+    expect((await replacing).sessions?.items).toEqual([]);
   });
 
   it("marks oversized lines as content-truncated while keeping the response bounded", async () => {

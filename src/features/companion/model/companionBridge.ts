@@ -162,7 +162,7 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
   /**
    * Resolve Mono launch cards against the live owner session list. The launch
    * receipt can be older than the transcript page currently being returned,
-   * so anchor each card to the end of its full user turn before slicing.
+   * so anchor each card to its turn's final phone-visible block before slicing.
    */
   function spawnedSessionCards(session: Session, start: number, end: number, navigation?: CompanionNavigation) {
     const knownLaunches = monoSpawnedSessions(session.blocks);
@@ -179,9 +179,13 @@ export function createCompanionBridge(owner: CompanionOwner, epoch: string = cry
     let turnStart: number | undefined;
     const finishTurn = (turnEnd: number) => {
       if (turnStart === undefined) return;
-      const anchor = turnEnd - 1;
-      // A card belongs to the final block of its turn. If that block is not
-      // in this page, leave it to the page that contains the anchor.
+      let anchor = turnEnd - 1;
+      while (anchor >= turnStart && !visibleTranscriptBlock(session.blocks[anchor])) --anchor;
+      // A wholly hidden turn has no row to decorate. Its child remains
+      // discoverable in the Mono header's linked-sessions list.
+      if (anchor < turnStart) return;
+      // If the visible continuation is not in this page, leave its card to
+      // the page containing that block rather than duplicating it elsewhere.
       if (anchor < start || anchor >= end) return;
       const launches = monoSpawnedSessions(session.blocks.slice(turnStart, turnEnd), knownLaunches);
       const cards: ReturnType<typeof summary>[] = [];

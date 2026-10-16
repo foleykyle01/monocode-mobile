@@ -82,6 +82,43 @@ describe("desktop companion owner boundary", () => {
     expect(older.blocks.map(block => block.id)).toEqual(["older-visible"]);
   });
 
+  it("anchors launch cards to the final visible continuation, never a hidden tail", async () => {
+    const { bridge, session, sessions } = fixture();
+    const child: Session = {
+      id: "child", harness: "codex", model: "test-model", modelSettings: {}, runtimeMode: "supervised",
+      title: "Linked review", cwd: "/tmp/child", busy: true, blocks: [],
+    };
+    sessions.push(child);
+    const launch: MonoSpawnedSession = {
+      sessionId: child.id, cwd: child.cwd, title: child.title, harness: child.harness, model: child.model,
+    };
+    session.blocks = [
+      { id: "prompt", role: "user", text: "Start the review", monoSpawnedSessions: [launch] },
+      { id: "report", role: "assistant", text: "The review is underway." },
+      { id: "hidden-tail", role: "tool", text: "internal receipt", internal: true },
+    ];
+    const tail = await bridge.handle("tail", "sessions.read", { sessionId: session.id }) as { blocks: { id: string; spawnedSessions?: { id: string }[] }[] };
+    expect(tail.blocks.map(block => block.id)).toEqual(["prompt", "report"]);
+    expect(tail.blocks.find(block => block.id === "report")?.spawnedSessions).toMatchObject([{ id: child.id }]);
+
+    session.blocks = [
+      { id: "prompt", role: "user", text: "Start the review", monoSpawnedSessions: [launch] },
+      ...Array.from({ length: 100 }, (_, index) => ({ id: `report-${index}`, role: "assistant" as const, text: "Visible report" })),
+      { id: "hidden-tail", role: "system", text: "internal receipt", internal: true },
+    ];
+    const newest = await bridge.handle("newest-visible", "sessions.read", { sessionId: session.id }) as { blocks: { id: string; spawnedSessions?: { id: string }[] }[]; nextBefore: number | null };
+    expect(newest.blocks.find(block => block.id === "report-99")?.spawnedSessions).toMatchObject([{ id: child.id }]);
+    const older = await bridge.handle("older-visible", "sessions.read", { sessionId: session.id, before: newest.nextBefore }) as { blocks: { spawnedSessions?: unknown }[] };
+    expect(older.blocks.some(block => block.spawnedSessions)).toBe(false);
+
+    session.blocks = [
+      { id: "hidden-prompt", role: "user", text: "internal start", internal: true, monoSpawnedSessions: [launch] },
+      { id: "hidden-tail", role: "tool", text: "internal receipt", internal: true },
+    ];
+    const hidden = await bridge.handle("hidden-turn", "sessions.read", { sessionId: session.id }) as { blocks: unknown[] };
+    expect(hidden.blocks).toEqual([]);
+  });
+
   it("accepts queued follow-ups once during work, preserves existing messages and reports the actual queue", async () => {
     const { bridge, session, owner, input } = fixture();
     session.busy = true;

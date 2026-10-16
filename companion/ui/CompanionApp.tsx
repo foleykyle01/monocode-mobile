@@ -907,10 +907,10 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           </div>
         </div>
       </section>
-      <div className="app-header" hidden={settingsOpen}>
+      <div className="app-header" hidden={settingsOpen} aria-hidden={linkedSessionsOpen || undefined} inert={linkedSessionsOpen || undefined}>
         {pendingMutation?.action === "sessions.create" ? recoveryBanner : null}
       </div>
-      <div className="workspace-grid" hidden={settingsOpen}>
+      <div className="workspace-grid" hidden={settingsOpen} aria-hidden={linkedSessionsOpen || undefined} inert={linkedSessionsOpen || undefined}>
         <aside className={`session-panel ${mobileListOpen ? "mobile-list-open" : ""}`} aria-label="Workspace">
           <div className="workspace-toolbar"><h1 className="workspace-title">MonoCode Mobile</h1><button ref={searchButton} className="search-toggle" type="button" aria-label={searchOpen ? "Close workspace search" : "Search workspace"} aria-expanded={searchOpen} onClick={() => { setSearchOpen(open => !open); if (searchOpen) { setQuery("");  } }}>{searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}</button><button ref={settingsButton} className="settings-toggle" type="button" aria-label="Settings" aria-describedby="companion-connection-status" aria-expanded={settingsOpen} aria-controls="workspace-settings-title" onClick={() => setSettingsOpen(true)}><Settings size={19} aria-hidden="true" /><span id="companion-connection-status" className="connection-indicator" role="status" aria-label={connectionLabel} title={connectionLabel}><span className={connectionDot} aria-hidden="true" /></span></button></div>
           {searchOpen ? <div className="session-search" onKeyDown={event => { if (event.key === "Escape") { setSearchOpen(false); setQuery("");  searchButton.current?.focus(); } }}><input type="search" aria-label="Search workspace" placeholder="Search workspace" autoFocus value={query} onChange={event => { setQuery(event.target.value); if (event.target.value.trim()) setMonosExpanded(true); }} /></div> : null}
@@ -932,7 +932,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
               <h2 className="conversation-title" title={selectedMono?.name || selected.title || "Untitled session"}>{selectedMono?.name || selected.title || "Untitled session"}</h2>
               {selectedMono ? <button ref={linkedSessionsButton} className="mono-sessions-button" type="button" data-working={monoHeaderWorking || undefined} aria-label={`Sessions for ${selectedMono.name}${monoHeaderWorking ? " — working" : ""}`} title={`Sessions for ${selectedMono.name}`} aria-haspopup="dialog" aria-expanded={linkedSessionsOpen} disabled={displayOffline || !activeRead} onClick={() => setLinkedSessionsOpen(true)}>{monoHeaderWorking ? <><Loader className="mono-working-spinner" size={18} aria-hidden="true" /><span className="mono-sessions-button__status" role="status" aria-label={`${selectedMono.name} is working`} /></> : <ListEnd size={19} aria-hidden="true" />}</button> : null}
             </header>
-            {linkedSessionsOpen && selectedMono && activeRead ? <MonoLinkedSessions client={client} mono={selectedMono} refreshToken={workspaceRevision} onOpen={session => openLinkedSession(session, positions.current.get(selected.id) ?? 0)} onClose={closeLinkedSessions} /> : null}
             {displayOffline ? <div className="chat-connection" role="status"><span className={connectionDot} aria-hidden="true" /><span>{!displayOnline ? "Offline" : displayReconnecting ? "Reconnecting…" : "Mac unavailable"}</span>{displayOnline && !displayReconnecting ? <button type="button" onClick={() => demo ? setPreviewConnection("connected") : void reconnect()}>Retry</button> : null}</div> : null}
             {pendingMutation?.action !== "sessions.create" ? recoveryBanner : null}
             {attention?.id === selected.id && activeRead && !selected.needsApproval && !selected.needsQuestion ? <NeedsYou label="Next waiting session" targets={waiting.filter(target => target.id !== selected.id)} onOpen={openAttention} disabled={mutationsDisabled} /> : null}
@@ -953,6 +952,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>
+      {linkedSessionsOpen && selectedMono && activeRead ? <MonoLinkedSessions client={client} mono={selectedMono} refreshToken={workspaceRevision} onOpen={session => openLinkedSession(session, positions.current.get(activeRead.session.id) ?? 0)} onClose={closeLinkedSessions} /> : null}
     </main>
   );
 }
