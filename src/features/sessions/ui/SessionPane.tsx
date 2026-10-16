@@ -654,8 +654,10 @@ const LocalSessionPane = memo(function LocalSessionPane({
       onOpenFile(path, navigation, {
         ...options,
         ...(options?.sourceCwd ? {} : { sourceCwd: workCwd }),
+        ...(options?.sourceProjectCwd ? {} : { sourceProjectCwd: session.cwd }),
+        ...(options?.sourceSessionId ? {} : { sourceSessionId: session.id }),
       }),
-    [onOpenFile, workCwd],
+    [onOpenFile, session.cwd, session.id, workCwd],
   );
   const reviewHidden =
     remote ||

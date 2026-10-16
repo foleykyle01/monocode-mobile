@@ -41,7 +41,12 @@ vi.mock("../../sessions/ui/AgentTranscript", () => ({
     onOpenFile?: (
       path: string,
       navigation?: { line: number; column?: number },
-      options?: { exact?: boolean; sourceCwd?: string },
+      options?: {
+        exact?: boolean;
+        sourceCwd?: string;
+        sourceProjectCwd?: string;
+        sourceSessionId?: string;
+      },
     ) => void;
     onOpenDiff?: (path: string) => void;
   }) =>
@@ -458,7 +463,12 @@ it("opens transcript files and diffs through the shared remote tabs", async () =
   expect(onOpenFile).toHaveBeenCalledWith(
     "remote://env/home/me/repo/src/app.ts",
     { line: 12, column: 3 },
-    { exact: true, sourceCwd: "remote://env/home/me/repo" },
+    {
+      exact: true,
+      sourceCwd: "remote://env/home/me/repo",
+      sourceProjectCwd: "remote://env/home/me/repo",
+      sourceSessionId: "shell",
+    },
   );
   expect(onOpenDiff).toHaveBeenCalledWith("remote://env/home/me/repo/src/app.ts");
 });

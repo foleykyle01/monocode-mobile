@@ -65,6 +65,15 @@ impl View {
         }
         self.error = error;
     }
+
+    /// Clear only the error snapshot the floating chat actually displayed.
+    fn dismiss_error(&mut self, error_generation: u64) -> bool {
+        if self.error.is_none() || self.error_generation != error_generation {
+            return false;
+        }
+        self.set_error(None);
+        true
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -176,6 +185,21 @@ impl Inner {
                 let _ = reply.send(result);
             }
         }
+    }
+
+    fn dismiss_error_for_panel(
+        &mut self,
+        panel_mono_id: &str,
+        mono_id: &str,
+        error_generation: u64,
+    ) -> Result<bool, String> {
+        if panel_mono_id != mono_id {
+            return Err("This action belongs to a different Mono.".into());
+        }
+        Ok(self
+            .views
+            .get_mut(mono_id)
+            .is_some_and(|view| view.dismiss_error(error_generation)))
     }
 }
 
@@ -833,21 +857,11 @@ pub fn mono_chat_dismiss_error(
     mono_id: String,
     error_generation: u64,
 ) -> Result<bool, String> {
-    if panel(&app, &window)? != mono_id {
-        return Err("This action belongs to a different Mono.".into());
-    }
+    let panel_mono_id = panel(&app, &window)?;
     let dismissed = {
         let state = app.state::<MonoChatState>();
         let mut inner = state.0.lock().unwrap();
-        let Some(view) = inner.views.get_mut(&mono_id) else {
-            return Ok(false);
-        };
-        if view.error.is_none() || view.error_generation != error_generation {
-            false
-        } else {
-            view.set_error(None);
-            true
-        }
+        inner.dismiss_error_for_panel(&panel_mono_id, &mono_id, error_generation)?
     };
     if dismissed {
         changed(&app, &mono_id);
@@ -1066,5 +1080,35 @@ mod tests {
         view.set_error(None);
         view.set_error(Some("Workspace unavailable".into()));
         assert!(view.error_generation > first);
+    }
+
+    #[test]
+    fn a_stale_dismissal_cannot_clear_a_newer_error() {
+        let mut inner = Inner::default();
+        let view = inner.view("mono");
+        view.set_error(Some("First failure".into()));
+        let first_generation = view.error_generation;
+        view.set_error(Some("New failure".into()));
+
+        assert!(!inner
+            .dismiss_error_for_panel("mono", "mono", first_generation)
+            .unwrap());
+        assert_eq!(inner.views["mono"].error.as_deref(), Some("New failure"));
+    }
+
+    #[test]
+    fn a_dismissal_for_another_mono_is_rejected_without_clearing_it() {
+        let mut inner = Inner::default();
+        let view = inner.view("second");
+        view.set_error(Some("Second failure".into()));
+        let generation = view.error_generation;
+
+        assert!(inner
+            .dismiss_error_for_panel("first", "second", generation)
+            .is_err());
+        assert_eq!(
+            inner.views["second"].error.as_deref(),
+            Some("Second failure")
+        );
     }
 }

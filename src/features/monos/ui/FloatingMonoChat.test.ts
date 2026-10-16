@@ -33,7 +33,12 @@ vi.mock("../../sessions/ui/AgentTranscript", () => ({
     onOpenFile: (
       path: string,
       navigation?: { line: number; column?: number },
-      options?: { exact?: boolean; sourceCwd?: string },
+      options?: {
+        exact?: boolean;
+        sourceCwd?: string;
+        sourceProjectCwd?: string;
+        sourceSessionId?: string;
+      },
     ) => void;
   }) =>
     createElement(
@@ -330,7 +335,12 @@ it("forwards an exact outside file link and its source worktree to the owner", a
       kind: "openFile",
       path: "/Users/me/Downloads/Workflow Diagram%.html",
       navigation: { line: 18, column: 4 },
-      options: { exact: true, sourceCwd: "/Users/me/worktrees/mono" },
+      options: {
+        exact: true,
+        sourceCwd: "/Users/me/worktrees/mono",
+        sourceProjectCwd: "/tmp",
+        sourceSessionId: "chat-a",
+      },
     },
   });
 });

@@ -330,6 +330,7 @@ export function FloatingMonoChat({ onShown }: { onShown: () => void }) {
             key={artifactId}
             id={artifactId}
             action={action}
+            session={view.session!}
             onClose={() => {
               setArtifactId(null);
               setFocus((n) => n + 1);
@@ -507,6 +508,12 @@ function FloatingConversation({
                 ...(options?.sourceCwd
                   ? {}
                   : { sourceCwd: sessionWorkCwd(session) }),
+                ...(options?.sourceProjectCwd
+                  ? {}
+                  : { sourceProjectCwd: session.cwd }),
+                ...(options?.sourceSessionId
+                  ? {}
+                  : { sourceSessionId: session.id }),
               },
             })
           }
@@ -582,10 +589,12 @@ const SHEET_MS = 280;
 function ArtifactSheet({
   id,
   action,
+  session,
   onClose,
 }: {
   id: string;
   action: (action: FloatingMonoAction) => Promise<boolean>;
+  session: Session;
   onClose: () => void;
 }) {
   const { artifact, loaded, error, setError } = useArtifact(id);
@@ -694,7 +703,23 @@ function ArtifactSheet({
               <ArtifactContent
                 artifact={artifact}
                 onOpenFile={(path, navigation, options) =>
-                  void action({ kind: "openFile", path, navigation, options })
+                  void action({
+                    kind: "openFile",
+                    path,
+                    navigation,
+                    options: {
+                      ...options,
+                      ...(options?.sourceCwd
+                        ? {}
+                        : { sourceCwd: sessionWorkCwd(session) }),
+                      ...(options?.sourceProjectCwd
+                        ? {}
+                        : { sourceProjectCwd: session.cwd }),
+                      ...(options?.sourceSessionId
+                        ? {}
+                        : { sourceSessionId: session.id }),
+                    },
+                  })
                 }
               />
               {error ? (

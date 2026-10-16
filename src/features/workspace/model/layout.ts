@@ -274,17 +274,19 @@ export function openWorkspaceFile(
   created: WorkspaceTab,
   insert: (tabs: WorkspaceTab[], tab: WorkspaceTab) => WorkspaceTab[],
   pin = false,
+  eligible?: (tab: WorkspaceTab) => boolean,
 ): { tabs: WorkspaceTab[]; tabId: string; paneId?: string } {
   const key = editorTabKey(file);
   const project = pathKey(file.projectCwd ?? file.cwd);
-  const existing = tabs
+  const candidates = eligible ? tabs.filter(eligible) : tabs;
+  const existing = candidates
     .flatMap((tab) => tab.editorPanes.map((pane) => ({ tab, pane })))
     .find(({ pane }) => pane.files.some((open) => editorTabKey(open) === key));
   const hit =
     existing?.tab ??
     (pin
       ? undefined
-      : tabs.find((tab) => {
+      : candidates.find((tab) => {
           const open = previewWorkspaceFile(tab);
           return !!open && pathKey(open.projectCwd ?? open.cwd) === project;
         }));
