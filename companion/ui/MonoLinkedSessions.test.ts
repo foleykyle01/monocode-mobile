@@ -157,6 +157,48 @@ it("coalesces repeated polls while a refresh is delayed", async () => {
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
+it("retries an initial read failure without reopening the sheet", async () => {
+  const monoRead = vi.fn().mockRejectedValueOnce(new Error("Connection interrupted"))
+    .mockResolvedValue(result([linked("Recovered child", "working", "Working")]));
+  const client = { monoRead } as unknown as CompanionClient;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken: 0, onOpen: vi.fn(), onClose: vi.fn() })));
+    await flush();
+    expect(container.querySelector(".error-copy")?.textContent).toContain("Connection interrupted");
+    await act(async () => container.querySelector<HTMLButtonElement>(".error-copy button")!.click());
+    await flush();
+    expect(monoRead).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".error-copy")).toBeNull();
+    expect(container.querySelector(".mono-linked-sessions__body li")?.textContent).toBe("Recovered childWorking");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("runs Show more before a coalesced follow-up poll", async () => {
+  const values = sessions(55);
+  let resolveRefresh!: (value: ReturnType<typeof result>) => void;
+  const offsets: number[] = [];
+  const client = { monoRead: vi.fn((_id: string, _section?: string, offset = 0) => {
+    offsets.push(offset);
+    if (offsets.length === 2) return new Promise<ReturnType<typeof result>>(resolve => { resolveRefresh = resolve; });
+    return Promise.resolve(result(values, offset));
+  }) } as unknown as CompanionClient;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const render = (refreshToken: number) => act(async () => root.render(createElement(MonoLinkedSessions, { client, mono, refreshToken, onOpen: vi.fn(), onClose: vi.fn() })));
+  try {
+    await render(0); await flush();
+    await render(1); await flush();
+    await act(async () => container.querySelector<HTMLButtonElement>(".mono-linked-sessions__more")!.click());
+    await render(2);
+    await act(async () => resolveRefresh(result(values)));
+    await flush(); await flush();
+    expect(offsets).toEqual([0, 0, 50, 0, 50]);
+    expect(container.querySelectorAll(".mono-linked-sessions__body li")).toHaveLength(55);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 it("explains when an older host omits the sessions projection", async () => {
   const client = { monoRead: vi.fn(async () => ({ mono, scope: { projects: [] } })) } as unknown as CompanionClient;
   const container = document.createElement("div"); document.body.append(container);

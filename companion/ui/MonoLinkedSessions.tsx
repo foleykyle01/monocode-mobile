@@ -106,11 +106,11 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
     commit(combined, request);
   }, [commit, current, readPage]);
 
-  const scheduleRefresh = useCallback(() => {
+  const scheduleRefresh = useCallback((retry = false) => {
     const request = generation.current;
     // `undefined` means the first page has not completed; an empty page is a
     // real result and must keep polling for newly launched children.
-    if (!pageRef.current) return;
+    if (!pageRef.current && !retry) return;
     refreshPending.current = true;
     if (refreshQueued.current) return;
     refreshQueued.current = true;
@@ -118,16 +118,16 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
     setError(undefined);
     void enqueue(request, async () => {
       try {
-        do {
-          refreshPending.current = false;
-          await refreshLoaded(request, Math.max(1, pageRef.current?.items.length ?? 0));
-        } while (current(request) && refreshPending.current);
+        refreshPending.current = false;
+        await refreshLoaded(request, Math.max(1, pageRef.current?.items.length ?? 0));
       } catch (reason) {
         if (current(request)) setError(errorMessage(reason));
       } finally {
         if (current(request)) {
           refreshQueued.current = false;
           setLoading(false);
+          // Let an explicit Show more request run before the next poll.
+          if (refreshPending.current) scheduleRefresh();
         }
       }
     });
@@ -206,7 +206,7 @@ export function MonoLinkedSessions({ client, mono, refreshToken, onOpen, onClose
       </header>
       <div ref={body} className="mono-linked-sessions__body" aria-busy={loading}>
         {loading && !page ? <p role="status">Loading linked sessions…</p> : null}
-        {error ? <p className="error-copy" role="alert">{error} <button type="button" onClick={scheduleRefresh}>Retry</button></p> : null}
+        {error ? <p className="error-copy" role="alert">{error} <button type="button" onClick={() => scheduleRefresh(true)}>Retry</button></p> : null}
         {page && !page.items.length ? <p className="mono-linked-sessions__empty">No linked sessions are available on this Mac.</p> : null}
         {page?.items.length ? <ul aria-label={`${mono.name} linked sessions`}>{page.items.map(session => <li key={session.id}>
           <button type="button" onClick={() => onOpen(session)} aria-label={`Open ${session.title} · ${session.statusLabel}`}>
