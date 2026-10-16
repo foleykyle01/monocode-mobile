@@ -51,7 +51,9 @@ fn finalized_send_input(input: &Value, request_id: &str) -> Result<Value> {
 fn expired_upload(response: &Value) -> bool {
     response.get("ok").and_then(Value::as_bool) == Some(false)
         && response.get("outcomeUnknown").and_then(Value::as_bool) != Some(true)
-        && response.get("error").and_then(Value::as_str)
+        && response
+            .get("error")
+            .and_then(Value::as_str)
             .is_some_and(|message| message.contains("Image upload expired"))
 }
 
@@ -355,11 +357,15 @@ async fn companion_request(
 }
 
 #[tauri::command]
-async fn companion_pending(state: State<'_, Mutex<ClientState>>, app: AppHandle) -> Result<Value, String> {
+async fn companion_pending(
+    state: State<'_, Mutex<ClientState>>,
+    app: AppHandle,
+) -> Result<Value, String> {
     let _state = state.lock().await;
     let result = (|| -> Result<Value> {
         let saved = load_private::<PendingCommand>(PENDING_ACCOUNT)?;
-        let references = saved.as_ref()
+        let references = saved
+            .as_ref()
             .filter(|pending| pending.action == "sessions.send")
             .and_then(|pending| attachments::references(&pending.input).ok())
             .unwrap_or_default();

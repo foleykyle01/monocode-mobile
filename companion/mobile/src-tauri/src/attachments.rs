@@ -80,50 +80,111 @@ fn image_dimensions(bytes: &[u8], mime_type: &str) -> Result<(u32, u32)> {
     let invalid = || anyhow::anyhow!("Image data does not match its attachment metadata");
     match mime_type {
         "image/png" => {
-            ensure!(bytes.len() >= 24 && &bytes[..8] == b"\x89PNG\r\n\x1a\n" && &bytes[12..16] == b"IHDR", "Image data does not match its attachment metadata");
-            Ok((u32::from_be_bytes(bytes[16..20].try_into().unwrap()), u32::from_be_bytes(bytes[20..24].try_into().unwrap())))
+            ensure!(
+                bytes.len() >= 24
+                    && &bytes[..8] == b"\x89PNG\r\n\x1a\n"
+                    && &bytes[12..16] == b"IHDR",
+                "Image data does not match its attachment metadata"
+            );
+            Ok((
+                u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+                u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+            ))
         }
         "image/gif" => {
-            ensure!(bytes.len() >= 10 && (&bytes[..6] == b"GIF87a" || &bytes[..6] == b"GIF89a"), "Image data does not match its attachment metadata");
-            Ok((u16::from_le_bytes(bytes[6..8].try_into().unwrap()) as u32, u16::from_le_bytes(bytes[8..10].try_into().unwrap()) as u32))
+            ensure!(
+                bytes.len() >= 10 && (&bytes[..6] == b"GIF87a" || &bytes[..6] == b"GIF89a"),
+                "Image data does not match its attachment metadata"
+            );
+            Ok((
+                u16::from_le_bytes(bytes[6..8].try_into().unwrap()) as u32,
+                u16::from_le_bytes(bytes[8..10].try_into().unwrap()) as u32,
+            ))
         }
         "image/jpeg" => {
-            ensure!(bytes.len() >= 4 && bytes[..2] == [0xff, 0xd8], "Image data does not match its attachment metadata");
+            ensure!(
+                bytes.len() >= 4 && bytes[..2] == [0xff, 0xd8],
+                "Image data does not match its attachment metadata"
+            );
             let mut offset = 2;
             while offset < bytes.len() {
-                ensure!(bytes[offset] == 0xff, "Image data does not match its attachment metadata");
+                ensure!(
+                    bytes[offset] == 0xff,
+                    "Image data does not match its attachment metadata"
+                );
                 offset += 1;
-                while bytes.get(offset) == Some(&0xff) { offset += 1; }
+                while bytes.get(offset) == Some(&0xff) {
+                    offset += 1;
+                }
                 let marker = *bytes.get(offset).ok_or_else(invalid)?;
                 offset += 1;
-                if marker == 0xd9 || marker == 0xda { break; }
-                let length = u16::from_be_bytes(bytes.get(offset..offset + 2).ok_or_else(invalid)?.try_into().unwrap()) as usize;
-                ensure!(length >= 2 && offset + length <= bytes.len(), "Image data does not match its attachment metadata");
+                if marker == 0xd9 || marker == 0xda {
+                    break;
+                }
+                let length = u16::from_be_bytes(
+                    bytes
+                        .get(offset..offset + 2)
+                        .ok_or_else(invalid)?
+                        .try_into()
+                        .unwrap(),
+                ) as usize;
+                ensure!(
+                    length >= 2 && offset + length <= bytes.len(),
+                    "Image data does not match its attachment metadata"
+                );
                 if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf) {
-                    ensure!(length >= 8, "Image data does not match its attachment metadata");
-                    return Ok((u16::from_be_bytes(bytes[offset + 5..offset + 7].try_into().unwrap()) as u32, u16::from_be_bytes(bytes[offset + 3..offset + 5].try_into().unwrap()) as u32));
+                    ensure!(
+                        length >= 8,
+                        "Image data does not match its attachment metadata"
+                    );
+                    return Ok((
+                        u16::from_be_bytes(bytes[offset + 5..offset + 7].try_into().unwrap())
+                            as u32,
+                        u16::from_be_bytes(bytes[offset + 3..offset + 5].try_into().unwrap())
+                            as u32,
+                    ));
                 }
                 offset += length;
             }
             Err(invalid())
         }
         "image/webp" => {
-            ensure!(bytes.len() >= 20 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP", "Image data does not match its attachment metadata");
+            ensure!(
+                bytes.len() >= 20 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+                "Image data does not match its attachment metadata"
+            );
             let mut offset = 12;
             while offset + 8 <= bytes.len() {
                 let kind = &bytes[offset..offset + 4];
-                let size = u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
+                let size =
+                    u32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
                 let data = offset + 8;
-                ensure!(data + size <= bytes.len(), "Image data does not match its attachment metadata");
+                ensure!(
+                    data + size <= bytes.len(),
+                    "Image data does not match its attachment metadata"
+                );
                 if kind == b"VP8X" && size >= 10 {
-                    return Ok((1 + bytes[data + 4] as u32 + ((bytes[data + 5] as u32) << 8) + ((bytes[data + 6] as u32) << 16), 1 + bytes[data + 7] as u32 + ((bytes[data + 8] as u32) << 8) + ((bytes[data + 9] as u32) << 16)));
+                    return Ok((
+                        1 + bytes[data + 4] as u32
+                            + ((bytes[data + 5] as u32) << 8)
+                            + ((bytes[data + 6] as u32) << 16),
+                        1 + bytes[data + 7] as u32
+                            + ((bytes[data + 8] as u32) << 8)
+                            + ((bytes[data + 9] as u32) << 16),
+                    ));
                 }
                 if kind == b"VP8L" && size >= 5 && bytes[data] == 0x2f {
                     let bits = u32::from_le_bytes(bytes[data + 1..data + 5].try_into().unwrap());
                     return Ok((1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)));
                 }
-                if kind == b"VP8 " && size >= 10 && bytes[data + 3..data + 6] == [0x9d, 0x01, 0x2a] {
-                    return Ok(((u16::from_le_bytes(bytes[data + 6..data + 8].try_into().unwrap()) & 0x3fff) as u32, (u16::from_le_bytes(bytes[data + 8..data + 10].try_into().unwrap()) & 0x3fff) as u32));
+                if kind == b"VP8 " && size >= 10 && bytes[data + 3..data + 6] == [0x9d, 0x01, 0x2a]
+                {
+                    return Ok((
+                        (u16::from_le_bytes(bytes[data + 6..data + 8].try_into().unwrap()) & 0x3fff)
+                            as u32,
+                        (u16::from_le_bytes(bytes[data + 8..data + 10].try_into().unwrap())
+                            & 0x3fff) as u32,
+                    ));
                 }
                 offset = data + size + size % 2;
             }
@@ -162,11 +223,16 @@ pub fn clear_orphans(dir: &Path, references: &[AttachmentReference]) {
         .iter()
         .map(|reference| reference.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    let Ok(entries) = fs::read_dir(dir) else { return; };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
-        let Some(id) = path.file_stem().and_then(|value| value.to_str()) else { continue; };
-        if path.extension().and_then(|value| value.to_str()) == Some("image") && !keep.contains(id) {
+        let Some(id) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if path.extension().and_then(|value| value.to_str()) == Some("image") && !keep.contains(id)
+        {
             let _ = fs::remove_file(path);
         }
     }
@@ -284,9 +350,11 @@ mod tests {
         let mut malformed = vec![0xff, 0xd8];
         malformed.extend([0xff; 10]);
         malformed.extend([0xc0, 0, 2]);
-        assert!(std::panic::catch_unwind(|| image_dimensions(&malformed, "image/jpeg"))
-            .unwrap()
-            .is_err());
+        assert!(
+            std::panic::catch_unwind(|| image_dimensions(&malformed, "image/jpeg"))
+                .unwrap()
+                .is_err()
+        );
     }
 
     #[test]
@@ -320,7 +388,10 @@ mod tests {
         assert!(serde_json::from_value::<StagedImage>(preview).is_err());
         let mut mismatch = payload;
         mismatch["width"] = serde_json::json!(2);
-        let directory = std::env::temp_dir().join(format!("monocode-companion-image-metadata-test-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "monocode-companion-image-metadata-test-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&directory);
         assert!(stage(&directory, serde_json::from_value(mismatch).unwrap()).is_err());
         let _ = fs::remove_dir_all(&directory);
@@ -328,7 +399,10 @@ mod tests {
 
     #[test]
     fn recovery_keeps_only_the_uncertain_request_images() {
-        let directory = std::env::temp_dir().join(format!("monocode-companion-image-orphan-test-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "monocode-companion-image-orphan-test-{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&directory);
         let keep = stage(&directory, image(PNG)).unwrap();
         let mut orphan = image(PNG);
