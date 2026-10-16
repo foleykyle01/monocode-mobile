@@ -41,6 +41,21 @@ struct Inner {
     companion: Option<Grant>,
 }
 impl Inner {
+    fn restart_ready(&self) -> Result<(), String> {
+        if !self.active.is_empty() {
+            return Err("Finish or stop active agent turns before installing this update".into());
+        }
+        if !self.pending.is_empty() {
+            return Err(
+                "An agent control request is still pending. Wait for it to finish before updating"
+                    .into(),
+            );
+        }
+        // workers records ownership/scratch registration, not turn liveness.
+        // Every worker turn goes through control_authorize_turn and active;
+        // renderer readiness still covers preparation and pending approvals.
+        Ok(())
+    }
     // Provider processes can stay alive between turns, so install the token
     // before their first spawn. request_grant still requires an opted-in turn.
     fn prepare_app_grant(&mut self, session: &str, window: &str, cwd: &str) -> bool {
@@ -133,14 +148,12 @@ pub struct ControlHost {
 
 impl ControlHost {
     /// A restart may only proceed when the native control service has no
-    /// active turn, helper, or request still owned by a workspace.
-    pub fn restart_safe(&self) -> bool {
+    /// active turn or request still owned by a workspace.
+    pub fn restart_ready(&self) -> Result<(), String> {
         self.inner
             .lock()
-            .map(|inner| {
-                inner.active.is_empty() && inner.workers.is_empty() && inner.pending.is_empty()
-            })
-            .unwrap_or(false)
+            .map_err(|_| "Could not inspect agent activity; retry the update".to_string())?
+            .restart_ready()
     }
 }
 
@@ -790,6 +803,37 @@ pub fn control_scopes(cwd: String, files: Vec<String>) -> Result<Vec<String>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restart_ignores_idle_worker_ownership_but_not_turns_or_requests() {
+        let mut inner = Inner::default();
+        inner.workers.insert("worker".into(), "lead".into());
+        assert!(inner.restart_ready().is_ok());
+        inner.active.insert(
+            "worker".into(),
+            ActiveTurn {
+                window: "main".into(),
+                cwd: "/fixture".into(),
+                app_allowed: false,
+            },
+        );
+        assert!(inner.restart_ready().unwrap_err().contains("agent turns"));
+        inner.active.clear();
+        let (reply, _) = mpsc::channel();
+        inner.pending.insert(
+            "request".into(),
+            Pending {
+                window: "main".into(),
+                reply,
+            },
+        );
+        assert!(inner
+            .restart_ready()
+            .unwrap_err()
+            .contains("control request"));
+        inner.pending.clear();
+        assert!(inner.restart_ready().is_ok());
+    }
 
     #[test]
     fn missing_control_receipts_preserve_uncertainty() {

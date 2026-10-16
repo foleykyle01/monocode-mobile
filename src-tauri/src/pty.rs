@@ -14,6 +14,15 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::dirs_home;
 use crate::fs::expand_home;
 
+#[cfg(unix)]
+#[path = "pty_restart.rs"]
+mod restart;
+
+pub(crate) struct RestartLease {
+    #[cfg(unix)]
+    _prompt: restart::PromptLease,
+}
+
 const DATA_EVENT: &str = "pty-data";
 const EXIT_EVENT: &str = "pty-exit";
 const READ_CHUNK: usize = 32 * 1024;
@@ -42,6 +51,8 @@ struct LivePty {
     writer: Mutex<Box<dyn Write + Send>>,
     #[cfg(unix)]
     master_fd: i32,
+    #[cfg(unix)]
+    prompt: Option<Arc<restart::PromptChannel>>,
     #[cfg(windows)]
     master: Mutex<Box<dyn portable_pty::MasterPty + Send>>,
     pid: u32,
@@ -52,11 +63,42 @@ pub struct PtyHost {
 }
 
 impl PtyHost {
-    pub(crate) fn restart_safe(&self) -> bool {
-        self.sessions
+    pub(crate) fn write_terminal(
+        &self,
+        updater: &crate::safe_updater::SafeUpdater,
+        id: &str,
+        data: &str,
+    ) -> Result<(), String> {
+        let _admission = crate::safe_updater::admit(updater)?;
+        let live = self
+            .get(id)
+            .ok_or_else(|| "Terminal is not running".to_string())?;
+        let mut writer = live.writer.lock().unwrap_or_else(|e| e.into_inner());
+        writer
+            .write_all(data.as_bytes())
+            .and_then(|_| writer.flush())
+            .map_err(|e| format!("Failed to write to terminal: {e}"))
+    }
+
+    pub(crate) fn prepare_restart(&self) -> Result<Vec<RestartLease>, String> {
+        let sessions = self
+            .sessions
             .lock()
-            .map(|sessions| sessions.is_empty())
-            .unwrap_or(false)
+            .map_err(|_| "Could not inspect terminals; retry the update")?;
+        sessions.values().map(|live| {
+            #[cfg(unix)]
+            {
+                restart::inspect_terminal(live.master_fd, live.pid)?;
+                let prompt = restart::park(live.prompt.as_ref())?;
+                restart::inspect_terminal(live.master_fd, live.pid)?;
+                Ok(RestartLease { _prompt: prompt })
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = live;
+                Err("Idle terminal inspection is not supported on this platform. Finish terminal jobs and close the terminals before retrying the update.".into())
+            }
+        }).collect()
     }
 
     pub(crate) fn has_working_dir(&self, path: &std::path::Path) -> bool {
@@ -168,19 +210,24 @@ pub fn pty_spawn(
 }
 
 #[tauri::command]
-pub fn pty_write(host: State<PtyHost>, id: String, data: String) -> Result<(), String> {
-    let live = host
-        .get(&id)
-        .ok_or_else(|| "Terminal is not running".to_string())?;
-    let mut writer = live.writer.lock().unwrap_or_else(|e| e.into_inner());
-    writer
-        .write_all(data.as_bytes())
-        .and_then(|_| writer.flush())
-        .map_err(|e| format!("Failed to write to terminal: {e}"))
+pub fn pty_write(
+    host: State<PtyHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
+    id: String,
+    data: String,
+) -> Result<(), String> {
+    host.write_terminal(&updater, &id, &data)
 }
 
 #[tauri::command]
-pub fn pty_resize(host: State<PtyHost>, id: String, cols: u16, rows: u16) -> Result<(), String> {
+pub fn pty_resize(
+    host: State<PtyHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     let live = host
         .get(&id)
         .ok_or_else(|| "Terminal is not running".to_string())?;
@@ -233,7 +280,12 @@ pub fn pty_status(host: State<'_, PtyHost>, id: String) -> Result<PtyStatus, Str
 }
 
 #[tauri::command]
-pub fn pty_kill(host: State<PtyHost>, id: String) -> Result<(), String> {
+pub fn pty_kill(
+    host: State<PtyHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
+    id: String,
+) -> Result<(), String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     if let Some(live) = host.remove(&id) {
         terminate(live.pid);
         #[cfg(unix)]
@@ -245,7 +297,11 @@ pub fn pty_kill(host: State<PtyHost>, id: String) -> Result<(), String> {
 /// Off the main thread: `kill_all` waits for the shells to die before it
 /// returns, and a window close calls this while the app keeps running.
 #[tauri::command(async)]
-pub fn pty_kill_all(host: State<'_, PtyHost>) -> Result<(), String> {
+pub fn pty_kill_all(
+    host: State<'_, PtyHost>,
+    updater: State<'_, crate::safe_updater::SafeUpdater>,
+) -> Result<(), String> {
+    let _admission = crate::safe_updater::admit(&updater)?;
     host.kill_all();
     Ok(())
 }
@@ -282,6 +338,10 @@ fn spawn_unix(
         cmd.env("HOME", &home);
     }
     cmd.env("PWD", &workdir);
+    // Missing prompt integration must not break terminal startup. Restart
+    // remains fail-closed for this terminal if setup could not be prepared.
+    let prompt = restart::configure(&mut cmd, &shell).unwrap_or_default();
+    let prompt_fd = prompt.as_ref().map(|(_, socket)| socket.as_raw_fd());
 
     // setsid() already creates a new session and process group. Calling
     // process_group(0) first makes the child a group leader, so setsid()
@@ -296,6 +356,9 @@ fn spawn_unix(
             let _ = libc::ioctl(0, libc::TIOCSCTTY as _, 0);
             if slave_fd > 2 {
                 libc::close(slave_fd);
+            }
+            if let Some(fd) = prompt_fd {
+                restart::inherit_socket(fd)?;
             }
             Ok(())
         });
@@ -315,6 +378,7 @@ fn spawn_unix(
         cwd: workdir.clone(),
         writer: Mutex::new(Box::new(writer)),
         master_fd: master,
+        prompt: prompt.map(|(channel, _)| channel),
         pid,
     });
     host.insert(id.clone(), live);
@@ -856,6 +920,7 @@ mod tests {
                 cwd: std::path::PathBuf::from("/test"),
                 writer: Mutex::new(Box::new(std::io::sink())),
                 master_fd: -1,
+                prompt: None,
                 pid: 42,
             }),
         );
@@ -863,5 +928,6 @@ mod tests {
         assert!(host.get("term").is_some());
         assert!(host.remove_if_pid("term", 42).is_some());
         assert!(host.get("term").is_none());
+        assert!(host.prepare_restart().unwrap().is_empty());
     }
 }
