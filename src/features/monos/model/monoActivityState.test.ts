@@ -333,6 +333,40 @@ describe("Mono project scope projection", () => {
     ).toEqual(new Map());
   });
 
+  it("keeps another owner’s retained scope when saving only changed Monos", () => {
+    const first: Mono = { ...mono, projects: ["/repo", "/next"] };
+    const second: Mono = { ...otherMono, projects: ["/second"] };
+    saveMonoLastProjectScopes(
+      [first, second],
+      new Map([
+        [first.id, ["/repo"]],
+        [second.id, ["/second"]],
+      ]),
+    );
+    saveMonoLastProjectScopes(
+      [first, second],
+      new Map([
+        [first.id, ["/next"]],
+        [second.id, ["/second"]],
+      ]),
+      [first.id],
+    );
+    saveMonoLastProjectScopes(
+      [first, second],
+      new Map([
+        [first.id, ["/repo"]],
+        [second.id, ["/second"]],
+      ]),
+      [second.id],
+    );
+    expect(loadMonoLastProjectScopes([first, second])).toEqual(
+      new Map([
+        [first.id, ["/next"]],
+        [second.id, ["/second"]],
+      ]),
+    );
+  });
+
   it("does not create scope for a busy Mono parent without a linked child", () => {
     expect(projectScopes([mono], [{ ...parent, busy: true }])).toEqual(
       new Map([[mono.id, []]]),

@@ -131,6 +131,12 @@ it("shows accessible linked project subrows only in the readable Mono directory"
   expect(scope.querySelector("span.break-all")?.className).toContain(
     "break-all",
   );
+  const row = scope.closest<HTMLElement>("[data-mono-status]")!;
+  const header = row.querySelector<HTMLElement>("[data-mono-header]");
+  const scopeList = scope.parentElement;
+  expect(header?.nextElementSibling).toBe(scopeList);
+  expect(scopeList?.className).toContain("w-full");
+  expect(scopeList?.className).toContain("min-w-0");
 });
 
 it("offers a labelled create affordance when the dedicated Mono directory is empty", () => {

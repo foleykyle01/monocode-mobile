@@ -24,6 +24,7 @@ export type MonoProjectScope = {
 type MonoLastProjectScopes = ReadonlyMap<string, readonly string[]>;
 
 const LAST_PROJECT_SCOPES_KEY = "monocode:mono-last-project-scopes";
+const LAST_PROJECT_SCOPES_CHANGE = "monocode:mono-last-project-scopes-change";
 const MAX_PROJECT_SCOPES = 20;
 
 const savedLaunches = new WeakMap<
@@ -225,16 +226,54 @@ export function monoProjectScopes(
 export function saveMonoLastProjectScopes(
   monos: readonly Mono[],
   scopes: MonoLastProjectScopes,
+  changedMonoIds?: Iterable<string>,
 ) {
   const pruned = pruneMonoLastProjectScopes(monos, scopes);
-  const saved = Object.fromEntries(
-    [...pruned].filter(([, paths]) => paths.length > 0),
-  );
+  const merged = changedMonoIds
+    ? mergeMonoLastProjectScopes(
+        monos,
+        loadMonoLastProjectScopes(monos),
+        pruned,
+        changedMonoIds,
+      )
+    : pruned;
+  const saved = Object.fromEntries([...merged]);
   try {
     localStorage.setItem(LAST_PROJECT_SCOPES_KEY, JSON.stringify(saved));
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(LAST_PROJECT_SCOPES_CHANGE));
   } catch {
     // Private mode / quota: this window still keeps the in-memory projection.
   }
+}
+
+/** Sync same-window owners as well as native storage events from other windows. */
+export function subscribeMonoLastProjectScopes(listener: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === LAST_PROJECT_SCOPES_KEY || event.key === null) listener();
+  };
+  window.addEventListener(LAST_PROJECT_SCOPES_CHANGE, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(LAST_PROJECT_SCOPES_CHANGE, listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function mergeMonoLastProjectScopes(
+  monos: readonly Mono[],
+  current: MonoLastProjectScopes,
+  next: MonoLastProjectScopes,
+  changedMonoIds: Iterable<string>,
+): MonoLastProjectScopes {
+  const merged = new Map(current);
+  for (const id of changedMonoIds) {
+    const paths = next.get(id);
+    if (paths?.length) merged.set(id, paths);
+    else merged.delete(id);
+  }
+  return pruneMonoLastProjectScopes(monos, merged);
 }
 
 function pruneMonoLastProjectScopes(

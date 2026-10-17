@@ -197,7 +197,7 @@ export function MonoRailSection({
                 ref={(el) => sortable.setItemRef(mono.id, el)}
                 data-selected={selected || undefined}
                 data-mono-status={state.status}
-                className={`reorder-item project-reorder-item group relative flex flex-wrap cursor-default touch-none items-stretch rounded-md px-2 ${
+                className={`reorder-item project-reorder-item group relative flex flex-col cursor-default touch-none items-stretch rounded-md px-2 ${
                   directory
                     ? "min-h-14 rounded-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-background-base"
                     : "h-8"
@@ -238,6 +238,10 @@ export function MonoRailSection({
                   });
                 }}
               >
+                <div
+                  data-mono-header
+                  className="relative flex w-full min-w-0 items-stretch"
+                >
                 <button
                   type="button"
                   title={[look.name, projects, status]
@@ -319,6 +323,7 @@ export function MonoRailSection({
                 >
                   <MoreHorizontal className="size-4" strokeWidth={1.75} />
                 </button>
+                </div>
               {directory && scopes.length ? (
                 <MonoProjectScopes scopes={scopes} projects={look.projects} />
               ) : null}
@@ -369,7 +374,7 @@ function MonoProjectScopes({
     projects.map((project) => [pathKey(project.path), project.name]),
   );
   return (
-    <div className="mb-1 flex flex-col" data-mono-project-scopes>
+    <div className="mb-1 flex w-full min-w-0 flex-col pl-10" data-mono-project-scopes>
       {scopes.map((scope) => {
         const key = projectKey(scope.path);
         const name =
@@ -389,7 +394,7 @@ function MonoProjectScopes({
             role="note"
             aria-label={`${detail}: ${name}`}
             title={scope.path}
-            className={`ml-10 flex min-w-0 items-start gap-2 px-2 py-1 ${
+            className={`flex min-w-0 items-start gap-2 px-2 py-1 ${
               active ? "text-content/65" : "text-content/40"
             }`}
           >

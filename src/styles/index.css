@@ -362,11 +362,12 @@ html.has-native-glass:not(.theme-light) #root {
 }
 
 /* Selectable project/Mono rows own feedback across their padding too. */
-.reorder-item.project-reorder-item > button:first-of-type {
+.reorder-item.project-reorder-item > button:first-of-type,
+.reorder-item.project-reorder-item > [data-mono-header] > button:first-of-type {
   background-color: transparent;
 }
 
-.reorder-item.project-reorder-item:not([data-reordering]):is(:active, :has(> button:first-of-type:active)):not(:has([data-no-drag]:active)) {
+.reorder-item.project-reorder-item:not([data-reordering]):is(:active, :has(> button:first-of-type:active), :has(> [data-mono-header] > button:first-of-type:active)):not(:has([data-no-drag]:active)) {
   background-color: var(--color-selection-hover);
 }
 
@@ -375,11 +376,13 @@ html.has-native-glass:not(.theme-light) #root {
   visibility: hidden;
 }
 
-.project-reorder-item[data-reordering] > button:first-of-type {
+.project-reorder-item[data-reordering] > button:first-of-type,
+.project-reorder-item[data-reordering] > [data-mono-header] > button:first-of-type {
   padding-right: 0;
 }
 
-.project-reorder-item[data-reordering][data-project-activity] > button:first-of-type {
+.project-reorder-item[data-reordering][data-project-activity] > button:first-of-type,
+.project-reorder-item[data-reordering][data-project-activity] > [data-mono-header] > button:first-of-type {
   padding-right: 1rem;
 }
 

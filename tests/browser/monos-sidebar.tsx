@@ -10,9 +10,13 @@ import "../../src/styles/index.css";
 
 const LONG_NAME =
   "VeryLongUnbrokenMonoNameThatMustRemainReadableAtTheMinimumRailWidth";
-const ACTIVE_PROJECT =
+const STRESS_PROJECT =
   "/fixture/VeryLongUnbrokenProjectNameThatMustRemainReadableAtTheMinimumRailWidth";
-const LAST_PROJECT = "/fixture/LastWorkedProject";
+const ACTIVE_PROJECT =
+  "/fixture/MonoCode Desktop";
+const LAST_PROJECT = "/fixture/Release notes";
+const REVIEW_PROJECT = "/fixture/Customer portal";
+const RELEASE_PROJECT = "/fixture/Release checklist";
 
 function seedMonos() {
   localStorage.removeItem("monocode:mono-roster");
@@ -20,11 +24,31 @@ function seedMonos() {
   localStorage.removeItem("monocode:mono-last-project-scopes");
   return Array.from({ length: 11 }, (_, index) => {
     const mono = createMono(
-      index === 0 ? [ACTIVE_PROJECT] : index === 1 ? [LAST_PROJECT] : [],
+      index === 0
+        ? [ACTIVE_PROJECT]
+        : index === 1
+          ? [STRESS_PROJECT]
+          : index === 2
+            ? [LAST_PROJECT]
+            : index === 3
+              ? [REVIEW_PROJECT, RELEASE_PROJECT]
+              : [],
     );
+    const name =
+      index === 0
+        ? "Design lead"
+        : index === 1
+          ? LONG_NAME
+          : index === 2
+            ? "Documentation reviewer"
+            : index === 3
+              ? "Release coordinator"
+              : index === 4
+                ? "Research assistant"
+                : `Mono ${String(index + 1).padStart(2, "0")}`;
     saveMonoName(
       mono.id,
-      index === 0 ? LONG_NAME : `Mono ${String(index + 1).padStart(2, "0")}`,
+      name,
     );
     return mono.id;
   });
@@ -70,10 +94,22 @@ function Fixture() {
         onOpenAutomations={() => setDestination("Automations")}
         monos={{
           activeId: opened,
-          states: new Map([[seed[0], { status: "working" }]]),
+          states: new Map([
+            [seed[0], { status: "working" }],
+            [seed[1], { status: "working" }],
+            [seed[3], { status: "needs-you" }],
+          ]),
           projectScopes: new Map([
             [seed[0], [{ path: ACTIVE_PROJECT, status: "working" as const }]],
-            [seed[1], [{ path: LAST_PROJECT, status: "idle" as const }]],
+            [seed[1], [{ path: STRESS_PROJECT, status: "working" as const }]],
+            [seed[2], [{ path: LAST_PROJECT, status: "idle" as const }]],
+            [
+              seed[3],
+              [
+                { path: REVIEW_PROJECT, status: "needs-you" as const },
+                { path: RELEASE_PROJECT, status: "working" as const },
+              ],
+            ],
           ]),
           onOpen: (id) => {
             setOpened(id);

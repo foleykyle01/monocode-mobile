@@ -20,6 +20,7 @@ import {
   monoProjectScopes,
   monoActivityStates,
   saveMonoLastProjectScopes,
+  subscribeMonoLastProjectScopes,
   updateMonoLastProjectScopes,
   type MonoActivitySnapshot,
 } from "../model/monoActivityState";
@@ -193,21 +194,43 @@ export function useMonoActivity(
     monoActivityProjectScopes(monos, snapshots),
   );
   useEffect(() => {
+    const refresh = () => {
+      setLastProjectScopes((previous) => {
+        const next = currentLastProjectScopes(monos, previous);
+        return plainEqual(previous, next) ? previous : next;
+      });
+    };
+    refresh();
+    return subscribeMonoLastProjectScopes(refresh);
+  }, [monos]);
+  useEffect(() => {
     setLastProjectScopes((previous) => {
+      const current = currentLastProjectScopes(monos, previous);
       const next = updateMonoLastProjectScopes(
         monos,
-        previous,
+        current,
         activeProjectScopes,
       );
-      if (plainEqual(previous, next)) return previous;
-      saveMonoLastProjectScopes(monos, next);
-      return next;
+      const activeMonoIds = [...activeProjectScopes]
+        .filter(([, scopes]) => scopes.length > 0)
+        .map(([id]) => id);
+      if (activeMonoIds.length && !plainEqual(current, next))
+        saveMonoLastProjectScopes(monos, next, activeMonoIds);
+      return plainEqual(previous, next) ? previous : next;
     });
   }, [activeProjectScopes, monos]);
   const projectScopes = useStableValue(
     monoProjectScopes(monos, activeProjectScopes, lastProjectScopes),
   );
   return useStableValue({ states, projectScopes });
+}
+
+function currentLastProjectScopes(
+  monos: ReturnType<typeof listMonos>,
+  previous: ReturnType<typeof loadMonoLastProjectScopes>,
+) {
+  const retained = updateMonoLastProjectScopes(monos, previous, new Map());
+  return new Map([...retained, ...loadMonoLastProjectScopes(monos)]);
 }
 
 /** Compatibility view for consumers that only render the Mono's aggregate state. */

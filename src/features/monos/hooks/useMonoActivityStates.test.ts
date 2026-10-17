@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { newSession, type Session } from "../../sessions/model/session";
 import { getMonoTranscriptPage } from "../../sessions/data/sessionStore";
-import { createMono, monosSnapshot, saveMonoSessionId } from "../model/mono";
+import { createMono, monosSnapshot, saveMonoSessionId, type Mono } from "../model/mono";
 import { monoActivitySessions } from "../model/monoActivityState";
 import { MonoRailSection } from "../../../app/shell/MonoRailSection";
 import { useMonoActivity } from "./useMonoActivityStates";
@@ -34,8 +34,15 @@ let callbacks: Map<string, (event: { payload: unknown }) => void>;
 let parent: Session;
 let child: Session;
 let roster: string;
-function Harness({ sessions }: { sessions: Session[] }) {
-  const activity = useMonoActivity(sessions, roster);
+let mono: Mono;
+function Harness({
+  sessions,
+  enabled = true,
+}: {
+  sessions: Session[];
+  enabled?: boolean;
+}) {
+  const activity = useMonoActivity(sessions, roster, [], enabled);
   return createElement(MonoRailSection, {
     states: activity.states,
     projectScopes: activity.projectScopes,
@@ -51,13 +58,13 @@ const status = () =>
     ?.getAttribute("data-mono-status");
 const projectScope = () =>
   container.querySelector<HTMLElement>("[data-mono-project-scope]");
-const render = async (sessions: Session[]) => {
-  await act(async () => root.render(createElement(Harness, { sessions })));
+const render = async (sessions: Session[], enabled = true) => {
+  await act(async () => root.render(createElement(Harness, { sessions, enabled })));
 };
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   localStorage.clear();
-  const mono = createMono(["/repo", "/next"]);
+  mono = createMono(["/repo", "/next"]);
   saveMonoSessionId(mono.id, "parent");
   roster = monosSnapshot();
   child = { ...newSession("codex", "/repo", "gpt-6"), id: "child", busy: true };
@@ -246,4 +253,23 @@ it("keeps current links usable when old history is unavailable", async () => {
     child,
   ]);
   expect(status()).toBe("working");
+});
+
+it("hydrates retained scope after enable and after a remount", async () => {
+  localStorage.setItem(
+    "monocode:mono-last-project-scopes",
+    JSON.stringify({ [mono.id]: ["/next"] }),
+  );
+
+  await render([], false);
+  expect(projectScope()).toBeNull();
+  await render([], true);
+  expect(projectScope()?.getAttribute("title")).toBe("/next");
+  expect(projectScope()?.dataset.monoProjectStatus).toBe("idle");
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render([], true);
+  expect(projectScope()?.getAttribute("title")).toBe("/next");
+  expect(projectScope()?.dataset.monoProjectStatus).toBe("idle");
 });
