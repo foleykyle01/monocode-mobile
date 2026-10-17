@@ -240,7 +240,9 @@ export function MonoRailSection({
               >
                 <div
                   data-mono-header
-                  className="relative flex w-full min-w-0 items-stretch"
+                  className={`relative flex w-full min-w-0 items-stretch ${
+                    directory ? "" : "h-full"
+                  }`}
                 >
                 <button
                   type="button"

@@ -36,6 +36,82 @@ async function expectRowGeometry(
   }
 }
 
+async function expectCompactRowGeometry(
+  row: Locator,
+  hasStatusDot: boolean,
+) {
+  await row.hover();
+  const header = row.locator("[data-mono-header]");
+  const mascot = header.locator("button > svg.pixel-mascot");
+  const options = row.getByRole("button", { name: /options$/ });
+  const dot = row.locator("[data-mono-status-dot]");
+  await expect(options).toBeVisible();
+  await expect(dot).toHaveCount(hasStatusDot ? 1 : 0);
+  const [rowBox, headerBox, mascotBox, optionsBox, dotBox] =
+    await Promise.all([
+      row.boundingBox(),
+      header.boundingBox(),
+      mascot.boundingBox(),
+      options.boundingBox(),
+      hasStatusDot ? dot.boundingBox() : Promise.resolve(null),
+    ]);
+  expect(rowBox).not.toBeNull();
+  expect(headerBox).not.toBeNull();
+  expect(mascotBox).not.toBeNull();
+  expect(optionsBox).not.toBeNull();
+  const rowMiddle = rowBox!.y + rowBox!.height / 2;
+  expect(Math.abs(headerBox!.y + headerBox!.height / 2 - rowMiddle)).toBeLessThan(2);
+  expect(Math.abs(mascotBox!.y + mascotBox!.height / 2 - rowMiddle)).toBeLessThan(2);
+  expect(Math.abs(optionsBox!.y + optionsBox!.height / 2 - rowMiddle)).toBeLessThan(2);
+  if (hasStatusDot) {
+    expect(dotBox).not.toBeNull();
+    expect(Math.abs(dotBox!.y + dotBox!.height / 2 - rowMiddle)).toBeLessThan(2);
+  }
+}
+
+test("compact Projects centers every Mono header control in its h-8 row", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.goto("/tests/browser/monos-sidebar.html");
+
+  const compact = page.locator('[data-mono-presentation="compact"]');
+  const working = compact
+    .locator('[data-mono-status="working"]')
+    .filter({ hasText: "Design lead" });
+  const idle = compact
+    .locator('[data-mono-status="idle"]')
+    .filter({ hasText: "Documentation reviewer" });
+  const needsYou = compact
+    .locator('[data-mono-status="needs-you"]')
+    .filter({ hasText: "Release coordinator" });
+  await expect(compact).toBeVisible();
+  await expect(working.locator("button").first()).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expectCompactRowGeometry(working, true);
+  await expectCompactRowGeometry(idle, true);
+
+  const needsYouButton = needsYou.locator(
+    "[data-mono-header] > button:not([data-no-drag])",
+  );
+  await needsYouButton.click();
+  await expect(needsYouButton).toHaveAttribute("aria-current", "true");
+  await expectCompactRowGeometry(needsYou, true);
+  await page.screenshot({
+    path: testInfo.outputPath("monos-compact-projects.png"),
+    animations: "disabled",
+  });
+
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = "2";
+  });
+  await page.setViewportSize({ width: 760, height: 820 });
+  await needsYou.scrollIntoViewIfNeeded();
+  await expectCompactRowGeometry(needsYou, true);
+});
+
 test("Monos directory uses the live rail components at desktop and minimum widths", async ({
   page,
 }, testInfo) => {
