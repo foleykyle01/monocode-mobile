@@ -174,7 +174,7 @@ export function MonoRailSection({
               data-mono-status={state.status}
               className={`reorder-item project-reorder-item group relative flex cursor-default touch-none items-stretch rounded-md px-2 ${
                 directory
-                  ? "min-h-14 rounded-lg group-has-[:focus-visible]:ring-2 group-has-[:focus-visible]:ring-accent/70 group-has-[:focus-visible]:ring-offset-1 group-has-[:focus-visible]:ring-offset-background-base"
+                  ? "min-h-14 rounded-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-background-base"
                   : "h-8"
               } ${
                 selected

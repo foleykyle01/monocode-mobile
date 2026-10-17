@@ -242,11 +242,13 @@ describe("Mono directory rail", () => {
     };
     act(() => render());
 
+    expect(container.querySelector('button[aria-label="Project options"]')).not.toBeNull();
     act(() =>
       container.querySelector<HTMLButtonElement>('button[aria-label="Monos"]')!.click(),
     );
     expect(localStorage.getItem("monocode.projectRailView")).toBe("monos");
     expect(container.querySelector('[data-mono-presentation="directory"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="Project options"]')).toBeNull();
     expect(container.querySelector('[data-mono-rail] [aria-current="true"]')).not.toBeNull();
 
     act(() =>
@@ -260,6 +262,7 @@ describe("Mono directory rail", () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="Projects"]')!.click(),
     );
     expect(container.querySelector('[data-mono-presentation="directory"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Project options"]')).not.toBeNull();
     expect(container.querySelector("[data-mono-rail]")).not.toBeNull();
 
     act(() =>

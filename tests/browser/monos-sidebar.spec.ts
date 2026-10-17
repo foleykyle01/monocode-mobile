@@ -10,6 +10,7 @@ test("Monos directory uses the live rail components at desktop and minimum width
   const directory = page.locator('[data-mono-presentation="directory"]');
   const longRow = directory.locator('button[aria-current="true"]');
   await expect(directory).toBeVisible();
+  await expect(page.getByRole("button", { name: "Project options", exact: true })).toHaveCount(0);
   await expect(longRow).toHaveAttribute("aria-current", "true");
   await expect(longRow.locator("span.break-all")).toHaveCSS(
     "font-size",
@@ -52,8 +53,10 @@ test("Monos is keyboard-selectable and reachable from the collapsed rail without
   const longRow = page.locator(
     '[data-mono-presentation="directory"] button[aria-current="true"]',
   );
+  await page.keyboard.press("Tab");
   await longRow.focus();
   await expect(longRow).toBeFocused();
+  await expect(longRow.locator("..")).toHaveCSS("--tw-ring-offset-width", "1px");
   await longRow.press("Enter");
   await expect(page.locator("[data-fixture-destination]")).toHaveText(
     "Mono conversation",

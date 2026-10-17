@@ -346,7 +346,7 @@ export function ProjectRail({
   return (
     <nav
       ref={resize.setPaneRef}
-      aria-label="Projects"
+      aria-label={monosView ? "Monos" : "Projects"}
       className={`sidebar-glass relative shrink-0 flex-col border-r border-stroke ${visible ? "flex" : "hidden"}`}
     >
       <div
@@ -462,6 +462,7 @@ export function ProjectRail({
               />
             ) : null}
 
+            {!monosView ? <>
             {sections.pinned.length > 0 ? (
               <ProjectSection
                 label="Pinned"
@@ -553,6 +554,7 @@ export function ProjectRail({
               groupLogos={groupLogos}
               groupMascots={groupMascots}
             />
+            </> : null}
           </div>
           <SidebarUpdateFooter
             update={updateNotice}
