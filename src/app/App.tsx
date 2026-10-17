@@ -613,7 +613,7 @@ import {
 } from "../features/monos/model/monoFiles";
 import { useMonoHabits } from "./hooks/useMonoHabits";
 import { useFloatingMono } from "./hooks/useFloatingMono";
-import { useMonoActivityStates } from "../features/monos/hooks/useMonoActivityStates";
+import { useMonoActivity } from "../features/monos/hooks/useMonoActivityStates";
 import {
   dropRelays,
   habitPostsContext,
@@ -2158,12 +2158,13 @@ function Workspace({
     busySessionIds,
     activeSessionId,
   );
-  const monoStates = useMonoActivityStates(
+  const monoActivityProjection = useMonoActivity(
     sessions,
     monosSnap,
     history,
     monosEnabled,
   );
+  const monoStates = monoActivityProjection.states;
   // Companion requests arrive outside React. Keeping this current avoids
   // rebuilding its bridge for streamed activity while retaining all owners.
   const companionMonoStatesRef = useRef(monoStates);
@@ -13034,9 +13035,13 @@ function Workspace({
         : undefined;
       if (count) unseen.set(mono.id, count);
     }
-    return { states: monoStates, unseen };
+    return {
+      states: monoStates,
+      projectScopes: monoActivityProjection.projectScopes,
+      unseen,
+    };
     // The roster is read through its snapshot.
-  }, [monosSnap, monoStates, monoReplies.counts]);
+  }, [monosSnap, monoStates, monoActivityProjection.projectScopes, monoReplies.counts]);
   const monoRail = useStableValue(monoRailState);
   const busyProjectPaths = useStableValue(
     promptableSessions.flatMap((session) =>
@@ -13058,6 +13063,7 @@ function Workspace({
         ? {
             activeId: monoViewMono?.id,
             states: monoRail.states,
+            projectScopes: monoRail.projectScopes,
             unseenCounts: monoRail.unseen,
             onOpen: onOpenRailMono,
             onCreate: onCreateMono,

@@ -96,13 +96,41 @@ it("uses the same exact open callback in the readable Mono directory", () => {
 
   const row = container.querySelector<HTMLElement>(`[data-selected="true"]`)!;
   const button = row.querySelector<HTMLButtonElement>("button")!;
-  expect(container.querySelector('[data-mono-presentation="directory"]')).not.toBeNull();
+  expect(
+    container.querySelector('[data-mono-presentation="directory"]'),
+  ).not.toBeNull();
   expect(row.className).toContain("min-h-14");
   expect(button.getAttribute("aria-current")).toBe("true");
   expect(button.querySelector("span")?.className).toContain("break-all");
 
   act(() => button.click());
   expect(onOpen).toHaveBeenCalledExactlyOnceWith(mono.id);
+});
+
+it("shows accessible linked project subrows only in the readable Mono directory", () => {
+  const path =
+    "/workspace/VeryLongUnbrokenProjectNameThatMustWrapWithoutClipping";
+  const mono = createMono([path]);
+  render({
+    presentation: "directory",
+    projectScopes: new Map([
+      [mono.id, [{ path, status: "needs-you" as const }]],
+    ]),
+  });
+
+  const scope = container.querySelector<HTMLElement>(
+    "[data-mono-project-scope]",
+  )!;
+  expect(scope.getAttribute("data-mono-project-status")).toBe("needs-you");
+  expect(scope.getAttribute("title")).toBe(path);
+  expect(scope.getAttribute("aria-label")).toContain("Needs you");
+  expect(scope.getAttribute("aria-label")).toContain(
+    "VeryLongUnbrokenProjectNameThatMustWrapWithoutClipping",
+  );
+  expect(scope.querySelector("button")).toBeNull();
+  expect(scope.querySelector("span.break-all")?.className).toContain(
+    "break-all",
+  );
 });
 
 it("offers a labelled create affordance when the dedicated Mono directory is empty", () => {
@@ -142,14 +170,20 @@ it("shows completed unread work in green until opened, with active work taking p
   expect(container.querySelector('[data-mono-unread="1"]')).toBe(dot());
   expect(dot().textContent).toBe("");
   expect(container.querySelectorAll("[data-mono-status-dot]")).toHaveLength(1);
-  expect(container.querySelector('[aria-label*="Done, unread"]')).not.toBeNull();
+  expect(
+    container.querySelector('[aria-label*="Done, unread"]'),
+  ).not.toBeNull();
 
   for (const status of ["working", "needs-you"] as const) {
     render({ unseenCounts, states: new Map([[mono.id, { status }]]) });
     expect(dot().getAttribute("data-mono-status-dot")).toBe(status);
     expect(dot().classList.contains("bg-emerald-400")).toBe(false);
     expect(dot().textContent).toBe("");
-    expect(dot().classList.contains(status === "working" ? "bg-blue-400" : "bg-amber-400")).toBe(true);
+    expect(
+      dot().classList.contains(
+        status === "working" ? "bg-blue-400" : "bg-amber-400",
+      ),
+    ).toBe(true);
   }
 
   render({ unseenCounts, activeId: mono.id });

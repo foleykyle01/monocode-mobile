@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   newSession,
   type Block,
@@ -7,8 +8,13 @@ import {
 import type { Mono } from "./mono";
 import {
   monoActivityChildren,
+  loadMonoLastProjectScopes,
+  monoActivityProjectScopes,
   monoActivitySessions,
+  monoProjectScopes,
   monoActivityStates,
+  saveMonoLastProjectScopes,
+  updateMonoLastProjectScopes,
 } from "./monoActivityState";
 
 const mono: Mono = {
@@ -61,6 +67,23 @@ function project(sessions: Session[], saved = new Map<string, Block[]>()) {
     ],
   );
 }
+
+function projectScopes(
+  monos: readonly Mono[],
+  sessions: Session[],
+  children: Record<string, string[]> = monoActivityChildren(
+    monos,
+    sessions,
+    new Map(),
+    monoActivitySessions(sessions),
+  ),
+) {
+  return monoActivityProjectScopes(monos, [
+    { sessions: monoActivitySessions(sessions), children },
+  ]);
+}
+
+beforeEach(() => localStorage.clear());
 
 it("shows a busy child under its idle parent, deduplicates links, and excludes unrelated/sibling work", () => {
   const live = monoActivitySessions([parent, child]);
@@ -217,4 +240,102 @@ it("combines current window owners without letting an idle duplicate hide live a
       ],
     ).get("mono")?.status,
   ).toBe("idle");
+});
+
+describe("Mono project scope projection", () => {
+  it("groups linked children by their canonical project and prioritizes Needs you", () => {
+    const sibling = {
+      ...child,
+      id: "sibling",
+      worktreeCwd: "/worktrees/review",
+      pendingQuestion: { requestId: 1, questions: [] },
+    };
+    const linked = {
+      ...parent,
+      blocks: [
+        {
+          ...parent.blocks[0],
+          monoSpawnedSessions: [launch, { ...launch, sessionId: sibling.id }],
+        },
+      ],
+    };
+    expect(projectScopes([mono, otherMono], [linked, child, sibling])).toEqual(
+      new Map([
+        [mono.id, [{ path: "/repo", status: "needs-you" }]],
+        [otherMono.id, []],
+      ]),
+    );
+  });
+
+  it("keeps two Monos isolated and ignores unlinked sessions", () => {
+    const secondMono: Mono = { ...otherMono, projects: ["/second"] };
+    const second = { ...child, id: "second-child", cwd: "/second" };
+    const secondParent = {
+      ...parent,
+      id: "other-parent",
+      blocks: [
+        {
+          ...parent.blocks[0],
+          monoSpawnedSessions: [
+            { ...launch, sessionId: second.id, cwd: second.cwd },
+          ],
+        },
+      ],
+    };
+    expect(
+      projectScopes([mono, secondMono], [parent, child, secondParent, second]),
+    ).toEqual(
+      new Map([
+        [mono.id, [{ path: "/repo", status: "working" }]],
+        [secondMono.id, [{ path: "/second", status: "working" }]],
+      ]),
+    );
+    expect(
+      projectScopes([mono], [parent, child], { parent: ["archived"] }),
+    ).toEqual(new Map([[mono.id, []]]));
+  });
+
+  it("retains idle scope, replaces it on new linked work, and prunes roster changes", () => {
+    const multi: Mono = { ...mono, projects: ["/repo", "/next"] };
+    const first = projectScopes([multi], [parent, child]);
+    const remembered = updateMonoLastProjectScopes([multi], new Map(), first);
+    expect(monoProjectScopes([multi], new Map(), remembered)).toEqual(
+      new Map([[multi.id, [{ path: "/repo", status: "idle" }]]]),
+    );
+
+    const next = { ...child, id: "next", cwd: "/next" };
+    const moved = {
+      ...parent,
+      blocks: [
+        {
+          ...parent.blocks[0],
+          monoSpawnedSessions: [
+            { ...launch, sessionId: next.id, cwd: next.cwd },
+          ],
+        },
+      ],
+    };
+    const replacement = updateMonoLastProjectScopes(
+      [multi],
+      remembered,
+      projectScopes([multi], [moved, next]),
+    );
+    saveMonoLastProjectScopes([multi], replacement);
+    expect(loadMonoLastProjectScopes([multi])).toEqual(
+      new Map([[multi.id, ["/next"]]]),
+    );
+    expect(monoProjectScopes([multi], new Map(), replacement)).toEqual(
+      new Map([[multi.id, [{ path: "/next", status: "idle" }]]]),
+    );
+    expect(loadMonoLastProjectScopes([])).toEqual(new Map());
+    expect(
+      loadMonoLastProjectScopes([{ ...multi, projects: ["/repo"] }]),
+    ).toEqual(new Map());
+  });
+
+  it("does not create scope for a busy Mono parent without a linked child", () => {
+    expect(projectScopes([mono], [{ ...parent, busy: true }])).toEqual(
+      new Map([[mono.id, []]]),
+    );
+  });
 });

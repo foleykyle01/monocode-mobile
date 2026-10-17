@@ -10,12 +10,18 @@ import "../../src/styles/index.css";
 
 const LONG_NAME =
   "VeryLongUnbrokenMonoNameThatMustRemainReadableAtTheMinimumRailWidth";
+const ACTIVE_PROJECT =
+  "/fixture/VeryLongUnbrokenProjectNameThatMustRemainReadableAtTheMinimumRailWidth";
+const LAST_PROJECT = "/fixture/LastWorkedProject";
 
 function seedMonos() {
   localStorage.removeItem("monocode:mono-roster");
   localStorage.removeItem("monocode.projectRailView");
+  localStorage.removeItem("monocode:mono-last-project-scopes");
   return Array.from({ length: 11 }, (_, index) => {
-    const mono = createMono();
+    const mono = createMono(
+      index === 0 ? [ACTIVE_PROJECT] : index === 1 ? [LAST_PROJECT] : [],
+    );
     saveMonoName(
       mono.id,
       index === 0 ? LONG_NAME : `Mono ${String(index + 1).padStart(2, "0")}`,
@@ -64,7 +70,11 @@ function Fixture() {
         onOpenAutomations={() => setDestination("Automations")}
         monos={{
           activeId: opened,
-          states: new Map(),
+          states: new Map([[seed[0], { status: "working" }]]),
+          projectScopes: new Map([
+            [seed[0], [{ path: ACTIVE_PROJECT, status: "working" as const }]],
+            [seed[1], [{ path: LAST_PROJECT, status: "idle" as const }]],
+          ]),
           onOpen: (id) => {
             setOpened(id);
             setDestination("Mono conversation");
