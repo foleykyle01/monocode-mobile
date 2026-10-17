@@ -43,6 +43,7 @@ test("phone transcript keeps deliberate reading and history anchors", async ({ p
   await expect.poll(bottomGap).toBeGreaterThan(64);
   const beforeReflow = await transcript.evaluate(element => element.scrollTop);
   await page.getByRole("button", { name: "Grow rendered content" }).click();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect(await transcript.evaluate(element => element.scrollTop)).toBe(beforeReflow);
   await page.getByRole("button", { name: "Stream chunk" }).click();
   expect(await transcript.evaluate(element => element.scrollTop)).toBe(beforeReflow);
