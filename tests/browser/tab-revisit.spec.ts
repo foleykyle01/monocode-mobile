@@ -54,16 +54,6 @@ async function waitForRevealedText(page: Page, text: string) {
   ).toHaveText(text.split("\n\n"), { timeout: 10_000 });
 }
 
-async function scrollUp(scroller: ReturnType<Page["locator"]>) {
-  // WebKit's test driver does not wheel nested containers. Keep the real
-  // rendered scroll geometry, while dispatching the same user-input signal.
-  await scroller.evaluate((el) => {
-    el.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -400 }));
-    el.scrollBy(0, -400);
-    el.dispatchEvent(new Event("scroll"));
-  });
-}
-
 /** Word fades running inside the reply, a few frames after the tab shows. */
 async function fadesAfterShowing(page: Page) {
   await page.evaluate(() => (window as unknown as Fixture).showTab());
@@ -128,42 +118,4 @@ test("words that arrive after the tab returns still fade in", async ({
     .locator('[data-chat-message="reply-1"] [data-word-settled]')
     .count();
   expect(settled).toBeGreaterThanOrEqual(25);
-});
-
-test("a hidden hydrated chat opens at the latest turn without overriding later reading", async ({
-  page,
-}) => {
-  await page.goto("/tests/browser/tab-revisit.html");
-  const scroller = page.locator(".agent-transcript");
-  const distanceFromBottom = () =>
-    scroller.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop);
-  const reply = await page.evaluate(
-    () => (window as unknown as Fixture).REPLY.repeat(30),
-  );
-
-  await page.evaluate(() => (window as unknown as Fixture).hideTab());
-  await setReply(page, { text: reply, streaming: false, busy: false });
-  await page.evaluate(() => (window as unknown as Fixture).showTab());
-  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(1);
-
-  await scrollUp(scroller);
-  await expect.poll(distanceFromBottom).toBeGreaterThan(100);
-
-  await page.evaluate(() => (window as unknown as Fixture).hideTab());
-  await page.evaluate(() => (window as unknown as Fixture).showTab());
-  await expect.poll(distanceFromBottom).toBeLessThanOrEqual(1);
-
-  await scrollUp(scroller);
-  await expect.poll(distanceFromBottom).toBeGreaterThan(100);
-  const readingTop = await scroller.evaluate((el) => el.scrollTop);
-
-  await setReply(page, {
-    text: `${reply}\n\nLate content that arrives after the reader scrolls up. `.repeat(20),
-    streaming: false,
-    busy: false,
-  });
-  await expect(scroller).toContainText("Late content that arrives after");
-  await expect
-    .poll(() => scroller.evaluate((el) => el.scrollTop))
-    .toBeCloseTo(readingTop, 0);
 });

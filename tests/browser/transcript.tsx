@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AgentTranscript } from "../../src/features/sessions/ui/AgentTranscript";
-import {
-  PooledTranscript,
-  TranscriptPool,
-  TranscriptPoolOutlet,
-} from "../../src/features/sessions/ui/TranscriptPool";
 import { MonoComposer } from "../../src/features/monos/ui/MonoComposer";
 import { MessageQueue } from "../../src/features/sessions/ui/MessageQueue";
 import { visibleMonoCompletionMessages } from "../../src/features/monos/model/monoMessaging";
@@ -42,25 +37,33 @@ const blocks: Block[] = Array.from({ length: 20 }, (_, index): Block[] => [
   },
 ]).flat();
 
+// Like the transcript pool, parking detaches the transcript from the page.
 const root = document.getElementById("root")!;
+const host = document.createElement("div");
+host.className = "contents";
+root.appendChild(host);
 
 function Fixture() {
-  const [pool] = useState(() => new TranscriptPool());
-  const [shown, setShown] = useState<"a" | "b" | null>("a");
+  const [parked, setParked] = useState(false);
   useEffect(() => {
     Object.assign(window, {
-      switchTranscript: (id: "a" | "b") => setShown(id),
+      parkTranscript: () => {
+        host.remove();
+        setParked(true);
+      },
+      showTranscript: () => {
+        root.appendChild(host);
+        setParked(false);
+      },
     });
   }, []);
   return (
-    <div className="h-full">
-      {shown ? (
-        <PooledTranscript pool={pool} sessionId={shown}>
-          <AgentTranscript blocks={blocks} initialTurns={20} visible />
-        </PooledTranscript>
-      ) : null}
-      <TranscriptPoolOutlet pool={pool} />
-    </div>
+    <AgentTranscript
+      blocks={blocks}
+      initialTurns={20}
+      visible={!parked}
+      parked={parked}
+    />
   );
 }
 
@@ -244,6 +247,6 @@ const params = new URLSearchParams(location.search);
 const mono = params.has("mono");
 const completion = params.has("monoCompletion");
 if (mono || completion) root.style.width = "540px";
-createRoot(root).render(
+createRoot(host).render(
   completion ? <MonoCompletionFixture /> : mono ? <MonoFixture /> : <Fixture />,
 );
