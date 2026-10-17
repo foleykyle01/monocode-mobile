@@ -75,29 +75,27 @@ describe("phone transcript controls", () => {
     await render([{ id: "image", role: "user", text: "", attachments: [{ name: "Screen.png", mimeType: "image/png", size: 5 }] }]);
     expect(container.querySelector(".message__attachments")?.textContent).toBe("Image attached · Screen.png");
   });
-  it("opens a linked live project session with its current status and reading position", async () => {
+  it("opens a linked live project session with its current status", async () => {
     const session = { id: "child", title: "Check access", cwd: "/work/Power Platform", harness: "claude", model: "opus", busy: true, turn: 4, needsApproval: true };
     const open = vi.fn();
     const block: CompanionBlock = { id: "launch", role: "tool", text: "Started session", spawnedSessions: [session] };
     await render([block], vi.fn(), { mono: true, onOpenSession: open });
-    const viewport = container.querySelector<HTMLDivElement>(".transcript")!;
-    viewport.scrollTop = 123;
     const card = container.querySelector<HTMLButtonElement>(".spawned-session")!;
     expect(card.textContent).toContain("Power Platform · Needs input");
     await act(async () => card.click());
-    expect(open).toHaveBeenCalledExactlyOnceWith(session, 123);
+    expect(open).toHaveBeenCalledExactlyOnceWith(session);
     await render([{ ...block, spawnedSessions: [{ ...session, busy: false, needsApproval: false }] }], vi.fn(), { onOpenSession: open });
     expect(container.querySelector(".spawned-session")?.textContent).toContain("Status unknown");
   });
 
-  it("restores the parent reading position once and preserves it through live updates", async () => {
-    await render([], vi.fn(), { loading: true, initialScrollTop: 123 });
-    await render([{ id: "parent", role: "assistant", text: "Mono response" }], vi.fn(), { initialScrollTop: 123 });
+  it("opens a delayed transcript at latest and preserves a deliberate reading position", async () => {
+    await render([], vi.fn(), { loading: true });
+    await render([{ id: "parent", role: "assistant", text: "Mono response" }]);
     const viewport = container.querySelector<HTMLDivElement>(".transcript")!;
-    expect(viewport.scrollTop).toBe(123);
+    expect(viewport.scrollTop).toBe(1000);
     await act(async () => { viewport.scrollTop = 200; viewport.dispatchEvent(new Event("scroll")); });
     height = 1400;
-    await render([{ id: "parent", role: "assistant", text: "Mono response updated" }], vi.fn(), { initialScrollTop: 123 });
+    await render([{ id: "parent", role: "assistant", text: "Mono response updated" }]);
     expect(viewport.scrollTop).toBe(200);
   });
 

@@ -404,11 +404,9 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const transcriptReadVersion = useRef(0);
   const readSnapshots = useRef(new Map<string, SessionRead>());
   useLayoutEffect(() => { if (read) readSnapshots.current.set(read.session.id, read); }, [read]);
-  const [linkedView, setLinkedView] = useState<{ session: CompanionSession; parent: { read: SessionRead; monoId: string; name: string; scrollTop: number } }>();
+  const [linkedView, setLinkedView] = useState<{ session: CompanionSession; parent: { read: SessionRead; monoId: string; name: string } }>();
   const linkedViewRef = useRef(linkedView);
   useLayoutEffect(() => { linkedViewRef.current = linkedView; }, [linkedView]);
-  const [restoredPosition, setRestoredPosition] = useState<{ sessionId: string; top: number }>();
-  const positions = useRef(new Map<string, number>());
   const [attention, setAttention] = useState<{ id: string; token: number }>();
   const [sendReceipt, setSendReceipt] = useState<{ id: string; label: string; queueId?: string; queueReadVersion?: number }>();
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -603,7 +601,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     setAttention(previous => previous?.id === selectedId ? previous : undefined);
     setLinkedSessionsOpen(false);
     setRead(previous => previous?.session.id === selectedId ? previous : undefined);
-    setRestoredPosition(previous => previous?.sessionId === selectedId ? previous : undefined);
     if (linkedViewRef.current && linkedViewRef.current.session.id !== selectedId) setLinkedView(undefined);
     setError(undefined);
     ++historySerial.current;
@@ -921,7 +918,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
   const workspaceProject = workspaceView?.kind === "changes" ? navigation?.projects.find(project => project.id === workspaceView.projectId) : undefined;
   const backToWorkspace = () => { setWorkspaceView(undefined); setMobileListOpen(true); };
   const linkedParent = linkedView && linkedView.session.id === selectedId && !workspaceView ? linkedView.parent : undefined;
-  const openLinkedSession = (session: CompanionSession | CompanionMonoLinkedSession, scrollTop: number) => {
+  const openLinkedSession = (session: CompanionSession | CompanionMonoLinkedSession) => {
     if (!selectedMono || !activeRead || session.id === selectedId || actingRef.current) return;
     const preview: CompanionSession = "state" in session
       ? {
@@ -930,11 +927,10 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           needsApproval: session.state === "input", lifecycle: session.state,
         }
       : session;
-    const next = { session: preview, parent: { read: activeRead, monoId: selectedMono.id, name: selectedMono.name, scrollTop } };
+    const next = { session: preview, parent: { read: activeRead, monoId: selectedMono.id, name: selectedMono.name } };
     linkedViewRef.current = next;
     setLinkedView(next);
     setLinkedSessionsOpen(false);
-    setRestoredPosition(undefined);
     ++transcriptSerial.current;
     selectedIdRef.current = session.id;
     setSelectedMonoId(undefined);
@@ -950,7 +946,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
     setSelectedId(linkedParent.read.session.id);
     setSelectedMonoId(linkedParent.monoId);
     setRead(linkedParent.read);
-    setRestoredPosition({ sessionId: linkedParent.read.session.id, top: linkedParent.scrollTop });
     linkedViewRef.current = undefined;
     setLinkedView(undefined);
   };
@@ -1025,8 +1020,6 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
             {error && !pendingMutation && !displayOffline ? <p className="inline-error" role="alert">{error}</p> : null}
             <Transcript busy={selected.busy} needsApproval={selected.needsApproval} key={selected.id} mono={!!selectedMono} layout={displayedAppearance?.transcriptLayout} blocks={activeRead?.blocks || []} loading={!activeRead} onLoadEarlier={activeRead?.nextBefore != null ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} historyError={historyError} approvalBusy={acting} mutationsDisabled={mutationsDisabled}
               onOpenSession={selectedMono && activeRead ? openLinkedSession : undefined}
-              initialScrollTop={restoredPosition?.sessionId === selected.id ? restoredPosition.top : positions.current.get(selected.id)}
-              onPositionChange={top => positions.current.set(selected.id, top)}
               attentionToken={attention?.id === selected.id ? attention.token : undefined}
               queuedMessages={activeRead?.queuedMessages}
               onResumeQueue={workspaceCapabilities.queueRecovery && activeRead ? () => { void action("sessions.queue.resume", { epoch: activeRead.epoch, sessionId: selected.id, turn: activeRead.session.turn }); } : undefined}
@@ -1053,7 +1046,7 @@ function Workspace({ client, status, onForget, onPreviewSetup }: { client: Compa
           </> : <div className="empty-detail"><div className="empty-detail__glyph">◒</div><h2>{displayOffline ? "Waiting for your Mac" : loading ? "Loading workspace" : "Select a session or Mono"}</h2><p>{displayOffline ? "Your workspace will refresh when the connection returns." : loading ? "Checking the workspace on your Mac." : "Choose a session to continue working, or a Mono to see its projects."}</p></div>}
         </section>
       </div>
-      {linkedSessionsOpen && selectedMono && activeRead ? <MonoLinkedSessions client={client} mono={selectedMono} refreshToken={workspaceRevision} onOpen={session => openLinkedSession(session, positions.current.get(activeRead.session.id) ?? 0)} onClose={closeLinkedSessions} /> : null}
+      {linkedSessionsOpen && selectedMono && activeRead ? <MonoLinkedSessions client={client} mono={selectedMono} refreshToken={workspaceRevision} onOpen={openLinkedSession} onClose={closeLinkedSessions} /> : null}
     </main>
   );
 }

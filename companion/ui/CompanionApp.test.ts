@@ -35,9 +35,9 @@ const imageHelpers = vi.hoisted(() => ({
 }));
 vi.mock("./client", async importOriginal => ({ ...await importOriginal<typeof import("./client")>(), createCompanionClient: () => fake }));
 vi.mock("./imageAttachments", () => imageHelpers);
-vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier, onOpenSession, initialScrollTop, onApprove, mutationsDisabled, attentionToken }: Parameters<typeof import("./Transcript").Transcript>[0]) => createElement("div", { className: "test-transcript", "data-scroll-top": initialScrollTop, "data-attention": attentionToken }, blocks.map(block => createElement("div", { key: block.id },
+vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier, onOpenSession, onApprove, mutationsDisabled, attentionToken }: Parameters<typeof import("./Transcript").Transcript>[0]) => createElement("div", { className: "test-transcript", "data-attention": attentionToken }, blocks.map(block => createElement("div", { key: block.id },
   createElement("p", null, block.text),
-  block.spawnedSessions?.map(session => createElement("button", { key: session.id, className: "spawned-session", onClick: () => onOpenSession?.(session, 123) }, session.title)),
+  block.spawnedSessions?.map(session => createElement("button", { key: session.id, className: "spawned-session", onClick: () => onOpenSession?.(session) }, session.title)),
   block.approval && !block.approval.decided ? createElement("button", { className: "test-allow", disabled: mutationsDisabled, onClick: () => onApprove(block, "allow") }, "Allow") : null,
 )), onLoadEarlier ? createElement("button", { onClick: onLoadEarlier, disabled: loadingEarlier }, "Load earlier messages") : null) }));
 import CompanionApp from "./CompanionApp";
@@ -172,7 +172,7 @@ it("uses full controls for a linked session outside the list and restores the Mo
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to Scout"]')!.click());
     expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("My Mono draft");
-    expect(container.querySelector(".test-transcript")?.getAttribute("data-scroll-top")).toBe("123");
+    expect(container.querySelector(".test-transcript")?.hasAttribute("data-scroll-top")).toBe(false);
     await act(async () => container.querySelector<HTMLButtonElement>(".spawned-session")!.click());
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Child draft");
     await act(async () => swipeBack(container.querySelector(".session-detail")!));

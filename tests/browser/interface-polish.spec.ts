@@ -4,6 +4,7 @@ test("a narrow phone keeps the reader anchored through streaming, queue receipts
   await page.setViewportSize({ width: 320, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/tests/browser/phone-transcript.html");
+  await page.getByRole("button", { name: "Hydrate transcript" }).click();
   const transcript = page.locator(".transcript");
   await transcript.evaluate(element => { element.scrollTop = 400; element.dispatchEvent(new Event("scroll")); });
   await page.getByRole("button", { name: "Stream chunk" }).click();

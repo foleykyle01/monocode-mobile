@@ -36,7 +36,7 @@ function actionSummary(text: string) {
   return text.trim().split("\n")[0].slice(0, 300) || "Action";
 }
 
-export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, initialScrollTop, onPositionChange, attentionToken, queuedMessages, onResumeQueue }: {
+export function Transcript({ blocks, loading, onApprove, approvalBusy, mutationsDisabled, mono = false, layout = "chat", onLoadEarlier, loadingEarlier = false, historyError, busy = false, needsApproval = false, pendingQuestion, questionUnavailable, questionKey, onAnswer, onQuestionInteraction, changes, onOpenSession, attentionToken, queuedMessages, onResumeQueue }: {
   blocks: CompanionBlock[];
   loading: boolean;
   onApprove: (block: CompanionBlock, decision: "allow" | "deny") => void;
@@ -56,9 +56,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   onAnswer?: (requestId: number, reply: UserQuestionReply) => void;
   onQuestionInteraction?: (requestId: number) => Promise<unknown>;
   changes?: ReactNode;
-  onOpenSession?: (session: CompanionSession, scrollTop: number) => void;
-  initialScrollTop?: number;
-  onPositionChange?: (top: number) => void;
+  onOpenSession?: (session: CompanionSession) => void;
   attentionToken?: number;
   queuedMessages?: SessionRead["queuedMessages"];
   onResumeQueue?: () => void;
@@ -66,7 +64,6 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const following = useRef(true);
-  const restoreTop = useRef(initialScrollTop);
   const snapshot = useRef<ScrollSnapshot | undefined>(undefined);
   const reviewedAttention = useRef<number | undefined>(undefined);
   const [below, setBelow] = useState(false);
@@ -79,7 +76,6 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     const hasMore = element.scrollHeight - element.scrollTop - element.clientHeight > 64;
     following.current = !hasMore;
     snapshot.current = { ids: blocks.map(block => block.id), height: element.scrollHeight, top: element.scrollTop };
-    if (!loading) onPositionChange?.(element.scrollTop);
     setBelow(hasMore);
   }
 
@@ -88,11 +84,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
     if (!element) return;
     const update = () => {
       const previous = snapshot.current;
-      if (restoreTop.current !== undefined && !loading) {
-        element.scrollTop = restoreTop.current;
-        restoreTop.current = undefined;
-        following.current = false;
-      } else if (previous && prependedBlocks(previous, blocks)) {
+      if (previous && prependedBlocks(previous, blocks)) {
         element.scrollTop = previous.top + element.scrollHeight - previous.height;
         following.current = false;
       } else if (following.current) {
@@ -147,7 +139,7 @@ export function Transcript({ blocks, loading, onApprove, approvalBusy, mutations
         const label = LAUNCHED_SESSION_LABELS[state] ?? LAUNCHED_SESSION_LABELS.unknown;
         const Icon = { working: Loader, input: Clock, draft: CircleDashed, failed: CircleAlert, stopped: CircleX, done: Check, unknown: CircleDashed }[state] ?? CircleDashed;
         const project = session.cwd.split(/[\\/]/).filter(Boolean).pop() || session.cwd;
-        return <button className="spawned-session" type="button" key={session.id} onClick={() => onOpenSession(session, viewport.current?.scrollTop ?? 0)}>
+        return <button className="spawned-session" type="button" key={session.id} onClick={() => onOpenSession(session)}>
           <span className="spawned-session__body"><strong>{session.title}</strong><small>{project} · {label}</small></span>
           <span key={state} className="spawned-session__status" data-state={state} aria-hidden="true"><Icon size={16} /></span>
           <ChevronRight size={16} aria-hidden="true" />
