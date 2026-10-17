@@ -17,6 +17,7 @@ function Fixture() {
   const [hydrated, setHydrated] = useState(false);
   const [older, setOlder] = useState(false);
   const [lateLayout, setLateLayout] = useState(false);
+  const [reflowHeight, setReflowHeight] = useState(0);
   const blocks: CompanionBlock[] = hydrated ? [
     ...(active === "a" && older ? [reply("a-earlier", "Older A", 20)] : []),
     { id: `${active}-read`, role: "tool", text: "Reviewing the project", activity: { kind: "read", label: "Read project", state: complete ? "accepted" : "pending" } },
@@ -31,12 +32,14 @@ function Fixture() {
       <button className="button" onClick={() => setActive("b")}>Open chat B</button>
       {active === "child" ? <button className="button" onClick={() => setActive("a")}>Back to parent</button> : null}
       <button className="button" onClick={() => setLateLayout(true)}>Add late layout</button>
+      <button className="button" onClick={() => setReflowHeight(height => height + 240)}>Grow rendered content</button>
       <button className="button" onClick={() => setChunks(value => value + 1)}>Stream chunk</button>
       <button className="button" onClick={() => setComplete(true)}>Complete activity</button>
     </header>
     <Transcript key={active} blocks={blocks} loading={!hydrated} busy={!complete} approvalBusy={false} mutationsDisabled={false} onApprove={() => {}}
       onLoadEarlier={hydrated && active === "a" ? () => setOlder(true) : undefined}
       onOpenSession={active === "a" ? session => setActive(session.id as Chat) : undefined}
+      changes={reflowHeight ? <div data-testid="late-reflow" style={{ height: reflowHeight }} /> : undefined}
       queuedMessages={chunks ? [{ id: "follow-up", text: "Review accessibility next", state: "queued" }] : []} />
   </main>;
 }

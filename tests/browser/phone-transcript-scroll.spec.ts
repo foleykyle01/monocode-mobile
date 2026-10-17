@@ -13,8 +13,12 @@ test("phone chats open at latest after hydration, switches, and linked navigatio
   await expectLatest();
   await page.getByRole("button", { name: "Add late layout" }).click();
   await expectLatest();
+  await page.getByRole("button", { name: "Grow rendered content" }).click();
+  await expectLatest();
 
-  await transcript.evaluate(element => { element.scrollTop = 300; element.dispatchEvent(new Event("scroll")); });
+  await transcript.hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(bottomGap).toBeGreaterThan(64);
   await page.getByRole("button", { name: "Open chat B" }).click();
   await expectLatest();
   await page.getByRole("button", { name: "Open chat A" }).click();
@@ -31,11 +35,19 @@ test("phone transcript keeps deliberate reading and history anchors", async ({ p
   await page.goto("/tests/browser/phone-transcript.html");
   await page.getByRole("button", { name: "Hydrate transcript" }).click();
   const transcript = page.locator(".transcript");
-  await transcript.evaluate(element => { element.scrollTop = 300; element.dispatchEvent(new Event("scroll")); });
+  const bottomGap = () => transcript.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop);
+  await page.getByRole("button", { name: "Grow rendered content" }).click();
+  await expect.poll(bottomGap).toBeLessThanOrEqual(1);
+  await transcript.hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(bottomGap).toBeGreaterThan(64);
+  const beforeReflow = await transcript.evaluate(element => element.scrollTop);
+  await page.getByRole("button", { name: "Grow rendered content" }).click();
+  expect(await transcript.evaluate(element => element.scrollTop)).toBe(beforeReflow);
   await page.getByRole("button", { name: "Stream chunk" }).click();
-  expect(await transcript.evaluate(element => element.scrollTop)).toBe(300);
+  expect(await transcript.evaluate(element => element.scrollTop)).toBe(beforeReflow);
   await page.setViewportSize({ width: 390, height: 700 });
-  expect(await transcript.evaluate(element => element.scrollTop)).toBe(300);
+  expect(await transcript.evaluate(element => element.scrollTop)).toBe(beforeReflow);
 
   const before = await transcript.evaluate(element => ({ height: element.scrollHeight, top: element.scrollTop }));
   await page.getByRole("button", { name: "Load earlier messages" }).evaluate(button => (button as HTMLButtonElement).click());
