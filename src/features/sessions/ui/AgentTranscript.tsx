@@ -386,13 +386,10 @@ function AgentTranscriptComponent({
   // the tab is a new visit: the remount uses the true transcript height so
   // the latest reply sits near the composer instead of a hole of empty space.
   const [anchorTurn, setAnchorTurn] = useState(!!busy);
-  // Parking detaches the scroller, which drops its scroll offset.
-  const restoreScroll = useRef(false);
   const wasParked = useRef(parked);
   if (wasParked.current !== parked) {
     wasParked.current = parked;
     if (parked) {
-      restoreScroll.current = true;
       setSearchCurrent(null);
       setSearchQuery("");
     } else if (anchorTurn !== !!busy) {
@@ -671,26 +668,12 @@ function AgentTranscriptComponent({
     if (!el) return;
     settleWordFades(el);
     syncTranscriptViewport(el);
-    const restore = restoreScroll.current;
-    restoreScroll.current = false;
-    // Previously opened tabs normally retain their scroll position. Only pin
-    // when the scroller looks empty after being hidden with `display: none`.
-    if (el.scrollHeight <= el.clientHeight + NEAR_BOTTOM_PX) {
-      stickToBottom.current = true;
-      setShowJump(false);
-      pinTranscript(el);
-    } else if (restore && stickToBottom.current) {
-      // Reattaching reset the offset to the top. Pin before any follow reads
-      // that reset as the reader scrolling up and lets go of the end.
-      pinTranscript(el);
-    } else if (restore) {
-      el.scrollTop = Math.max(
-        0,
-        el.scrollHeight - el.clientHeight - distanceFromBottom.current,
-      );
-      rememberScroll(el);
-    }
-  }, [visible, pinTranscript, rememberScroll, setShowJump]);
+    // A new visible visit starts at the latest turn. Explicit search and
+    // anchor navigation run after this transition and release the pin.
+    stickToBottom.current = true;
+    setShowJump(false);
+    pinTranscript(el);
+  }, [visible, pinTranscript, setShowJump]);
 
   useLayoutEffect(() => {
     if (!visible || !stickToBottom.current) return;

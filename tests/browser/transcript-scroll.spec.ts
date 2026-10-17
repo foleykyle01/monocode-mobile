@@ -283,7 +283,7 @@ test("scrolling settled history keeps the scroll range fixed", async ({
   expect(upwardGestureReversals).toEqual([]);
 });
 
-test("revisiting a parked transcript returns to the latest turn", async ({
+test("switching back to a parked transcript returns to the latest turn", async ({
   page,
 }) => {
   await page.goto("/tests/browser/transcript.html");
@@ -293,12 +293,19 @@ test("revisiting a parked transcript returns to the latest turn", async ({
   await expect(scroller.locator(".transcript-turn")).toHaveCount(20);
   await expect.poll(distanceFromBottom).toBeLessThanOrEqual(1);
 
+  await scroller.hover();
+  await page.mouse.wheel(0, -640);
+  await expect.poll(distanceFromBottom).toBeGreaterThan(100);
+
   await page.evaluate(() =>
-    (window as unknown as { parkTranscript: () => void }).parkTranscript(),
+    (window as unknown as { switchTranscript: (id: "a" | "b") => void }).switchTranscript(
+      "b",
+    ),
   );
-  await expect(scroller).toHaveCount(0);
   await page.evaluate(() =>
-    (window as unknown as { showTranscript: () => void }).showTranscript(),
+    (window as unknown as { switchTranscript: (id: "a" | "b") => void }).switchTranscript(
+      "a",
+    ),
   );
 
   await expect.poll(distanceFromBottom).toBeLessThanOrEqual(1);
