@@ -34,6 +34,22 @@ Passed checks:
 Implementation commit: `9df8992` (`fix(companion): open chats at latest`).
 Coverage follow-up: `ba5760a` (`test(companion): cover same chat reopening`); it adds tests only, because the real paths passed without another production behavior change.
 
+The coverage follow-up initially used a broad `.transcript` locator and recreated
+the fixture's `blocks` array during the synthetic reflow. The real project
+navigation test could consequently resolve a hidden prior Mono transcript, and
+the reflow did not prove `ResizeObserver` behavior with unchanged blocks. The
+final fixture memoizes blocks without `reflowHeight`, waits two animation frames
+for the observer delivery, and scopes the demo test to the visible detail pane.
+It waits for the expected title, hydrated content, nonzero viewport, and actual
+overflow before real wheel input. It also tags each same-ID transcript DOM node
+and confirms it survives reopening, so the test does not pass via a remount.
+
+Final follow-up check:
+
+- `./node_modules/.bin/playwright test tests/browser/phone-transcript-scroll.spec.ts tests/browser/companion-open-latest.spec.ts` — 6/6 passed: Chromium and WebKit each ran both unchanged-block reflow/manual-reading cases and the real Mono/project same-ID reopening route.
+
+Test hardening commit: `55b1a68` (`test(companion): harden phone opening paths`).
+
 ## Scope and limits
 
 - This changes only the iPhone Companion React UI; no desktop transcript,
