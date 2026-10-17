@@ -49,7 +49,11 @@ export type MonoRailProps = {
   onDelete: (monoId: string) => void;
   /** Whether the intro may show now, when there is no Mono yet. */
   introAvailable?: boolean;
+  /** The compact project surface or the readable dedicated Mono directory. */
+  presentation?: Presentation;
 };
+
+type Presentation = "compact" | "directory";
 
 const IDLE: MonoState = { status: "idle" };
 
@@ -75,6 +79,7 @@ export function MonoRailSection({
   onCreate,
   onDelete,
   introAvailable = false,
+  presentation = "compact",
 }: MonoRailProps) {
   const snapshot = useSyncExternalStore(subscribeMonos, monosSnapshot);
   const monos = useMemo(() => listMonos(), [snapshot]);
@@ -87,9 +92,14 @@ export function MonoRailSection({
   const [menu, setMenu] = useState<{ id: string; anchor: PopoverAnchor }>();
   const [background, setBackground] = useState<string>();
   const backgroundMono = background ? findMono(background) : undefined;
+  const directory = presentation === "directory";
 
   return (
-    <div className="mb-2 shrink-0" data-mono-rail>
+    <div
+      className={`mb-2 shrink-0 ${directory ? "px-1" : ""}`}
+      data-mono-rail
+      data-mono-presentation={presentation}
+    >
       <div className="flex items-center gap-1 px-3 pb-1.5 pt-1">
         <span className="min-w-0 flex-1 truncate px-1 text-xs leading-5 text-content/50">
           Monos
@@ -98,12 +108,17 @@ export function MonoRailSection({
         {monos.length ? (
           <button
             type="button"
-            title="New mono"
-            aria-label="New mono"
+            title={directory ? "Create a Mono" : "New mono"}
+            aria-label={directory ? "Create a Mono" : "New mono"}
             onClick={onCreate}
-            className="grid size-5 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content"
+            className={`grid shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content ${
+              directory ? "size-7" : "size-5"
+            }`}
           >
-            <Plus className="size-3.5" strokeWidth={1.75} />
+            <Plus
+              className={directory ? "size-4" : "size-3.5"}
+              strokeWidth={1.75}
+            />
           </button>
         ) : null}
       </div>
@@ -124,12 +139,17 @@ export function MonoRailSection({
             ref={setAddButton}
             type="button"
             data-mono-add
-            title="New mono"
-            aria-label="New mono"
+            title={directory ? "Create a Mono" : "New mono"}
+            aria-label={directory ? "Create a Mono" : "New mono"}
             onClick={onCreate}
-            className="grid h-8 w-full cursor-default place-items-center rounded-md border border-dashed border-content/15 text-content/50 hover:border-content/30 hover:bg-content/5 hover:text-content"
+            className={`w-full cursor-default rounded-md border border-dashed border-content/15 text-content/50 hover:border-content/30 hover:bg-content/5 hover:text-content ${
+              directory
+                ? "flex min-h-14 items-center justify-center gap-2 text-[15px] font-medium"
+                : "grid h-8 place-items-center"
+            }`}
           >
             <Plus className="size-3.5" strokeWidth={1.75} />
+            {directory ? <span>Create a Mono</span> : null}
           </button>
         ) : null}
         {monos.map((mono) => {
@@ -152,8 +172,18 @@ export function MonoRailSection({
               ref={(el) => sortable.setItemRef(mono.id, el)}
               data-selected={selected || undefined}
               data-mono-status={state.status}
-              className={`reorder-item project-reorder-item group relative flex h-8 cursor-default touch-none items-stretch rounded-md px-2 ${
-                selected ? "bg-selection-strong text-content" : ""
+              className={`reorder-item project-reorder-item group relative flex cursor-default touch-none items-stretch rounded-md px-2 ${
+                directory
+                  ? "min-h-14 rounded-lg group-has-[:focus-visible]:ring-2 group-has-[:focus-visible]:ring-accent/70 group-has-[:focus-visible]:ring-offset-1 group-has-[:focus-visible]:ring-offset-background-base"
+                  : "h-8"
+              } ${
+                selected
+                  ? directory
+                    ? "bg-selection-strong text-content ring-1 ring-accent/35"
+                    : "bg-selection-strong text-content"
+                  : directory
+                    ? "hover:bg-content/8"
+                    : ""
               }`}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
@@ -195,25 +225,39 @@ export function MonoRailSection({
                   .filter(Boolean)
                   .join(", ")}
                 aria-current={selected ? "true" : undefined}
-                className={`flex min-w-0 flex-1 cursor-default items-center gap-2 pr-9 text-left transition-[padding] duration-150 motion-reduce:transition-none group-hover:pr-16 group-has-[:focus-visible]:pr-16 ${selected ? "" : "opacity-65"}`}
+                className={`flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none ${
+                  directory
+                    ? "min-h-14 py-2 pr-14 focus-visible:outline-none"
+                    : "pr-9 group-hover:pr-16 group-has-[:focus-visible]:pr-16"
+                } ${selected ? "" : "opacity-65"}`}
               >
                 <PixelMascot
                   name={look.mascot}
                   color={look.color}
                   status={state.status}
                   still={state.status === "idle"}
-                  className="size-4 shrink-0"
+                  className={directory ? "size-8 shrink-0" : "size-4 shrink-0"}
                 />
                 {state.status === "working" ? (
                   <Shimmer
                     as="span"
                     duration={1.4}
-                    className="min-w-0 flex-1 truncate text-sm font-medium leading-tight"
+                    className={
+                      directory
+                        ? "min-w-0 flex-1 break-all text-[15px] font-medium leading-5"
+                        : "min-w-0 flex-1 truncate text-sm font-medium leading-tight"
+                    }
                   >
                     {look.name}
                   </Shimmer>
                 ) : (
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
+                  <span
+                    className={
+                      directory
+                        ? "min-w-0 flex-1 break-all text-[15px] font-medium leading-5"
+                        : "min-w-0 flex-1 truncate text-sm font-medium leading-tight"
+                    }
+                  >
                     {look.name}
                   </span>
                 )}
@@ -221,7 +265,11 @@ export function MonoRailSection({
               <MonoStatusDot
                 status={state.status}
                 count={unseen}
-                className="right-3 top-1/2 size-2 translate-x-1/2 -translate-y-1/2"
+                className={
+                  directory
+                    ? "right-10 top-1/2 size-2 -translate-y-1/2"
+                    : "right-3 top-1/2 size-2 translate-x-1/2 -translate-y-1/2"
+                }
               />
               <button
                 type="button"
@@ -234,7 +282,11 @@ export function MonoRailSection({
                   event.stopPropagation();
                   setMenu({ id: mono.id, anchor: event.currentTarget });
                 }}
-                className="absolute right-7 top-1/2 hidden size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content group-hover:grid group-has-[:focus-visible]:grid"
+                className={`absolute top-1/2 size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content ${
+                  directory
+                    ? "right-2 grid"
+                    : "right-7 hidden group-hover:grid group-has-[:focus-visible]:grid"
+                }`}
               >
                 <MoreHorizontal className="size-4" strokeWidth={1.75} />
               </button>

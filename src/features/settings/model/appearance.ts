@@ -15,6 +15,7 @@ const THEME_DARK_LIGHTNESS_KEY = "monocode.themeDarkLightness";
 const OPACITY_KEY = "monocode.sidebarOpacity";
 const BLUR_KEY = "monocode.sidebarBlur";
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
+const PROJECT_RAIL_VIEW_KEY = "monocode.projectRailView";
 const SESSION_SIDEBAR_OPEN_KEY = "monocode.sessionSidebarOpen";
 const BODY_KEY = "monocode.bodyGlass";
 const SCHEME_KEY = "monocode.colorScheme";
@@ -48,6 +49,7 @@ export type NewThreadBackgroundEffect =
   "none" | "dither" | "ascii" | "halftone" | "scanlines" | "gradient-blur";
 export type ChangesView = "list" | "tree";
 export type DiffPalette = "default" | "colorblind" | "high-contrast";
+export type ProjectRailView = "projects" | "monos";
 
 export const NEW_THREAD_BACKGROUND_EFFECTS: readonly NewThreadBackgroundEffect[] =
   ["none", "dither", "ascii", "halftone", "scanlines", "gradient-blur"];
@@ -819,6 +821,28 @@ export function loadProjectRailOpen(): boolean {
 
 export function saveProjectRailOpen(value: boolean) {
   writeFlag(PROJECT_RAIL_OPEN_KEY, value);
+}
+
+function isProjectRailView(value: unknown): value is ProjectRailView {
+  return value === "projects" || value === "monos";
+}
+
+/** The expanded rail's local directory, never a main-area destination. */
+export function loadProjectRailView(): ProjectRailView {
+  try {
+    const value = localStorage.getItem(PROJECT_RAIL_VIEW_KEY);
+    return isProjectRailView(value) ? value : "projects";
+  } catch {
+    return "projects";
+  }
+}
+
+export function saveProjectRailView(value: ProjectRailView) {
+  try {
+    localStorage.setItem(PROJECT_RAIL_VIEW_KEY, value);
+  } catch {
+    // private mode / quota
+  }
 }
 
 export function loadSessionSidebarOpen(): boolean {

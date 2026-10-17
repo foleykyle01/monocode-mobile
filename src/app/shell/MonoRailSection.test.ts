@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createMono } from "../../features/monos/model/mono";
+import { createMono, saveMonoName } from "../../features/monos/model/mono";
 import { MonoRailSection } from "./MonoRailSection";
 
 let root: Root;
@@ -86,6 +86,33 @@ it("lists monos once there are some, with the plus in the header", () => {
   expect(intro()).toBeNull();
   expect(container.querySelector("[data-mono-add]")).toBeNull();
   expect(container.querySelectorAll('[aria-label="New mono"]')).toHaveLength(1);
+});
+
+it("uses the same exact open callback in the readable Mono directory", () => {
+  const mono = createMono();
+  saveMonoName(mono.id, "UnbrokenMonoNameThatMustWrapWithoutBeingClipped");
+  const onOpen = vi.fn();
+  render({ presentation: "directory", activeId: mono.id, onOpen });
+
+  const row = container.querySelector<HTMLElement>(`[data-selected="true"]`)!;
+  const button = row.querySelector<HTMLButtonElement>("button")!;
+  expect(container.querySelector('[data-mono-presentation="directory"]')).not.toBeNull();
+  expect(row.className).toContain("min-h-14");
+  expect(button.getAttribute("aria-current")).toBe("true");
+  expect(button.querySelector("span")?.className).toContain("break-all");
+
+  act(() => button.click());
+  expect(onOpen).toHaveBeenCalledExactlyOnceWith(mono.id);
+});
+
+it("offers a labelled create affordance when the dedicated Mono directory is empty", () => {
+  const onCreate = render({ presentation: "directory" });
+  const create = container.querySelector<HTMLButtonElement>("[data-mono-add]")!;
+  expect(create.getAttribute("aria-label")).toBe("Create a Mono");
+  expect(create.textContent).toContain("Create a Mono");
+
+  act(() => create.click());
+  expect(onCreate).toHaveBeenCalledOnce();
 });
 
 it("describes unread replies without rendering a number, except the one open", () => {

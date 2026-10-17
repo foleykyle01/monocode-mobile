@@ -9,6 +9,7 @@ import { OrchestrationSidebarAgents } from "../../features/orchestration/ui/Orch
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Archive,
+  Bot,
   Chatting,
   Check,
   ChevronDown,
@@ -34,6 +35,7 @@ import {
 } from "../../shared/ui/icons";
 import {
   memo,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -49,8 +51,11 @@ import {
   type RefObject,
 } from "react";
 import {
+  loadProjectRailView,
   loadSidebarTabOrder,
+  saveProjectRailView,
   saveSidebarTabOrder,
+  type ProjectRailView,
   type SidebarTabId,
 } from "../../features/settings/model/appearance";
 import { formatInteger } from "../../shared/lib/numbers";
@@ -572,6 +577,8 @@ function SidebarComponent({
     },
   });
   const [tabOrder, setTabOrder] = useState<SidebarTab[]>(loadSidebarTabOrder);
+  const [projectRailView, setProjectRailView] =
+    useState<ProjectRailView>(loadProjectRailView);
   const [now, setNow] = useState(() => Date.now());
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
@@ -783,6 +790,14 @@ function SidebarComponent({
   if (railVisible) railMounted.current = true;
   const compactRailVisible =
     compactProjectRail && showProjectRail && !railVisible;
+  const setRailView = useCallback((next: ProjectRailView) => {
+    setProjectRailView(next);
+    saveProjectRailView(next);
+  }, []);
+  const openMonosDirectory = useCallback(() => {
+    setRailView("monos");
+    if (!projectRailOpen) onToggleProjectRail?.();
+  }, [onToggleProjectRail, projectRailOpen, setRailView]);
   const inProject = looksLikeProject(cwd);
   const showSidebarFooter = !projectRailOpen;
   const otherViewActive =
@@ -2254,6 +2269,8 @@ function SidebarComponent({
           titleBarAbove={titleBarAbove}
           monos={railMonos}
           monoViewActive={monoViewActive}
+          projectRailView={projectRailView}
+          onOpenMonos={openMonosDirectory}
         />
       ) : null}
       {railMounted.current && onSelectProject && onOpenProject ? (
@@ -2290,6 +2307,8 @@ function SidebarComponent({
           onOpenWhatsNew={onOpenWhatsNew}
           onDismissUpdate={onDismissUpdate}
           monos={railMonos}
+          view={monos ? projectRailView : "projects"}
+          onViewChange={setRailView}
         />
       ) : null}
       {sidebarVisible ? sidebarContent : null}
@@ -2495,6 +2514,8 @@ function CompactProjectRail({
   titleBarAbove,
   monos,
   monoViewActive = false,
+  projectRailView,
+  onOpenMonos,
 }: {
   cwd: string;
   recents: RecentProject[];
@@ -2526,6 +2547,8 @@ function CompactProjectRail({
   monos?: MonoRailProps;
   /** A Mono fills the main area: no workspace tab is the current one. */
   monoViewActive?: boolean;
+  projectRailView: ProjectRailView;
+  onOpenMonos?: () => void;
 }) {
   const monosSnap = useSyncExternalStore(subscribeMonos, monosSnapshot);
   const monosPinned = useRailMonosPinned();
@@ -2593,6 +2616,20 @@ function CompactProjectRail({
           icon={PanelLeft}
           onClick={onTogglePanel}
         />
+        {monos ? (
+          <CompactRailAction
+            label="Show Monos"
+            icon={Bot}
+            active={
+              projectRailView === "monos" &&
+              !searchActive &&
+              !inboxActive &&
+              !notesActive &&
+              !automationsActive
+            }
+            onClick={onOpenMonos}
+          />
+        ) : null}
         {monos && monosPinned && monoItems.length ? (
           <>
             <div

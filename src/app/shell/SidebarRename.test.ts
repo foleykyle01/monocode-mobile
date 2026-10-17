@@ -217,6 +217,92 @@ describe("project rail visibility", () => {
   });
 });
 
+describe("Mono directory rail", () => {
+  it("switches only the rail directory, returns to Projects, and keeps top routes available", () => {
+    const mono = createMono();
+    const onOpen = vi.fn();
+    const onInbox = vi.fn();
+    const onSettings = vi.fn();
+    props = {
+      ...props,
+      recents: [{ path: "/workspace/project", openedAt: Date.now() }],
+      projectRailOpen: true,
+      compactProjectRail: false,
+      onSelectProject: vi.fn(),
+      onOpenProject: vi.fn(),
+      onOpenInbox: onInbox,
+      onOpenSettings: onSettings,
+      monos: {
+        activeId: mono.id,
+        states: new Map(),
+        onOpen,
+        onCreate: vi.fn(),
+        onDelete: vi.fn(),
+      },
+    };
+    act(() => render());
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="Monos"]')!.click(),
+    );
+    expect(localStorage.getItem("monocode.projectRailView")).toBe("monos");
+    expect(container.querySelector('[data-mono-presentation="directory"]')).not.toBeNull();
+    expect(container.querySelector('[data-mono-rail] [aria-current="true"]')).not.toBeNull();
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[data-mono-rail] [aria-current="true"]')!
+        .click(),
+    );
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(mono.id);
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="Projects"]')!.click(),
+    );
+    expect(container.querySelector('[data-mono-presentation="directory"]')).toBeNull();
+    expect(container.querySelector("[data-mono-rail]")).not.toBeNull();
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[aria-label="Inbox"]')!.click(),
+    );
+    expect(onInbox).toHaveBeenCalledOnce();
+
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[aria-label^="Settings"]')!.click(),
+    );
+    expect(onSettings).toHaveBeenCalledOnce();
+  });
+
+  it("opens the readable Mono directory from the collapsed rail", () => {
+    createMono();
+    const onToggleProjectRail = vi.fn();
+    props = {
+      ...props,
+      recents: [{ path: "/workspace/project", openedAt: Date.now() }],
+      projectRailOpen: false,
+      compactProjectRail: true,
+      onSelectProject: vi.fn(),
+      onOpenProject: vi.fn(),
+      onToggleProjectRail,
+      monos: {
+        states: new Map(),
+        onOpen: vi.fn(),
+        onCreate: vi.fn(),
+        onDelete: vi.fn(),
+      },
+    };
+    act(() => render());
+    const route = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Show Monos"]',
+    )!;
+    expect(route).not.toBeNull();
+
+    act(() => route.click());
+    expect(localStorage.getItem("monocode.projectRailView")).toBe("monos");
+    expect(onToggleProjectRail).toHaveBeenCalledOnce();
+  });
+});
+
 describe("worktree explorer visibility", () => {
   it("does not mount the file tree while browsing chat tabs", () => {
     props = { ...props, gitCwd: "/worktrees/first" };

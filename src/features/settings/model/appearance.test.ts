@@ -42,6 +42,8 @@ import {
   saveDiffPalette,
   initAppearance,
   isLightScheme,
+  loadProjectRailView,
+  saveProjectRailView,
 } from "./appearance";
 
 const KEY = "monocode.transcriptLayout";
@@ -55,6 +57,7 @@ const CHAT_BACKGROUND_SCOPE_KEY = "monocode.chatBackgroundScope";
 const NEW_THREAD_BACKGROUND_EFFECT_KEY = "monocode.newThreadBackgroundEffect";
 const THEME_DARK_LIGHTNESS_KEY = "monocode.themeDarkLightness";
 const DIFF_PALETTE_KEY = "monocode.diffPalette";
+const PROJECT_RAIL_VIEW_KEY = "monocode.projectRailView";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -185,6 +188,22 @@ describe("diff palette setting", () => {
     expect(localStorage.getItem(DIFF_PALETTE_KEY)).toBe("default");
     localStorage.setItem(DIFF_PALETTE_KEY, "rainbow");
     expect(loadDiffPalette()).toBe(DIFF_PALETTE_DEFAULT);
+  });
+});
+
+describe("project rail view", () => {
+  beforeEach(mockLocalStorage);
+
+  it("defaults to Projects and persists the dedicated Monos directory", () => {
+    expect(loadProjectRailView()).toBe("projects");
+    saveProjectRailView("monos");
+    expect(localStorage.getItem(PROJECT_RAIL_VIEW_KEY)).toBe("monos");
+    expect(loadProjectRailView()).toBe("monos");
+  });
+
+  it("safely falls back to Projects for invalid stored values", () => {
+    localStorage.setItem(PROJECT_RAIL_VIEW_KEY, "all-monos");
+    expect(loadProjectRailView()).toBe("projects");
   });
 });
 

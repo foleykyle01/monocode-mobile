@@ -1,7 +1,9 @@
 import {
   BellOff,
+  Bot,
   ChevronDown,
   ChevronRight,
+  Folder,
   FolderPlus,
   Internet,
   Inbox,
@@ -22,6 +24,7 @@ import { useAnimatedReorder } from "../../shared/hooks/useAnimatedReorder";
 import { useTabGroupLogos } from "../../features/projects/hooks/useTabGroupLogos";
 import {
   loadProjectRailWidth,
+  type ProjectRailView,
   PROJECT_RAIL_WIDTH_DEFAULT,
   PROJECT_RAIL_WIDTH_MAX,
   PROJECT_RAIL_WIDTH_MIN,
@@ -125,6 +128,9 @@ type Props = {
   onDismissUpdate?: () => void;
   /** The Monos section above the projects; absent while Monos are off. */
   monos?: MonoRailProps;
+  /** Which local directory is in the rail's scroll area. */
+  view?: ProjectRailView;
+  onViewChange?: (view: ProjectRailView) => void;
 };
 
 export function ProjectRail({
@@ -160,6 +166,8 @@ export function ProjectRail({
   onOpenWhatsNew,
   onDismissUpdate,
   monos,
+  view = "projects",
+  onViewChange,
 }: Props) {
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
@@ -330,6 +338,7 @@ export function ProjectRail({
     notesActive ||
     automationsActive ||
     !!monos?.activeId;
+  const monosView = !!monos && view === "monos";
   const pinnedIds = sections.pinned.map((item) => item.path);
   const projectIds = groupedProjectSections.ungrouped.map((item) => item.path);
   const pinnedSortable = useAnimatedReorder(pinnedIds, onReorderPinned, "y");
@@ -406,6 +415,21 @@ export function ProjectRail({
               active={automationsActive}
               ariaLabel="Automations"
             />
+            {monos ? (
+              <RailAction
+                label="Monos"
+                icon={Bot}
+                onClick={() => onViewChange?.("monos")}
+                active={
+                  monosView &&
+                  !inboxActive &&
+                  !notesActive &&
+                  !automationsActive &&
+                  !searchActive
+                }
+                ariaLabel="Monos"
+              />
+            ) : null}
           </div>
 
           <div
@@ -415,7 +439,23 @@ export function ProjectRail({
             }}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pb-2"
           >
-            {monos ? (
+            {monosView ? (
+              <>
+                <div className="shrink-0 px-2 pb-1 pt-1">
+                  <RailAction
+                    label="Projects"
+                    icon={Folder}
+                    onClick={() => onViewChange?.("projects")}
+                    ariaLabel="Projects"
+                  />
+                </div>
+                <MonoRailSection
+                  {...monos}
+                  presentation="directory"
+                  introAvailable={visible && !!monos.introAvailable}
+                />
+              </>
+            ) : monos ? (
               <MonoRailSection
                 {...monos}
                 introAvailable={visible && !!monos.introAvailable}
