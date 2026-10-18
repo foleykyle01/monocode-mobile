@@ -1,6 +1,6 @@
 # MonoCode Companion privacy
 
-Updated October 14, 2026. This describes the independent MonoCode Companion iPhone beta **0.1.1 (1004)** and its connection to MonoCode Dev on your Mac.
+Updated October 18, 2026. This describes the independent MonoCode Companion iPhone beta **0.1.1 (1009)** and its connection to MonoCode Dev on your Mac.
 
 ## Your sessions and devices
 
@@ -12,7 +12,7 @@ The companion does not send session content to a maintainer-operated application
 
 Pairing credentials and an unresolved outgoing command are saved in the device's Apple Keychain. An unresolved command can include the message or action you sent, so its outcome can be checked before retrying. These Keychain entries are configured for access while the device is unlocked, without iCloud synchronization or migration to another device. Phone appearance preferences use local app storage; displayed conversations and drafts are held in the running interface.
 
-Camera permission is used to scan the Mac's pairing QR code. The scanner returns the decoded ticket; the companion does not upload camera images. You can paste a pairing ticket instead. Build 1004 has notifications disabled and does not register for push notifications. The phone app includes no advertising or third-party product-analytics SDK.
+Camera permission is used to scan the Mac's pairing QR code. The scanner returns the decoded ticket; the companion does not upload camera images. You can paste a pairing ticket instead. Build 1009 has notifications disabled and does not register for push notifications. The phone app includes no advertising or third-party product-analytics SDK.
 
 ## TestFlight and feedback
 

@@ -58,9 +58,9 @@ const DEMO_NAVIGATION: CompanionNavigation = {
     { id: "personal", name: "Personal", projectIds: ["notes"] },
   ],
   projects: [
-    { id: "monocode", name: "MonoCode", path: "/Users/kyle/Code/monocode", groupId: "apps", mascot: "invader", color: "#69b7ff", logo: appMark },
-    { id: "lab", name: "Companion Lab", path: "/Users/kyle/Code/lab", groupId: "apps", mascot: "robot", color: "#efb65b" },
-    { id: "notes", name: "Notes", path: "/Users/kyle/Code/notes", groupId: "personal", mascot: "cat", color: "#98c78c" },
+    { id: "monocode", name: "MonoCode", path: "/Users/demo/Code/monocode", groupId: "apps", mascot: "invader", color: "#69b7ff", logo: appMark },
+    { id: "lab", name: "Companion Lab", path: "/Users/demo/Code/lab", groupId: "apps", mascot: "robot", color: "#efb65b" },
+    { id: "notes", name: "Notes", path: "/Users/demo/Code/notes", groupId: "personal", mascot: "cat", color: "#98c78c" },
   ],
   monos: [
     { id: "scout", name: "Scout", mascot: "ghost", color: "#69b7ff", projectIds: ["monocode", "lab"], status: "working", statusLabel: "Working", activity: "Reviewing companion navigation", busy: true, needsApproval: false, sessionId: "mono-scout", canChat: true },
@@ -68,13 +68,13 @@ const DEMO_NAVIGATION: CompanionNavigation = {
   ],
 };
 const DEMO_SESSIONS: CompanionSession[] = [
-  { id: "mono-scout", title: "Scout", cwd: "/Users/kyle/Code/monocode", harness: "claude", model: "Opus 5.5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: false },
-  { id: "mono-atlas", title: "Atlas", cwd: "/Users/kyle/Code/notes", harness: "codex", model: "GPT-5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: true, needsQuestion: true },
+  { id: "mono-scout", title: "Scout", cwd: "/Users/demo/Code/monocode", harness: "claude", model: "Opus 5.5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: false },
+  { id: "mono-atlas", title: "Atlas", cwd: "/Users/demo/Code/notes", harness: "codex", model: "GPT-5", runtimeMode: "supervised", busy: true, turn: 0, needsApproval: true, needsQuestion: true },
   {
     id: "demo-shipyard",
     projectId: "monocode",
     title: "Build the companion window",
-    cwd: "/Users/kyle/Code/monocode",
+    cwd: "/Users/demo/Code/monocode",
     harness: "claude",
     model: "Opus 5.5",
     runtimeMode: "supervised",
@@ -86,7 +86,7 @@ const DEMO_SESSIONS: CompanionSession[] = [
     id: "demo-docs",
     projectId: "monocode",
     title: "Review release notes",
-    cwd: "/Users/kyle/Code/monocode",
+    cwd: "/Users/demo/Code/monocode",
     harness: "codex",
     model: "GPT-5",
     runtimeMode: "autonomous",
@@ -99,7 +99,7 @@ const DEMO_SESSIONS: CompanionSession[] = [
     id: "demo-scratch",
     projectId: "lab",
     title: "Prototype a reconnect flow",
-    cwd: "/Users/kyle/Code/lab",
+    cwd: "/Users/demo/Code/lab",
     harness: "opencode",
     model: "Claude Sonnet",
     runtimeMode: "supervised",

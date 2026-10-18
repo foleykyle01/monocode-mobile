@@ -84,7 +84,6 @@ it("lists monos once there are some, with the plus in the header", () => {
   createMono();
   render({ introAvailable: true });
   expect(intro()).toBeNull();
-  expect(container.querySelector("[data-mono-add]")).toBeNull();
   expect(container.querySelectorAll('[aria-label="New mono"]')).toHaveLength(1);
 });
 

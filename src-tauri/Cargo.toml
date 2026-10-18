@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 # Local-only experiment; never enabled in ordinary desktop builds.
-companion-spike = ["dep:monocode-companion-core", "dep:qrcode", "dep:tokio"]
+companion-spike = ["dep:monocode-companion-core", "dep:qrcode"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -41,7 +41,7 @@ arboard = { version = "3.6", features = ["wayland-data-control"] }
 png = "0.18"
 monocode-companion-core = { path = "../companion/core", optional = true }
 qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }
-tokio = { version = "1", features = ["sync", "time"], optional = true }
+tokio = { version = "1", features = ["sync", "time"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

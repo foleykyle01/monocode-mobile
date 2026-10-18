@@ -194,56 +194,56 @@ export function MonoRailSection({
           return (
             <div
               key={mono.id}
-                ref={(el) => sortable.setItemRef(mono.id, el)}
-                data-selected={selected || undefined}
-                data-mono-status={state.status}
-                className={`reorder-item project-reorder-item group relative flex flex-col cursor-default touch-none items-stretch rounded-md px-2 ${
-                  directory
-                    ? "min-h-14 rounded-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-background-base"
-                    : "h-8"
-                } ${
-                  selected
-                    ? directory
-                      ? "bg-selection-strong text-content ring-1 ring-accent/35"
-                      : "bg-selection-strong text-content"
-                    : directory
-                      ? "hover:bg-content/8"
-                      : ""
+              ref={(el) => sortable.setItemRef(mono.id, el)}
+              data-selected={selected || undefined}
+              data-mono-status={state.status}
+              className={`reorder-item project-reorder-item group relative flex flex-col cursor-default touch-none items-stretch rounded-md px-2 ${
+                directory
+                  ? "min-h-14 rounded-lg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-background-base"
+                  : "h-8"
+              } ${
+                selected
+                  ? directory
+                    ? "bg-selection-strong text-content ring-1 ring-accent/35"
+                    : "bg-selection-strong text-content"
+                  : directory
+                    ? "hover:bg-content/8"
+                    : ""
+              }`}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                if (
+                  (event.target as HTMLElement | null)?.closest(
+                    "[data-no-drag]",
+                  )
+                )
+                  return;
+                sortable.onItemPointerDown(mono.id, event);
+              }}
+              onClick={(event) => {
+                if (
+                  (event.target as HTMLElement | null)?.closest(
+                    "[data-no-drag]",
+                  )
+                )
+                  return;
+                if (sortable.consumeClick()) return;
+                onOpen(mono.id);
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({
+                  id: mono.id,
+                  anchor: { x: event.clientX, y: event.clientY },
+                });
+              }}
+            >
+              <div
+                data-mono-header
+                className={`relative flex w-full min-w-0 items-stretch ${
+                  directory ? "" : "h-full"
                 }`}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  if (
-                    (event.target as HTMLElement | null)?.closest(
-                      "[data-no-drag]",
-                    )
-                  )
-                    return;
-                  sortable.onItemPointerDown(mono.id, event);
-                }}
-                onClick={(event) => {
-                  if (
-                    (event.target as HTMLElement | null)?.closest(
-                      "[data-no-drag]",
-                    )
-                  )
-                    return;
-                  if (sortable.consumeClick()) return;
-                  onOpen(mono.id);
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  setMenu({
-                    id: mono.id,
-                    anchor: { x: event.clientX, y: event.clientY },
-                  });
-                }}
               >
-                <div
-                  data-mono-header
-                  className={`relative flex w-full min-w-0 items-stretch ${
-                    directory ? "" : "h-full"
-                  }`}
-                >
                 <button
                   type="button"
                   title={[look.name, projects, status]
@@ -261,7 +261,7 @@ export function MonoRailSection({
                   className={`flex min-w-0 flex-1 cursor-default items-center gap-2 text-left transition-[padding] duration-150 motion-reduce:transition-none ${
                     directory
                       ? "min-h-14 py-2 pr-14 focus-visible:outline-none"
-                      : "pr-9 group-hover:pr-16 group-has-[:focus-visible]:pr-16"
+                      : "pr-9 group-hover:pr-16 group-has-[button:focus-visible]:pr-16"
                   } ${selected ? "" : "opacity-65"}`}
                 >
                   <PixelMascot
@@ -320,12 +320,12 @@ export function MonoRailSection({
                   className={`absolute top-1/2 size-6 -translate-y-1/2 place-items-center rounded-md text-content/55 hover:bg-content/8 hover:text-content ${
                     directory
                       ? "right-2 grid"
-                      : "right-7 hidden group-hover:grid group-has-[:focus-visible]:grid"
+                      : "right-7 hidden group-hover:grid group-has-[button:focus-visible]:grid"
                   }`}
                 >
                   <MoreHorizontal className="size-4" strokeWidth={1.75} />
                 </button>
-                </div>
+              </div>
               {directory && scopes.length ? (
                 <MonoProjectScopes scopes={scopes} projects={look.projects} />
               ) : null}
@@ -376,7 +376,10 @@ function MonoProjectScopes({
     projects.map((project) => [pathKey(project.path), project.name]),
   );
   return (
-    <div className="mb-1 flex w-full min-w-0 flex-col pl-10" data-mono-project-scopes>
+    <div
+      className="mb-1 flex w-full min-w-0 flex-col pl-10"
+      data-mono-project-scopes
+    >
       {scopes.map((scope) => {
         const key = projectKey(scope.path);
         const name =

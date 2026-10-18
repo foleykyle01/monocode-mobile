@@ -1,11 +1,10 @@
 # Updates and distribution
 
-Status: October 15, 2026. Companion **0.1.1 (1007)** is in internal Owner testing;
-this Mac-only update makes no iPhone release changes. Signed/notarized Mac
-**1.0.0-beta.5** is publicly downloadable, with desktop base **MonoCode 0.13.0**.
-The owner has beta.5 installed and confirmed existing data and phone connectivity.
-The beta update feed is active after the upgrade safety/profile gate passed.
-See [beta.5 evidence and limits](release-mac-beta5.md).
+Status: October 18, 2026. Companion **0.1.1 (1009)** is VALID and in internal
+Owner testing. The installed internal Mac baseline is beta.9 on **MonoCode 0.14.0**;
+the published updater remains beta.8. This source reconciliation neither creates nor
+promotes a signed artifact or update feed. [Beta.5 evidence and limits](release-mac-beta5.md)
+remain historical evidence, not a claim about the current feed.
 
 ## 1. The user experience
 
@@ -41,13 +40,11 @@ an uncertain phone command to complete an update.
 
 ## 2. Mac release channel
 
-The installed owner beta.5 embeds the dedicated fork beta endpoint and updater
-verification key; its signature and executable identity were checked. It does
-not need another manual bootstrap solely to acquire updater support. The guarded
-updater and release workflow are implemented. A real disposable beta.4-to-beta.5
-upgrade and scheduled-preparation refusal passed. The owner subsequently confirmed
-existing-profile/pairing integrity. Protected feed promotion succeeded; the installed
-beta.5 app checked the live feed and correctly reported it is on the latest version.
+The published beta.8 updater endpoint remains the public release channel. The
+installed internal beta.9 baseline is source/review evidence only until a separately
+authorized signed release is prepared. The guarded updater and release workflow are
+implemented. Historical beta.4-to-beta.5 upgrade and scheduled-preparation refusal
+checks remain useful evidence, but they do not establish a beta.9 feed promotion.
 Users on older builds without an embedded fork feed still need a signed bootstrap.
 
 Reuse the existing Tauri updater and Settings update UI. Configure only a
@@ -86,10 +83,9 @@ before schema migrations; a rollback never blindly restores an old database over
 newly written sessions.
 
 Use a fork-owned, monotonically increasing desktop version once binaries ship;
-record the upstream base separately in About/release notes. The feed and installed
-app are both beta.5, so no update is offered until a higher release. Do not append semver build metadata as the
-only version increment. Only older Dev builds without the fork feed require a
-manual bootstrap.
+record the upstream base separately in About/release notes. Do not append semver
+build metadata as the only version increment. Only older Dev builds without the
+fork feed require a manual bootstrap.
 
 ### Bootstrap and later delivery
 
@@ -139,11 +135,11 @@ build expires after 90 days, so this channel needs ongoing beta maintenance and
 is not permanent production distribution. Ship a replacement well before expiry.
 Delivery remains under user/iOS control and is not an instantaneous forced push.
 
-Current TestFlight state: build **1004** has completed Apple processing and export
-compliance and is **Testing** in the internal Owner testing group. Notification
-controls and delivery are disabled in this build. Physical upgrade/reconnection
-validation for 1004 remains pending; the owner confirmed operation on 1003. The external **Community beta** group is prepared;
-its public invitation is disabled and external review has not been submitted.
+Current TestFlight state: build **1009** is VALID and **IN_BETA_TESTING** in the
+internal Owner testing group. Notification controls and delivery are disabled in
+this build. This source reconciliation performed no new device or App Store
+Connect validation. The external **Community beta** group has not been changed by
+this work; verify its invitation and review state before any external rollout.
 Community rollout follows the owner-only upgrade
 check:
 
@@ -189,8 +185,8 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 1. Check the latest upstream stable tag, compare its pinned commit with the fork,
    and integrate in a review branch. Unreleased upstream main is not the public
-   default. On October 13, latest stable is still v0.13.0, already integrated;
-   origin/main has 33 later commits. No upstream merge was needed this pass.
+   default. This local reconciliation retains upstream **v0.14.0** behavior and
+   reviewed companion changes; it awaits parent review before public integration.
 2. Run bounded bridge/UI/native checks, schema/identity checks and connection
    lifecycle tests. Review the public export for credentials, private data and
    broken links. Public source receives only reviewed exported history.
@@ -207,23 +203,21 @@ a pairing reset. Existing host identity and revocation remain authoritative.
 
 ## 5. Implementation gates and acceptance
 
-Current foundations: Tauri updater is present but companion endpoints are disabled;
-the manual fallback now points to this fork. Phone version metadata is 0.1.1 and
-build 1006 is available in internal TestFlight Owner testing. Apple Distribution and
-Developer ID Application certificates were created in Xcode with the owner's
-authorization. The development certificate is retained. Certificates alone do not
-configure notarization, App Store Connect or CI access.
+Current foundations: the guarded Tauri updater and companion host protocol are in
+source; this reconciliation does not enable an endpoint or alter release settings.
+Phone version metadata is 0.1.1 and build 1009 is in internal TestFlight Owner
+testing. Certificates and earlier delivery evidence are not a substitute for a
+fresh protected-environment preflight, notarization, App Store Connect validation,
+or release authorization.
 
 The TestFlight and Mac workflows have separate protected GitHub environments.
 The Mac environment contains Developer ID/notarization credentials and a separate
-Tauri signing key; both workflows run only on public `main` after review. Candidate
-1003 passed iPhone processing and the owner confirmed operation/reconnection.
-The Apple Silicon [1.0.0-beta.5 Mac installer](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5)
-is signed, notarized, verified and public. The owner is on beta.5.
-Completed Mac delivery checks are recorded in [the beta.5 record](release-mac-beta5.md);
-this activation makes no TestFlight audience or review changes. The Mac feed is
-active with `COMPANION_MAC_UPDATE_VERIFIED=true`. See the
-[release setup checklist](release-setup.md) for the executable readiness check.
+Tauri signing key; both workflows run only after review. The Apple Silicon
+[beta.5 record](release-mac-beta5.md) preserves prior signed-delivery evidence,
+but it is not the current installed baseline or a beta.9 feed-promotion claim.
+The installed internal baseline is beta.9 and the public updater is beta.8. See
+the [release setup checklist](release-setup.md) for a fresh executable readiness
+check before any authorized packaging work.
 
 Release acceptance must cover interrupted/corrupt downloads, wrong signatures,
 beta/stable separation, active-agent restart deferral, multi-window/habit races,
