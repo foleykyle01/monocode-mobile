@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
 import {
+  beginUpdateOwnerWork,
+  isUpdateRestartPending,
+} from "../../../app/model/updater";
+import {
   mobileCatalog,
   mobileConversation,
   mobileModels,
@@ -48,6 +52,17 @@ const MAX_PAGE = 100;
 /** How long a git action may run before the phone is told to ask again; under
  *  the desktop's 25 second wait for a reply. */
 const GIT_ACTION_WAIT_MS = 20_000;
+const MOBILE_MUTATION_METHODS = new Set([
+  "session.start",
+  "session.configure",
+  "conversation.send",
+  "session.cancel",
+  "session.rename",
+  "session.delete",
+  "session.archive",
+]);
+const UPDATE_RESTART_PENDING_MESSAGE =
+  "MonoCode is preparing to restart for an update. Try again after it reopens.";
 type Options = {
   sessions: readonly Session[];
   /** The permission mode a new desktop tab would start with. */
@@ -196,6 +211,14 @@ export function useMobileWorkspace(options: Options) {
     // Publish in order: an older poll must not overwrite the catalog that makes
     // a newly created session routable before its ID is returned to the phone.
     let publication = Promise.resolve();
+    // Mobile access has its own request cache, but update readiness is a
+    // renderer-wide boundary. Hold it across each actual mutation so a restart
+    // cannot snapshot state while an upstream-phone request is still changing it.
+    const withUpdateOwnerWork = <T>(run: () => Promise<T>): Promise<T> => {
+      if (isUpdateRestartPending()) throw new Error(UPDATE_RESTART_PENDING_MESSAGE);
+      const finishOwnerWork = beginUpdateOwnerWork();
+      return Promise.resolve().then(run).finally(finishOwnerWork);
+    };
     const publishCatalog = () => {
       const next = publication.then(async () => {
         if (disposed) return;
@@ -319,12 +342,14 @@ export function useMobileWorkspace(options: Options) {
                   const oldest = gitJobs.keys().next().value;
                   if (oldest) gitJobs.delete(oldest);
                 }
-                const started = mobileProjectGitAction(
-                  String(payload.params.projectId ?? ""),
-                  typeof payload.params.worktreePath === "string"
-                    ? payload.params.worktreePath
-                    : undefined,
-                  payload.params,
+                const started = withUpdateOwnerWork(() =>
+                  mobileProjectGitAction(
+                    String(payload.params.projectId ?? ""),
+                    typeof payload.params.worktreePath === "string"
+                      ? payload.params.worktreePath
+                      : undefined,
+                    payload.params,
+                  ),
                 );
                 // Settled for the race below; a failure still reaches the phone.
                 started.catch(() => {});
@@ -358,11 +383,19 @@ export function useMobileWorkspace(options: Options) {
               }
               const promise =
                 existing?.result ??
-                current.current.command(
-                  payload.method,
-                  payload.params,
-                  payload.commandId,
-                );
+                (MOBILE_MUTATION_METHODS.has(payload.method)
+                  ? withUpdateOwnerWork(() =>
+                      current.current.command(
+                        payload.method,
+                        payload.params,
+                        payload.commandId,
+                      ),
+                    )
+                  : current.current.command(
+                      payload.method,
+                      payload.params,
+                      payload.commandId,
+                    ));
               if (!existing)
                 receipts.set(payload.commandId, { signature, result: promise });
               try {

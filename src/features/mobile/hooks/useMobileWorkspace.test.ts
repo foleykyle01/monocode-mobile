@@ -3,6 +3,10 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  hasUpdateOwnerWork,
+  setUpdateRestartPending,
+} from "../../../app/model/updater";
 import { useMobileWorkspace } from "./useMobileWorkspace";
 
 const desktop = vi.hoisted(() => ({
@@ -10,10 +14,14 @@ const desktop = vi.hoisted(() => ({
   listen: vi.fn(),
   catalog: vi.fn(),
   usage: vi.fn(),
+  gitAction: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: desktop.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: desktop.listen }));
-vi.mock("../model/mobileWorkspace", () => ({ mobileCatalog: desktop.catalog }));
+vi.mock("../model/mobileWorkspace", () => ({
+  mobileCatalog: desktop.catalog,
+  mobileProjectGitAction: desktop.gitAction,
+}));
 vi.mock("../model/mobileAccountUsage", () => ({
   mobileAccountUsage: desktop.usage,
 }));
@@ -24,10 +32,12 @@ vi.mock("../model/mobileAccountUsage", () => ({
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 const catalog = (id: string) => ({
   projects: [],
@@ -52,6 +62,12 @@ describe("new mobile session publication", () => {
         params: { text: "Hello" },
       },
     });
+  const sendRequest = (
+    id: string,
+    commandId: string,
+    method: string,
+    params: Record<string, unknown>,
+  ) => request({ payload: { id, commandId, method, params } });
   function Probe() {
     useMobileWorkspace({ sessions: [], command });
     return null;
@@ -59,6 +75,7 @@ describe("new mobile session publication", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    setUpdateRestartPending(false);
     command.mockResolvedValue({ sessionId: "new" });
     desktop.catalog.mockResolvedValue(catalog("new"));
     desktop.invoke.mockImplementation(async (method: string) =>
@@ -74,6 +91,8 @@ describe("new mobile session publication", () => {
   });
   afterEach(() => {
     act(() => root.unmount());
+    setUpdateRestartPending(false);
+    expect(hasUpdateOwnerWork()).toBe(false);
     vi.useRealTimers();
   });
 
@@ -170,6 +189,124 @@ describe("new mobile session publication", () => {
     expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
       id: "retry",
       response: { ok: true, result: { sessionId: "new" } },
+    });
+  });
+
+  it("rejects mutations during restart while continuing to serve read-only requests", async () => {
+    desktop.usage.mockResolvedValue({ accounts: {} });
+    setUpdateRestartPending(true);
+    act(() => root.render(createElement(Probe)));
+
+    sendRequest("configure", "configure", "session.configure", {
+      conversationId: "session",
+    });
+    sendRequest("usage", "usage", "accounts.usage", {
+      projectId: "project",
+      provider: "codex",
+      refresh: false,
+    });
+    await flush();
+
+    expect(command).not.toHaveBeenCalled();
+    expect(hasUpdateOwnerWork()).toBe(false);
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "configure",
+      response: {
+        ok: false,
+        error:
+          "MonoCode is preparing to restart for an update. Try again after it reopens.",
+      },
+    });
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "usage",
+      response: { ok: true, result: { accounts: {} } },
+    });
+  });
+
+  it("holds owner work for a mobile mutation until it succeeds", async () => {
+    const configured = deferred<{ sessionId: string }>();
+    command.mockReturnValueOnce(configured.promise);
+    act(() => root.render(createElement(Probe)));
+
+    sendRequest("configure", "configure", "session.configure", {
+      conversationId: "session",
+    });
+    await flush();
+    expect(command).toHaveBeenCalledWith(
+      "session.configure",
+      { conversationId: "session" },
+      "configure",
+    );
+    expect(hasUpdateOwnerWork()).toBe(true);
+
+    configured.resolve({ sessionId: "session" });
+    await flush();
+    expect(hasUpdateOwnerWork()).toBe(false);
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "configure",
+      response: { ok: true, result: { sessionId: "session" } },
+    });
+  });
+
+  it("releases owner work when a mobile mutation fails", async () => {
+    command.mockRejectedValueOnce(new Error("configuration failed"));
+    act(() => root.render(createElement(Probe)));
+
+    sendRequest("configure", "configure", "session.configure", {
+      conversationId: "session",
+    });
+    await flush();
+
+    expect(hasUpdateOwnerWork()).toBe(false);
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "configure",
+      response: { ok: false, error: "configuration failed" },
+    });
+  });
+
+  it("keeps a timed-out git action owned until its shared job settles", async () => {
+    const completed = deferred<{ message: string }>();
+    desktop.gitAction.mockReturnValue(completed.promise);
+    act(() => root.render(createElement(Probe)));
+    const params = { projectId: "project", action: "commit" };
+
+    sendRequest("first", "git-action", "project.gitAction", params);
+    await flush();
+    expect(desktop.gitAction).toHaveBeenCalledTimes(1);
+    expect(hasUpdateOwnerWork()).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    await flush();
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "first",
+      response: { ok: true, result: { pending: true } },
+    });
+    expect(hasUpdateOwnerWork()).toBe(true);
+
+    sendRequest("retry", "git-action", "project.gitAction", params);
+    sendRequest("mismatch", "git-action", "project.gitAction", {
+      projectId: "project",
+      action: "push",
+    });
+    await flush();
+    expect(desktop.gitAction).toHaveBeenCalledTimes(1);
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "mismatch",
+      response: {
+        ok: false,
+        error: "Command ID was already used with different input",
+      },
+    });
+    expect(hasUpdateOwnerWork()).toBe(true);
+
+    completed.resolve({ message: "done" });
+    await flush();
+    expect(hasUpdateOwnerWork()).toBe(false);
+    expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
+      id: "retry",
+      response: { ok: true, result: { message: "done" } },
     });
   });
 });
