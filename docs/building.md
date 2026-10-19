@@ -70,6 +70,6 @@ Prerelease tags such as `v0.9.1-beta.1` publish to `beta/latest.json`, and beta 
 
 To trial AppImage updates, install a beta AppImage in a writable directory, publish a newer beta, and verify the update downloads, installs, and relaunches successfully before publishing a stable version.
 
-The [release workflow](../.github/workflows/release.yml) packages the platform builds and publishes the updater feed. [scripts/release-channel.cjs](../scripts/release-channel.cjs) selects the stable or beta feed.
+Release builds and updater-feed publication are handled by the project's release process. This public source export deliberately omits the general release workflow. [scripts/release-channel.cjs](../scripts/release-channel.cjs) selects the stable or beta feed.
 
 Read [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines and checks. The experimental remote host has its own [build and packaging instructions](remote-access.md#release-packaging).

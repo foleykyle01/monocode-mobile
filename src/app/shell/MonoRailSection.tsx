@@ -30,6 +30,7 @@ import {
   monoLook,
   monoProjectsPhrase,
   monosSnapshot,
+  monoWorksOn,
   reorderMonos,
   saveMonoMascot,
   saveMonoName,
@@ -64,7 +65,8 @@ export type MonoRailProps = {
   /** Active linked projects, or each Mono's retained idle scope. */
   projectScopes?: ReadonlyMap<string, readonly MonoProjectScope[]>;
   onOpen: (monoId: string) => void;
-  onCreate: () => void;
+  /** Creates a Mono, given these projects to start with. */
+  onCreate: (projects?: readonly string[]) => void;
   onDelete: (monoId: string) => void;
   /** Whether the intro may show now, when there is no Mono yet. */
   introAvailable?: boolean;
@@ -100,13 +102,20 @@ export function MonoRailSection({
   onDelete,
   introAvailable = false,
   presentation = "compact",
-}: MonoRailProps) {
+  project,
+}: MonoRailProps & {
+  /** Inset sidebars list only Monos that work in their project. */
+  project?: string;
+}) {
   const snapshot = useSyncExternalStore(subscribeMonos, monosSnapshot);
-  const monos = useMemo(() => listMonos(), [snapshot]);
+  const monos = useMemo(
+    () => listMonos().filter((mono) => !project || monoWorksOn(mono, project)),
+    [snapshot, project],
+  );
   const [addButton, setAddButton] = useState<HTMLButtonElement | null>(null);
   // Shown once ever, and only the user's choice puts it away.
   const showIntro =
-    introAvailable && monos.length === 0 && !monoIntroDismissed();
+    !project && introAvailable && monos.length === 0 && !monoIntroDismissed();
   const ids = monos.map((mono) => mono.id);
   const sortable = useAnimatedReorder(ids, reorderMonos, "y");
   const [menu, setMenu] = useState<{ id: string; anchor: PopoverAnchor }>();
@@ -116,11 +125,18 @@ export function MonoRailSection({
 
   return (
     <div
-      className={`mb-2 shrink-0 ${directory ? "px-1" : ""}`}
+      className={`mb-2 shrink-0 ${directory ? "px-1" : project ? "px-2 pb-3" : ""}`}
       data-mono-rail
       data-mono-presentation={presentation}
+      data-mono-project={project}
     >
-      <div className="flex items-center gap-1 px-3 pb-1.5 pt-1">
+      <div
+        className={
+          project
+            ? "flex h-7 items-center gap-1 px-2 text-[12px] font-medium text-content/50"
+            : "flex items-center gap-1 px-3 pb-1.5 pt-1"
+        }
+      >
         <span className="min-w-0 flex-1 truncate px-1 text-xs leading-5 text-content/50">
           Monos
         </span>
@@ -130,7 +146,7 @@ export function MonoRailSection({
             type="button"
             title={directory ? "Create a Mono" : "New mono"}
             aria-label={directory ? "Create a Mono" : "New mono"}
-            onClick={onCreate}
+            onClick={() => onCreate(project ? [project] : undefined)}
             className={`grid shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content ${
               directory ? "size-7" : "size-5"
             }`}
@@ -148,7 +164,7 @@ export function MonoRailSection({
           look={nextMonoLook(monos)}
           onCreate={() => {
             dismissMonoIntro();
-            onCreate();
+            onCreate(project ? [project] : undefined);
           }}
           onLater={dismissMonoIntro}
         />
@@ -161,7 +177,7 @@ export function MonoRailSection({
             data-mono-add
             title={directory ? "Create a Mono" : "New mono"}
             aria-label={directory ? "Create a Mono" : "New mono"}
-            onClick={onCreate}
+            onClick={() => onCreate(project ? [project] : undefined)}
             className={`w-full cursor-default rounded-md border border-dashed border-content/15 text-content/50 hover:border-content/30 hover:bg-content/5 hover:text-content ${
               directory
                 ? "flex min-h-14 items-center justify-center gap-2 text-[15px] font-medium"

@@ -422,7 +422,8 @@ mod tests {
         .unwrap();
         let final_send =
             namespace_upload_id(input.clone(), "sessions.send", &format!("{first}-{raw}")).unwrap();
-        let other = namespace_upload_id(input, "sessions.send", &format!("{second}-{raw}")).unwrap();
+        let other =
+            namespace_upload_id(input, "sessions.send", &format!("{second}-{raw}")).unwrap();
         assert_eq!(chunk["uploadId"], final_send["uploadId"]);
         assert_eq!(final_send["uploadId"], format!("{first}-{raw}"));
         assert_ne!(final_send["uploadId"], other["uploadId"]);

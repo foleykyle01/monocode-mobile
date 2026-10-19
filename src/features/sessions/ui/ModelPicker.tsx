@@ -1608,18 +1608,17 @@ function ModelFlyout({
         if (item) onPick(item);
       }}
       data-model-picker
-      style={{
-        height: menuHeight,
-        minHeight: menuHeight,
-        maxHeight: menuHeight,
-      }}
+      // Popover caps the height to the viewport; a fixed max here would
+      // clip the bottom rows (and the companion restart action) on short or
+      // zoomed windows.
+      style={{ height: menuHeight }}
       className="flex min-h-0 overflow-hidden font-sans"
     >
       <nav
         role="tablist"
         aria-label="Providers"
         aria-orientation="vertical"
-        className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-stroke p-1.5"
+        className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto overscroll-none border-r border-stroke p-1.5"
       >
         <ProviderTabButton
           title="Favorites"

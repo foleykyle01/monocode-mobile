@@ -10,11 +10,10 @@ An independent, experimental iPhone companion for [MonoCode](https://github.com/
 
 This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **MonoCode Companion**, the native iPhone app. The ordinary upstream MonoCode app cannot host this companion. This is not an official MonoCode mobile release.
 
-**Reconciliation status — October 18, 2026:** iPhone Companion **0.1.1 (1009)**
-is valid and in the internal Owner TestFlight group; the source base is MonoCode
-**0.14.0**. The installed internal Mac baseline is beta.9, while the published
-updater remains beta.8. This source reconciliation does not create, sign, upload,
-or publish a new Mac or iPhone artifact.
+**Integration status — October 19, 2026:** iPhone Companion **0.1.1 (1009)**
+remains valid in the internal Owner TestFlight group. This source candidate is
+based on MonoCode **0.16.0** and retains the companion bridge; it does not create,
+sign, upload, or publish a new Mac or iPhone artifact.
 
 ## Quickstart
 
@@ -51,12 +50,12 @@ updater is beta.8, while beta.9 is an internal baseline pending release review.
 
 ## Availability
 
-Status as of **October 18, 2026**:
+Status as of **October 19, 2026**:
 
 | Component | Current status |
 | --- | --- |
 | iPhone | **0.1.1 (1009)** is valid and in the internal **Owner testing** TestFlight group. External beta access and a public invitation are not available yet. |
-| Mac installer | The installed internal baseline is beta.9 on MonoCode **0.14.0**. The published updater remains beta.8; this source reconciliation has not produced a replacement signed installer. |
+| Mac installer | The installed internal baseline is beta.10. The published updater remains beta.8; this source integration has not produced a replacement signed installer. |
 | Source | Available here for contributors who can build and sign the apps themselves. A GitHub source archive is not an app installer. |
 | Updates | Internal iPhone updates use TestFlight. The verified Mac beta feed is active; download updates in-app and choose Restart to update when work is idle. |
 | Notifications | **Disabled in build 1004**, with notification settings hidden. Open the phone app to check activity; background alerts are not included. |
@@ -92,6 +91,11 @@ git clone https://github.com/foleykyle01/monocode-mobile.git
 cd monocode-mobile
 npm ci
 ```
+
+Upstream's separate experimental Expo client remains in
+[`mobile/`](mobile/README.md). Its QUIC access path is independently configured
+and defaults off; it does not replace this companion's established pairing or
+transport protocol.
 
 Build the companion-enabled Mac app:
 

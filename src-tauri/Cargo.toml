@@ -20,6 +20,13 @@ companion-spike = ["dep:monocode-companion-core", "dep:qrcode"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+monocode-mobile-link = { path = "../crates/mobile-link" }
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+tokio = { version = "1", features = ["sync", "time"] }
+if-addrs = "0.15"
+hostname = "0.4"
+igd-next = "0.18"
+natpmp = "0.5"
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-opener = "2"
 open = "5.4.1"
@@ -41,7 +48,6 @@ arboard = { version = "3.6", features = ["wayland-data-control"] }
 png = "0.18"
 monocode-companion-core = { path = "../companion/core", optional = true }
 qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }
-tokio = { version = "1", features = ["sync", "time"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -108,15 +108,7 @@ export function SearchableProjectPicker({
     : "Choose project";
   const logoPath = resolveTabGroupLogo(key, groupLogos);
   const color = resolveTabGroupColor(key, groupColors, groupCustomColors, seed);
-  const railProjects = projectRailItems(recents, railCwd ?? cwd);
-  const projects =
-    inProject && !railProjects.some((item) => sameProjectPath(item.path, cwd))
-      ? [{ path: cwd, openedAt: 0 }, ...railProjects]
-      : railProjects;
-  const orderedProjects = [
-    ...projects.filter((item) => sameProjectPath(item.path, cwd)),
-    ...projects.filter((item) => !sameProjectPath(item.path, cwd)),
-  ];
+  const orderedProjects = pickerProjects(recents, cwd, railCwd);
   const activeMono = monos?.items.find((mono) => mono.id === monos.activeId);
   const closePicker = () => setOpen(false);
   const openPicker = () => setOpen(true);
@@ -233,6 +225,24 @@ export function SearchableProjectPicker({
   );
 }
 
+/** The rail's projects with the current one first, even when it is unlisted. */
+export function pickerProjects(
+  recents: RecentProject[],
+  cwd: string,
+  railCwd?: string,
+): RecentProject[] {
+  const railProjects = projectRailItems(recents, railCwd ?? cwd);
+  const projects =
+    looksLikeProject(cwd) &&
+    !railProjects.some((item) => sameProjectPath(item.path, cwd))
+      ? [{ path: cwd, openedAt: 0 }, ...railProjects]
+      : railProjects;
+  return [
+    ...projects.filter((item) => sameProjectPath(item.path, cwd)),
+    ...projects.filter((item) => !sameProjectPath(item.path, cwd)),
+  ];
+}
+
 type ProjectPickerPopoverProps = Pick<
   Props,
   | "onSelectProject"
@@ -247,6 +257,9 @@ type ProjectPickerPopoverProps = Pick<
   onDismiss: () => void;
   label?: string;
   emptyMessage?: string;
+  /** A flyout off another menu opens beside it, and that menu owns outside
+   * clicks for both. */
+  flyout?: { layer: number; attributes?: Record<`data-${string}`, boolean> };
 };
 
 /** Shared searchable project menu for switching projects or adding them to a Mono. */
@@ -262,6 +275,7 @@ export function ProjectPickerPopover({
   monos,
   label = "Project picker",
   emptyMessage = "No projects found",
+  flyout,
 }: ProjectPickerPopoverProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -370,14 +384,16 @@ export function ProjectPickerPopover({
   return (
     <Popover
       anchor={anchor}
-      side="bottom"
+      side={flyout ? "right" : "bottom"}
       align="start"
-      gap={4}
+      gap={flyout ? -4 : 4}
       width={286}
       maxHeight={380}
+      layer={flyout?.layer}
+      {...flyout?.attributes}
       role="dialog"
       aria-label={label}
-      onDismiss={projectMenuActive ? undefined : onDismiss}
+      onDismiss={projectMenuActive || flyout ? undefined : onDismiss}
       onKeyDown={onPickerKeyDown}
       className="flex flex-col overflow-hidden"
     >

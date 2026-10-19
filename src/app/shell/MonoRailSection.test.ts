@@ -87,6 +87,24 @@ it("lists monos once there are some, with the plus in the header", () => {
   expect(container.querySelectorAll('[aria-label="New mono"]')).toHaveLength(1);
 });
 
+it("limits an inset rail to its project and seeds new Monos with that project", () => {
+  const selectedProject = "/workspace/selected";
+  const otherProject = "/workspace/other";
+  createMono([selectedProject]);
+  createMono([otherProject]);
+  const onCreate = render({ project: selectedProject });
+
+  expect(container.querySelectorAll("[data-mono-status]")).toHaveLength(1);
+  expect(container.querySelector(`[data-selected="true"]`)).toBeNull();
+  expect(container.querySelector('[aria-label*="selected"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label*="other"]')).toBeNull();
+
+  act(() =>
+    container.querySelector<HTMLButtonElement>('[aria-label="New mono"]')!.click(),
+  );
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith([selectedProject]);
+});
+
 it("uses the same exact open callback in the readable Mono directory", () => {
   const mono = createMono();
   saveMonoName(mono.id, "UnbrokenMonoNameThatMustWrapWithoutBeingClipped");
