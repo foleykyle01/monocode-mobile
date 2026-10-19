@@ -249,14 +249,18 @@ describe("new mobile session publication", () => {
   });
 
   it("releases owner work when a mobile mutation fails", async () => {
-    command.mockRejectedValueOnce(new Error("configuration failed"));
+    const failed = deferred<{ sessionId: string }>();
+    command.mockReturnValueOnce(failed.promise);
     act(() => root.render(createElement(Probe)));
 
     sendRequest("configure", "configure", "session.configure", {
       conversationId: "session",
     });
     await flush();
+    expect(hasUpdateOwnerWork()).toBe(true);
 
+    failed.reject(new Error("configuration failed"));
+    await flush();
     expect(hasUpdateOwnerWork()).toBe(false);
     expect(desktop.invoke).toHaveBeenCalledWith("mobile_reply", {
       id: "configure",
