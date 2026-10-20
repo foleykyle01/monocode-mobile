@@ -244,4 +244,4 @@ Report companion issues in [this repository](https://github.com/foleykyle01/mono
 
 ## Upstream and license
 
-Derived from [MonoCode](https://github.com/hardbeat920/monocode), retaining its [MIT license](LICENSE) and [third-party notices](NOTICE). The desktop base is 0.13.0. Upstream desktop downloads and general platform documentation apply to the upstream app; those binaries do not include this companion host. Research from Superset informed design exploration; no Superset source is included in this repository.
+Derived from [MonoCode](https://github.com/hardbeat920/monocode), retaining its [MIT license](LICENSE) and [third-party notices](NOTICE). The desktop base is 0.16.0. Upstream desktop downloads and general platform documentation apply to the upstream app; those binaries do not include this companion host. Research from Superset informed design exploration; no Superset source is included in this repository.
