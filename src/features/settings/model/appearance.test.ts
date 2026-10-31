@@ -42,6 +42,13 @@ import {
   saveDiffPalette,
   initAppearance,
   isLightScheme,
+  loadProjectRailView,
+  saveProjectRailView,
+  loadRightPanelTab,
+  saveRightPanelTab,
+  loadRightPanelTabOrder,
+  saveRightPanelTabOrder,
+  loadSidebarTabOrder,
 } from "./appearance";
 
 const KEY = "monocode.transcriptLayout";
@@ -55,6 +62,7 @@ const CHAT_BACKGROUND_SCOPE_KEY = "monocode.chatBackgroundScope";
 const NEW_THREAD_BACKGROUND_EFFECT_KEY = "monocode.newThreadBackgroundEffect";
 const THEME_DARK_LIGHTNESS_KEY = "monocode.themeDarkLightness";
 const DIFF_PALETTE_KEY = "monocode.diffPalette";
+const PROJECT_RAIL_VIEW_KEY = "monocode.projectRailView";
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -79,6 +87,43 @@ function mockLocalStorage() {
     configurable: true,
   });
 }
+
+describe("right panel tabs", () => {
+  beforeEach(mockLocalStorage);
+
+  it("remembers Graph as the selected tab and falls back for unknown tabs", () => {
+    expect(loadRightPanelTab()).toBe("files");
+    saveRightPanelTab("graph");
+    expect(loadRightPanelTab()).toBe("graph");
+    localStorage.setItem("monocode.rightPanelTab", "unknown");
+    expect(loadRightPanelTab()).toBe("files");
+  });
+
+  it("adds Graph after the existing Explorer/Changes order", () => {
+    localStorage.setItem(
+      "monocode.sidebarTabOrder",
+      JSON.stringify(["sessions", "changes", "inbox", "files"]),
+    );
+    expect(loadRightPanelTabOrder()).toEqual(["changes", "files", "graph"]);
+  });
+
+  it("persists an independent order without changing the classic sidebar", () => {
+    const classic = loadSidebarTabOrder();
+    saveRightPanelTabOrder(["graph", "files", "changes"]);
+    expect(loadRightPanelTabOrder()).toEqual(["graph", "files", "changes"]);
+    expect(loadSidebarTabOrder()).toEqual(classic);
+  });
+
+  it("repairs partial, duplicate and invalid saved orders", () => {
+    localStorage.setItem(
+      "monocode.rightPanelTabOrder",
+      JSON.stringify(["graph", "unknown", "graph"]),
+    );
+    expect(loadRightPanelTabOrder()).toEqual(["graph", "files", "changes"]);
+    localStorage.setItem("monocode.rightPanelTabOrder", "invalid JSON");
+    expect(loadRightPanelTabOrder()).toEqual(["files", "changes", "graph"]);
+  });
+});
 
 describe("accent color setting", () => {
   beforeEach(mockLocalStorage);
@@ -185,6 +230,22 @@ describe("diff palette setting", () => {
     expect(localStorage.getItem(DIFF_PALETTE_KEY)).toBe("default");
     localStorage.setItem(DIFF_PALETTE_KEY, "rainbow");
     expect(loadDiffPalette()).toBe(DIFF_PALETTE_DEFAULT);
+  });
+});
+
+describe("project rail view", () => {
+  beforeEach(mockLocalStorage);
+
+  it("defaults to Projects and persists the dedicated Monos directory", () => {
+    expect(loadProjectRailView()).toBe("projects");
+    saveProjectRailView("monos");
+    expect(localStorage.getItem(PROJECT_RAIL_VIEW_KEY)).toBe("monos");
+    expect(loadProjectRailView()).toBe("monos");
+  });
+
+  it("safely falls back to Projects for invalid stored values", () => {
+    localStorage.setItem(PROJECT_RAIL_VIEW_KEY, "all-monos");
+    expect(loadProjectRailView()).toBe("projects");
   });
 });
 

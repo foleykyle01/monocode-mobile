@@ -2,17 +2,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit, listen, TauriEvent } from "@tauri-apps/api/event";
 import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
-import { useStableValue } from "../../../shared/hooks/useStableValue";
+import {
+  plainEqual,
+  useStableValue,
+} from "../../../shared/hooks/useStableValue";
 import {
   getMonoTranscriptPage,
   type SessionSummary,
 } from "../../sessions/data/sessionStore";
 import type { Block, Session } from "../../sessions/model/session";
-import { listMonos } from "../model/mono";
+import { listMonos, type MonoState } from "../model/mono";
 import {
   monoActivityChildren,
+  loadMonoLastProjectScopes,
+  monoActivityProjectScopes,
   monoActivitySessions,
+  monoProjectScopes,
   monoActivityStates,
+  saveMonoLastProjectScopes,
+  subscribeMonoLastProjectScopes,
+  updateMonoLastProjectScopes,
   type MonoActivitySnapshot,
 } from "../model/monoActivityState";
 
@@ -20,15 +29,20 @@ const CHANGED = "mono_activity_changed";
 const REQUEST = "mono_activity_request";
 type OwnerSnapshot = { owner: string; snapshot: MonoActivitySnapshot };
 
+export type MonoActivityProjection = {
+  states: ReadonlyMap<string, MonoState>;
+  projectScopes: ReturnType<typeof monoProjectScopes>;
+};
+
 /** All roster entries follow their live owners, independently of the selected view. */
-export function useMonoActivityStates(
+export function useMonoActivity(
   sessions: readonly Session[],
   rosterKey: string,
   history: readonly SessionSummary[] = [],
   enabled = true,
 ) {
   const monos = useMemo(
-    () => enabled ? listMonos() : [],
+    () => (enabled ? listMonos() : []),
     [rosterKey, enabled],
   );
   const [owners, setOwners] = useState<
@@ -36,6 +50,9 @@ export function useMonoActivityStates(
   >(new Map());
   const [saved, setSaved] = useState<ReadonlyMap<string, readonly Block[]>>(
     new Map(),
+  );
+  const [lastProjectScopes, setLastProjectScopes] = useState(() =>
+    loadMonoLastProjectScopes(monos),
   );
   const pages = useRef(new Map<string, Promise<Block[]>>());
   const localSessions = useStableValue(
@@ -171,5 +188,57 @@ export function useMonoActivityStates(
     publish.current();
   }, [local]);
 
-  return useStableValue(monoActivityStates(monos, [...owners.values(), local]));
+  const snapshots = [...owners.values(), local];
+  const states = useStableValue(monoActivityStates(monos, snapshots));
+  const activeProjectScopes = useStableValue(
+    monoActivityProjectScopes(monos, snapshots),
+  );
+  useEffect(() => {
+    const refresh = () => {
+      setLastProjectScopes((previous) => {
+        const next = currentLastProjectScopes(monos, previous);
+        return plainEqual(previous, next) ? previous : next;
+      });
+    };
+    refresh();
+    return subscribeMonoLastProjectScopes(refresh);
+  }, [monos]);
+  useEffect(() => {
+    setLastProjectScopes((previous) => {
+      const current = currentLastProjectScopes(monos, previous);
+      const next = updateMonoLastProjectScopes(
+        monos,
+        current,
+        activeProjectScopes,
+      );
+      const activeMonoIds = [...activeProjectScopes]
+        .filter(([, scopes]) => scopes.length > 0)
+        .map(([id]) => id);
+      if (activeMonoIds.length && !plainEqual(current, next))
+        saveMonoLastProjectScopes(monos, next, activeMonoIds);
+      return plainEqual(previous, next) ? previous : next;
+    });
+  }, [activeProjectScopes, monos]);
+  const projectScopes = useStableValue(
+    monoProjectScopes(monos, activeProjectScopes, lastProjectScopes),
+  );
+  return useStableValue({ states, projectScopes });
+}
+
+function currentLastProjectScopes(
+  monos: ReturnType<typeof listMonos>,
+  previous: ReturnType<typeof loadMonoLastProjectScopes>,
+) {
+  const retained = updateMonoLastProjectScopes(monos, previous, new Map());
+  return new Map([...retained, ...loadMonoLastProjectScopes(monos)]);
+}
+
+/** Compatibility view for consumers that only render the Mono's aggregate state. */
+export function useMonoActivityStates(
+  sessions: readonly Session[],
+  rosterKey: string,
+  history: readonly SessionSummary[] = [],
+  enabled = true,
+) {
+  return useMonoActivity(sessions, rosterKey, history, enabled).states;
 }

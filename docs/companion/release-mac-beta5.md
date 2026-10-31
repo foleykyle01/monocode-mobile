@@ -1,5 +1,9 @@
 # Mac beta.5: published download and active update feed
 
+> Historical delivery record. Current Mac baseline and updater status are stated
+> in [Updates and distribution](updates-and-distribution.md); this record does not
+> promote a new feed or installer.
+
 October 15, 2026. **1.0.0-beta.5**, Apple Silicon arm64, `MonoCode Dev`, identity
 `com.monocode.companion-spike`, Developer ID team `RBT45GBH6K`.
 

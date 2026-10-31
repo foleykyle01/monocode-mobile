@@ -6,7 +6,7 @@ An experimental native iPhone client for sessions running in **MonoCode Dev**, t
 
 The path is **iPhone React UI → native Keychain + Iroh → encrypted direct/relay connection → embedded Mac host → authenticated loopback bridge → existing desktop session owner**.
 
-This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.13.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent companion beta, not an official mobile release. iPhone build **0.1.1 (1004)** is valid in App Store Connect and available to the internal Owner testing group through TestFlight. External beta review and a public invitation have not been completed.
+This implementation is derived from [MonoCode](https://github.com/hardbeat920/monocode), currently incorporating upstream `v0.14.0`, and retains the [MIT license](../LICENSE) and [notices](../NOTICE). It is an independent companion beta, not an official mobile release. iPhone build **0.1.1 (1009)** is valid in App Store Connect and available to the internal Owner testing group through TestFlight. External beta review and a public invitation have not been completed.
 
 ## TestFlight path
 
@@ -112,9 +112,11 @@ Phone identity and unconfirmed commands use Apple Keychain with synchronization 
 
 ## Recovery and limits
 
-The current preview is version **0.1.1** (iPhone build **1004**), based on MonoCode
-**0.13.0**. TestFlight internal Owner testing is available; external beta
-distribution and a signed Mac download are still pending. See the
+The current preview is version **0.1.1** (iPhone build **1009**), based on MonoCode
+**0.14.0**. TestFlight internal Owner testing is available. The installed internal
+Mac baseline is beta.9, while the public updater remains beta.8 pending a separately
+authorized release. External beta distribution and a replacement signed Mac download
+are still pending. See the
 [update and distribution plan](../docs/companion/updates-and-distribution.md) for
 the path from the current beta to signed installers and verified app updates.
 
@@ -127,7 +129,7 @@ Remote access after a full app restart or change the paired-device list.
 
 Mutations are saved before dispatch with their exact host, request ID, action, and input. The Mac deduplicates matching requests within its renderer epoch and rejects changed input or stale state. A timeout may mean the command ran but its receipt was lost: review the conversation or explicitly retry the same command. Desktop receipts are memory-only and limited to 512 commands per epoch; a restart may require manual outcome review.
 
-Push notifications are disabled in build 1004 and their Settings controls are hidden. The native push plugin and relay integration are not included in this public release.
+Push notifications are disabled in build 1009 and their Settings controls are hidden. The native push plugin and relay integration are not included in this public release.
 
 Event replay, full desktop feature parity, external TestFlight
 distribution, signed Mac production distribution, and dedicated relay operations

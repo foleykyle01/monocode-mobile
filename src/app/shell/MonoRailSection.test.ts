@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createMono } from "../../features/monos/model/mono";
+import { createMono, saveMonoName } from "../../features/monos/model/mono";
 import { MonoRailSection } from "./MonoRailSection";
 
 let root: Root;
@@ -84,8 +84,86 @@ it("lists monos once there are some, with the plus in the header", () => {
   createMono();
   render({ introAvailable: true });
   expect(intro()).toBeNull();
-  expect(container.querySelector("[data-mono-add]")).toBeNull();
   expect(container.querySelectorAll('[aria-label="New mono"]')).toHaveLength(1);
+});
+
+it("limits an inset rail to its project and seeds new Monos with that project", () => {
+  const selectedProject = "/workspace/selected";
+  const otherProject = "/workspace/other";
+  createMono([selectedProject]);
+  createMono([otherProject]);
+  const onCreate = render({ project: selectedProject });
+
+  expect(container.querySelectorAll("[data-mono-status]")).toHaveLength(1);
+  expect(container.querySelector(`[data-selected="true"]`)).toBeNull();
+  expect(container.querySelector('[aria-label*="selected"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label*="other"]')).toBeNull();
+
+  act(() =>
+    container.querySelector<HTMLButtonElement>('[aria-label="New mono"]')!.click(),
+  );
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith([selectedProject]);
+});
+
+it("uses the same exact open callback in the readable Mono directory", () => {
+  const mono = createMono();
+  saveMonoName(mono.id, "UnbrokenMonoNameThatMustWrapWithoutBeingClipped");
+  const onOpen = vi.fn();
+  render({ presentation: "directory", activeId: mono.id, onOpen });
+
+  const row = container.querySelector<HTMLElement>(`[data-selected="true"]`)!;
+  const button = row.querySelector<HTMLButtonElement>("button")!;
+  expect(
+    container.querySelector('[data-mono-presentation="directory"]'),
+  ).not.toBeNull();
+  expect(row.className).toContain("min-h-14");
+  expect(button.getAttribute("aria-current")).toBe("true");
+  expect(button.querySelector("span")?.className).toContain("break-all");
+
+  act(() => button.click());
+  expect(onOpen).toHaveBeenCalledExactlyOnceWith(mono.id);
+});
+
+it("shows accessible linked project subrows only in the readable Mono directory", () => {
+  const path =
+    "/workspace/VeryLongUnbrokenProjectNameThatMustWrapWithoutClipping";
+  const mono = createMono([path]);
+  render({
+    presentation: "directory",
+    projectScopes: new Map([
+      [mono.id, [{ path, status: "needs-you" as const }]],
+    ]),
+  });
+
+  const scope = container.querySelector<HTMLElement>(
+    "[data-mono-project-scope]",
+  )!;
+  expect(scope.getAttribute("data-mono-project-status")).toBe("needs-you");
+  expect(scope.getAttribute("title")).toBe(path);
+  expect(scope.getAttribute("aria-label")).toContain("Needs you");
+  expect(scope.getAttribute("aria-label")).toContain(
+    "VeryLongUnbrokenProjectNameThatMustWrapWithoutClipping",
+  );
+  expect(scope.querySelector("button")).toBeNull();
+  expect(scope.querySelector("span.break-all")?.className).toContain(
+    "break-all",
+  );
+  const row = scope.closest<HTMLElement>("[data-mono-status]")!;
+  const header = row.querySelector<HTMLElement>("[data-mono-header]");
+  const scopeList = scope.parentElement;
+  expect(header?.nextElementSibling).toBe(scopeList);
+  expect(scopeList?.className).toContain("w-full");
+  expect(scopeList?.className).toContain("min-w-0");
+});
+
+it("offers a labelled create affordance when the dedicated Mono directory is empty", () => {
+  const onCreate = render({ presentation: "directory" });
+  const create = container.querySelector<HTMLButtonElement>("[data-mono-add]")!;
+  expect(create.getAttribute("aria-label")).toBe("Create a Mono");
+  expect(create.textContent).toContain("Create a Mono");
+
+  act(() => create.click());
+  expect(onCreate).toHaveBeenCalledOnce();
 });
 
 it("describes unread replies without rendering a number, except the one open", () => {
@@ -115,14 +193,20 @@ it("shows completed unread work in green until opened, with active work taking p
   expect(container.querySelector('[data-mono-unread="1"]')).toBe(dot());
   expect(dot().textContent).toBe("");
   expect(container.querySelectorAll("[data-mono-status-dot]")).toHaveLength(1);
-  expect(container.querySelector('[aria-label*="Done, unread"]')).not.toBeNull();
+  expect(
+    container.querySelector('[aria-label*="Done, unread"]'),
+  ).not.toBeNull();
 
   for (const status of ["working", "needs-you"] as const) {
     render({ unseenCounts, states: new Map([[mono.id, { status }]]) });
     expect(dot().getAttribute("data-mono-status-dot")).toBe(status);
     expect(dot().classList.contains("bg-emerald-400")).toBe(false);
     expect(dot().textContent).toBe("");
-    expect(dot().classList.contains(status === "working" ? "bg-blue-400" : "bg-amber-400")).toBe(true);
+    expect(
+      dot().classList.contains(
+        status === "working" ? "bg-blue-400" : "bg-amber-400",
+      ),
+    ).toBe(true);
   }
 
   render({ unseenCounts, activeId: mono.id });

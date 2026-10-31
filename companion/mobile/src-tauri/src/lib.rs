@@ -1,6 +1,8 @@
+mod attachments;
 mod pending;
 
 use anyhow::{ensure, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use iroh::{Endpoint, EndpointAddr, SecretKey};
 use monocode_companion_core::{
     client_endpoint, exchange, require_ok, storage::random_hex, validate_command, Request, Ticket,
@@ -9,12 +11,109 @@ use monocode_companion_core::{
 use pending::{definitive_response, is_mutation, PendingCommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 
 const SERVICE: &str = "dev.monocode.companion";
 const ACCOUNT: &str = "device-identity-v1";
 const PENDING_ACCOUNT: &str = "pending-command-v1";
+
+fn attachment_directory(app: &AppHandle) -> Result<std::path::PathBuf> {
+    Ok(app.path().app_data_dir()?.join("companion-pending-images"))
+}
+
+fn clear_staged_attachments(app: &AppHandle, input: &Value) {
+    let Ok(references) = attachments::references(input) else {
+        return;
+    };
+    let Ok(directory) = attachment_directory(app) else {
+        return;
+    };
+    let _ = attachments::discard(&directory, &references);
+}
+
+fn finalized_send_input(input: &Value, request_id: &str) -> Result<Value> {
+    let references = attachments::references(input)?;
+    if references.is_empty() {
+        return Ok(input.clone());
+    }
+    // The longest chunk suffix is "-u3-8388607". Keep the device request
+    // below the protocol limit after that suffix is added.
+    ensure!(request_id.len() <= 45, "Image request ID is too large");
+    let mut final_input = input.clone();
+    final_input
+        .as_object_mut()
+        .context("Invalid send input")?
+        .insert("uploadId".into(), Value::String(request_id.into()));
+    Ok(final_input)
+}
+
+fn expired_upload(response: &Value) -> bool {
+    response.get("ok").and_then(Value::as_bool) == Some(false)
+        && response.get("outcomeUnknown").and_then(Value::as_bool) != Some(true)
+        && response
+            .get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains("Image upload expired"))
+}
+
+async fn upload_staged_attachments(
+    endpoint: &Endpoint,
+    host: &EndpointAddr,
+    request_id: &str,
+    input: &Value,
+    app: &AppHandle,
+) -> Result<Value> {
+    let references = attachments::references(input)?;
+    if references.is_empty() {
+        return Ok(input.clone());
+    }
+    let object = input.as_object().context("Invalid send input")?;
+    let epoch = object.get("epoch").cloned().context("Invalid send input")?;
+    let session_id = object
+        .get("sessionId")
+        .cloned()
+        .context("Invalid send input")?;
+    let turn = object.get("turn").cloned().context("Invalid send input")?;
+    let directory = attachment_directory(app)?;
+    for (index, reference) in references.iter().enumerate() {
+        let bytes = attachments::read(&directory, reference)?;
+        for (offset, chunk) in bytes.chunks(attachments::UPLOAD_CHUNK_BYTES).enumerate() {
+            let offset = offset * attachments::UPLOAD_CHUNK_BYTES;
+            let chunk_request_id = format!("{request_id}-u{index}-{offset}");
+            ensure!(
+                chunk_request_id.len() <= 56,
+                "Image request ID is too large"
+            );
+            let response = exchange(
+                endpoint,
+                host,
+                &Request::Command {
+                    version: VERSION,
+                    request_id: chunk_request_id,
+                    action: "sessions.attachment.upload".into(),
+                    input: json!({
+                        "epoch": epoch.clone(),
+                        "sessionId": session_id.clone(),
+                        "turn": turn.clone(),
+                        "uploadId": request_id,
+                        "id": reference.id.clone(),
+                        "name": reference.name.clone(),
+                        "mimeType": reference.mime_type.clone(),
+                        "size": reference.size,
+                        "width": reference.width,
+                        "height": reference.height,
+                        "offset": offset,
+                        "data": STANDARD.encode(chunk),
+                    }),
+                },
+            )
+            .await?;
+            require_ok(&response)?;
+        }
+    }
+    finalized_send_input(input, request_id)
+}
 
 #[derive(Serialize, Deserialize)]
 struct Credentials {
@@ -156,6 +255,7 @@ async fn companion_request(
     action: String,
     input: Value,
     state: State<'_, Mutex<ClientState>>,
+    app: AppHandle,
 ) -> Result<Value, String> {
     let mutation = is_mutation(&action);
     let mut dispatch_started = false;
@@ -188,26 +288,59 @@ async fn companion_request(
             client_state.mutation_in_flight = true;
         }
         drop(client_state);
-        // From this point a mutation may have reached the Mac. Every earlier
-        // failure is a definitive local rejection, so the phone must not
-        // invent a recovery command for it.
-        dispatch_started = true;
-        let response = exchange(
-            &endpoint,
-            &host,
-            &Request::Command {
-                version: VERSION,
-                request_id,
-                action,
-                input,
-            },
-        )
+        let response = async {
+            let outbound_input = if action == "sessions.send" {
+                let final_input = finalized_send_input(&input, &request_id)?;
+                if is_retry && input.get("attachments").is_some() {
+                    // A lost final receipt is recoverable by the bridge's
+                    // request receipt before we touch chunks or turn state.
+                    dispatch_started = true;
+                    let receipt = exchange(
+                        &endpoint,
+                        &host,
+                        &Request::Command {
+                            version: VERSION,
+                            request_id: request_id.clone(),
+                            action: action.clone(),
+                            input: final_input.clone(),
+                        },
+                    ).await?;
+                    if !expired_upload(&receipt) {
+                        return Ok(receipt);
+                    }
+                    // The final send was definitely rejected before delivery;
+                    // restage chunks below, then issue the exact same send.
+                    dispatch_started = false;
+                }
+                upload_staged_attachments(&endpoint, &host, &request_id, &input, &app).await?
+            } else { input.clone() };
+            dispatch_started = true;
+            exchange(
+                &endpoint,
+                &host,
+                &Request::Command {
+                    version: VERSION,
+                    request_id: request_id.clone(),
+                    action: action.clone(),
+                    input: outbound_input,
+                },
+            )
+            .await
+        }
         .await;
         if mutation {
             let mut state = state.lock().await;
             state.mutation_in_flight = false;
             if let Ok(ref value) = response {
-                if definitive_response(value, is_retry) { delete_private(PENDING_ACCOUNT)?; }
+                if definitive_response(value, is_retry) {
+                    delete_private(PENDING_ACCOUNT)?;
+                    if action == "sessions.send" { clear_staged_attachments(&app, &input); }
+                }
+            } else if !dispatch_started {
+                // Chunk staging cannot deliver a user message. A rejected or
+                // interrupted preflight has no uncertain final send to retain.
+                delete_private(PENDING_ACCOUNT)?;
+                if action == "sessions.send" { clear_staged_attachments(&app, &input); }
             }
         }
         response
@@ -224,10 +357,22 @@ async fn companion_request(
 }
 
 #[tauri::command]
-async fn companion_pending(state: State<'_, Mutex<ClientState>>) -> Result<Value, String> {
+async fn companion_pending(
+    state: State<'_, Mutex<ClientState>>,
+    app: AppHandle,
+) -> Result<Value, String> {
     let _state = state.lock().await;
     let result = (|| -> Result<Value> {
-        let Some(saved) = load_private::<PendingCommand>(PENDING_ACCOUNT)? else {
+        let saved = load_private::<PendingCommand>(PENDING_ACCOUNT)?;
+        let references = saved
+            .as_ref()
+            .filter(|pending| pending.action == "sessions.send")
+            .and_then(|pending| attachments::references(&pending.input).ok())
+            .unwrap_or_default();
+        if let Ok(directory) = attachment_directory(&app) {
+            attachments::clear_orphans(&directory, &references);
+        }
+        let Some(saved) = saved else {
             return Ok(json!([]));
         };
         let credentials = load_credentials()?.context("Saved command needs its paired Mac")?;
@@ -246,6 +391,7 @@ async fn companion_pending(state: State<'_, Mutex<ClientState>>) -> Result<Value
 async fn companion_dismiss_pending(
     request_id: String,
     state: State<'_, Mutex<ClientState>>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let state = state.lock().await;
     let result = (|| -> Result<()> {
@@ -258,11 +404,32 @@ async fn companion_dismiss_pending(
                 saved.request_id == request_id,
                 "The pending command changed; reopen the app to review it"
             );
+            if saved.action == "sessions.send" {
+                clear_staged_attachments(&app, &saved.input);
+            }
             delete_private(PENDING_ACCOUNT)?;
         }
         Ok(())
     })();
     result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn companion_stage_attachment(
+    image: attachments::StagedImage,
+    app: AppHandle,
+) -> Result<attachments::AttachmentReference, String> {
+    let directory = attachment_directory(&app).map_err(|error| error.to_string())?;
+    attachments::stage(&directory, image).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn companion_discard_staged_attachments(
+    references: Vec<attachments::AttachmentReference>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let directory = attachment_directory(&app).map_err(|error| error.to_string())?;
+    attachments::discard(&directory, &references).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -314,6 +481,8 @@ pub fn run() {
             companion_request,
             companion_pending,
             companion_dismiss_pending,
+            companion_stage_attachment,
+            companion_discard_staged_attachments,
             companion_reconnect,
             companion_forget
         ])

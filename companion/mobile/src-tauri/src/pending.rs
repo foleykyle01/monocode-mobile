@@ -17,6 +17,7 @@ pub fn is_mutation(action: &str) -> bool {
     matches!(
         action,
         "sessions.send"
+            | "sessions.queue.resume"
             | "sessions.approve"
             | "sessions.answer"
             | "sessions.question.keepOpen"

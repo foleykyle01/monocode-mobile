@@ -14,7 +14,7 @@ const fake = vi.hoisted(() => {
     status: vi.fn(async () => ({ paired: true, hostId: "host" })),
     pendingMutations: vi.fn((): PendingMutation[] => []),
     retry: vi.fn(async (_pending: PendingMutation) => ({ accepted: true })),
-    sessionsList: vi.fn(async () => ({ epoch: "e", sessions: [regular], truncated: false, navigation: { groups: [], projects: [{ id: "/app", path: "/app", name: "App" }], monos: [{ id: "scout", name: "Scout", mascot: "ghost", color: "#fff", projectIds: ["/app"], busy: false, needsApproval: false, sessionId: mono.id, canChat: true }] } })),
+    sessionsList: vi.fn(async () => ({ epoch: "e", sessions: [regular], truncated: false, capabilities: { imageAttachments: true }, navigation: { groups: [], projects: [{ id: "/app", path: "/app", name: "App" }], monos: [{ id: "scout", name: "Scout", mascot: "ghost", color: "#fff", projectIds: ["/app"], busy: false, needsApproval: false, sessionId: mono.id, canChat: true }] } })),
     sessionRead: vi.fn(async (id: string, _before?: number): Promise<SessionRead> => ({ epoch: "e", session: id === mono.id ? mono : regular, blocks: [], totalBlocks: 0, nextBefore: null, configuration })),
     currentEpoch: vi.fn(() => "e"),
     monoRead: vi.fn(async () => ({ epoch: "e", mono: { id: "scout", name: "Scout", mascot: "ghost", color: "#fff", projectIds: ["/app"], status: "idle", statusLabel: "Idle", canChat: true, busy: false, needsApproval: false }, scope: { projects: [{ id: "/app", name: "App" }] }, habits: { items: [], offset: 0, total: 0, truncated: false } })),
@@ -22,13 +22,22 @@ const fake = vi.hoisted(() => {
     inboxRead: vi.fn(async (key: string) => ({ item: { key, title: "Inbox item", provider: "github", kind: "issue", reference: key, state: "open", url: "", projectId: "/app" }, body: "", truncated: false, epoch: "e" })),
     changesList: vi.fn(async (_target: { projectId: string; sessionId?: string }) => ({ branch: "main", head: "head", files: [], additions: 0, deletions: 0, revision: "rev", epoch: "e" })),
     mutate: vi.fn(async () => ({ accepted: true })),
+    send: vi.fn(async () => ({ accepted: true })),
     reconnect: vi.fn(async () => {}),
   };
 });
+const imageHelpers = vi.hoisted(() => ({
+  phoneImagesFromFiles: vi.fn(async (files: File[]) => files.map(file => ({
+    id: "pasted-image", name: file.name || "Pasted image", mimeType: "image/png", size: 5, width: 2, height: 2,
+    data: "aGVsbG8=", previewUrl: "blob:preview",
+  }))),
+  releasePhoneImage: vi.fn(),
+}));
 vi.mock("./client", async importOriginal => ({ ...await importOriginal<typeof import("./client")>(), createCompanionClient: () => fake }));
-vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier, onOpenSession, initialScrollTop, onApprove, mutationsDisabled, attentionToken }: Parameters<typeof import("./Transcript").Transcript>[0]) => createElement("div", { className: "test-transcript", "data-scroll-top": initialScrollTop, "data-attention": attentionToken }, blocks.map(block => createElement("div", { key: block.id },
+vi.mock("./imageAttachments", () => imageHelpers);
+vi.mock("./Transcript", () => ({ Transcript: ({ blocks, onLoadEarlier, loadingEarlier, onOpenSession, onApprove, mutationsDisabled, attentionToken }: Parameters<typeof import("./Transcript").Transcript>[0]) => createElement("div", { className: "test-transcript", "data-attention": attentionToken }, blocks.map(block => createElement("div", { key: block.id },
   createElement("p", null, block.text),
-  block.spawnedSessions?.map(session => createElement("button", { key: session.id, className: "spawned-session", onClick: () => onOpenSession?.(session, 123) }, session.title)),
+  block.spawnedSessions?.map(session => createElement("button", { key: session.id, className: "spawned-session", onClick: () => onOpenSession?.(session) }, session.title)),
   block.approval && !block.approval.decided ? createElement("button", { className: "test-allow", disabled: mutationsDisabled, onClick: () => onApprove(block, "allow") }, "Allow") : null,
 )), onLoadEarlier ? createElement("button", { onClick: onLoadEarlier, disabled: loadingEarlier }, "Load earlier messages") : null) }));
 import CompanionApp from "./CompanionApp";
@@ -61,9 +70,70 @@ beforeEach(() => {
   fake.currentEpoch.mockReturnValue("e");
   fake.status.mockResolvedValue({ paired: true, hostId: "host" });
   fake.mutate.mockReset().mockResolvedValue({ accepted: true });
+  fake.send.mockReset().mockResolvedValue({ accepted: true });
   fake.pendingMutations.mockReset().mockReturnValue([]);
   fake.retry.mockReset().mockResolvedValue({ accepted: true });
   fake.reconnect.mockReset().mockResolvedValue(undefined);
+  imageHelpers.phoneImagesFromFiles.mockClear();
+  imageHelpers.releasePhoneImage.mockClear();
+});
+
+it("pastes an image into the composer, previews/removes it, and sends metadata through the image path", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const paste = async () => {
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    const image = new File(["hello"], "Pasted.png", { type: "image/png" });
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { files: [], items: [{ kind: "file", type: "image/png", getAsFile: () => image }] } });
+    await act(async () => { field.dispatchEvent(event); await Promise.resolve(); });
+  };
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Caption this image");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await paste();
+    expect(imageHelpers.phoneImagesFromFiles).toHaveBeenCalledOnce();
+    expect(container.querySelector(".composer-images")?.textContent).toContain("Pasted.png");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Remove Pasted.png"]')!.click());
+    expect(container.querySelector(".composer-images")).toBeNull();
+    await paste();
+    await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(fake.send).toHaveBeenCalledExactlyOnceWith({ epoch: "e", sessionId: "session", turn: 0, text: "Caption this image" }, [expect.objectContaining({ id: "pasted-image", data: "aGVsbG8=" })]);
+    expect(container.querySelector(".composer-images")).toBeNull();
+    expect(imageHelpers.releasePhoneImage).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+});
+
+it("keeps a draft when an older Mac does not advertise image attachment support", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+  const base = await defaultList();
+  fake.sessionsList.mockResolvedValue({ ...base, capabilities: {} });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(CompanionApp)));
+    const field = container.querySelector<HTMLTextAreaElement>(".composer textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Keep this draft");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      const image = new File(["hello"], "Pasted.png", { type: "image/png" });
+      const paste = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(paste, "clipboardData", { value: { files: [image], items: [] } });
+      field.dispatchEvent(paste);
+      await Promise.resolve();
+    });
+    expect(field.value).toBe("Keep this draft");
+    expect(imageHelpers.phoneImagesFromFiles).not.toHaveBeenCalled();
+    expect(fake.send).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Update MonoCode on your Mac to attach images from this iPhone.");
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); }
 });
 
 it("uses full controls for a linked session outside the list and restores the Mono draft on Back", async () => {
@@ -102,7 +172,7 @@ it("uses full controls for a linked session outside the list and restores the Mo
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Back to Scout"]')!.click());
     expect(container.querySelector(".conversation-title")?.textContent).toBe("Scout");
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("My Mono draft");
-    expect(container.querySelector(".test-transcript")?.getAttribute("data-scroll-top")).toBe("123");
+    expect(container.querySelector(".test-transcript")?.hasAttribute("data-scroll-top")).toBe(false);
     await act(async () => container.querySelector<HTMLButtonElement>(".spawned-session")!.click());
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Child draft");
     await act(async () => swipeBack(container.querySelector(".session-detail")!));
@@ -340,7 +410,7 @@ it("queues a busy follow-up with Send and Stop together, blocks rapid duplicates
   const session = { ...read.session, busy: true, needsApproval: true, turn: 7 };
   fake.sessionsList.mockResolvedValue({ ...base, sessions: [session], capabilities: { queuedFollowUps: true } } as typeof base);
   fake.sessionRead.mockImplementation(async id => id === "session" ? { ...read, session } : defaultRead(id));
-  let acknowledge!: (value: { accepted: boolean; delivery: "queued" }) => void;
+  let acknowledge!: (value: { accepted: boolean; delivery: "queued"; queueId: string }) => void;
   fake.mutate.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   const enter = async (text: string) => act(async () => {
@@ -364,11 +434,13 @@ it("queues a busy follow-up with Send and Stop together, blocks rapid duplicates
     expect(fake.mutate).toHaveBeenCalledExactlyOnceWith("sessions.send", { epoch: "e", sessionId: "session", turn: 7, text: "Follow up without stopping" });
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.disabled).toBe(true);
     await act(async () => container.querySelector<HTMLButtonElement>(".mono-row")!.click());
-    await act(async () => acknowledge({ accepted: true, delivery: "queued" }));
+    await act(async () => acknowledge({ accepted: true, delivery: "queued", queueId: "companion_e_queued" }));
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("Other draft");
     await act(async () => container.querySelector<HTMLButtonElement>(".session-row")!.click());
     expect(container.querySelector<HTMLTextAreaElement>(".composer textarea")!.value).toBe("");
-    expect(container.querySelector(".send-receipt")?.textContent).toBe("Follow-up queued on Mac");
+    // The refreshed conversation has no matching queue row, so a historical
+    // acknowledgement cannot leave a false "Queued" status behind.
+    expect(container.querySelector(".send-receipt")?.textContent).toBe("");
     await enter("Keep on failure");
     fake.mutate.mockRejectedValueOnce(new CompanionRequestError("The session turn changed; refresh before acting", false));
     await act(async () => container.querySelector("form.composer")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));

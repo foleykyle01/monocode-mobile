@@ -1,5 +1,9 @@
 # TestFlight 0.1.1 (1005) — 14 October 2026
 
+> Historical release record. Current availability is stated in
+> [Updates and distribution](updates-and-distribution.md); this record does not
+> describe the current TestFlight or Mac release state.
+
 Apple processed this build as **VALID** and it is **IN_BETA_TESTING** in the
 existing **Owner testing** group. Testing notes were saved and read back. The
 verified unchanged-encryption declaration from 1004 was reused; no new encryption

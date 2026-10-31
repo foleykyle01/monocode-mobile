@@ -10,9 +10,18 @@ An independent, experimental iPhone companion for [MonoCode](https://github.com/
 
 This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **MonoCode Companion**, the native iPhone app. The ordinary upstream MonoCode app cannot host this companion. This is not an official MonoCode mobile release.
 
+**Integration status — October 19, 2026:** iPhone Companion **0.1.1 (1009)**
+remains valid in the internal Owner TestFlight group. This source candidate is
+based on MonoCode **0.16.0** and retains the companion bridge; it does not create,
+sign, upload, or publish a new Mac or iPhone artifact.
+
 ## Quickstart
 
-**Download the Mac app:** [MonoCode Dev 1.0.0-beta.5 for Apple Silicon](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5). **iPhone access:** use your existing TestFlight invitation; this Mac activation does not change testing audiences. This Mac download includes the current Owner host features and combined status/unread badges. The verified beta update feed is active; see the [beta.5 release record](docs/companion/release-mac-beta5.md). Contributors can [build from source](companion/README.md#build-requirements).
+**Mac availability:** use the signed build and update channel assigned to your
+testing cohort; verify the installed version before pairing. The current public
+updater is beta.8, while beta.9 is an internal baseline pending release review.
+**iPhone access:** use your existing TestFlight invitation. Contributors can
+[build from source](companion/README.md#build-requirements).
 
 1. **Install MonoCode Dev on your Mac.** Download the `.dmg` above, open it, and drag **MonoCode Dev** into Applications. Use this mobile-enabled build; regular MonoCode cannot connect to the phone app.
 2. **Open a project and start a chat.** Use your existing project folder and [provider login](docs/providers.md). Switching from regular MonoCode? See below.
@@ -41,12 +50,12 @@ This repository includes **MonoCode Dev**, the companion-enabled Mac app, and **
 
 ## Availability
 
-Status as of **October 14, 2026**:
+Status as of **October 19, 2026**:
 
 | Component | Current status |
 | --- | --- |
-| iPhone | **0.1.1 (1004)** is processed and available in the internal **Owner testing** TestFlight group. External beta access and a public invitation are not available yet. |
-| Mac installer | [**MonoCode Dev 1.0.0-beta.5**](https://github.com/foleykyle01/monocode-mobile/releases/tag/companion-mac-v1.0.0-beta.5), based on MonoCode **0.13.0**, is available as a signed and notarized Apple Silicon installer. |
+| iPhone | **0.1.1 (1009)** is valid and in the internal **Owner testing** TestFlight group. External beta access and a public invitation are not available yet. |
+| Mac installer | The installed internal baseline is beta.10. The published updater remains beta.8; this source integration has not produced a replacement signed installer. |
 | Source | Available here for contributors who can build and sign the apps themselves. A GitHub source archive is not an app installer. |
 | Updates | Internal iPhone updates use TestFlight. The verified Mac beta feed is active; download updates in-app and choose Restart to update when work is idle. |
 | Notifications | **Disabled in build 1004**, with notification settings hidden. Open the phone app to check activity; background alerts are not included. |
@@ -59,7 +68,7 @@ Build 1004 also adds full-page Settings with Connection first, an icon-only back
 
 ### Existing internal TestFlight testers
 
-1. Install or update **MonoCode Companion** in Apple's TestFlight app using your existing internal invitation. Choose **0.1.1 (1004)** when available. Update over the existing app to preserve pairing.
+1. Install or update **MonoCode Companion** in Apple's TestFlight app using your existing internal invitation. Choose **0.1.1 (1009)** when available. Update over the existing app to preserve pairing.
 2. Open your compatible **MonoCode Dev** installation on your own Mac. Install and sign in to at least one agent using [provider setup](docs/providers.md), then open a project and confirm a chat works on the Mac.
 3. In the Mac app, open **Settings → Connections → Phone companion**, enable **Remote access**, and select **Show QR code**.
 4. On the iPhone, select **Scan QR ticket**, allow camera access, scan the Mac's code, and tap **Connect to Mac**. Pasting a ticket is also supported. A ticket expires after five minutes and enrolls one new device.
@@ -82,6 +91,11 @@ git clone https://github.com/foleykyle01/monocode-mobile.git
 cd monocode-mobile
 npm ci
 ```
+
+Upstream's separate experimental Expo client remains in
+[`mobile/`](mobile/README.md). Its QUIC access path is independently configured
+and defaults off; it does not replace this companion's established pairing or
+transport protocol.
 
 Build the companion-enabled Mac app:
 
@@ -147,7 +161,7 @@ Open the generated **MonoCode Phone Preview.app** reported by the build. Its wor
 
 Available actions depend on the Mac host and provider. Remote projects, habit runs, ephemeral/Inbox-ask sessions, orchestration-controlled sessions, and sessions undergoing removal/workspace changes are excluded. This is not full desktop feature parity.
 
-**Owner TestFlight 1006 — Mono project sessions and status:** when a Mono starts work in a project, its conversation shows a linked session card. Tap it to follow the live session, send messages, answer approvals, or Stop. Back preserves your Mono draft and reading position. Home cards reflect child Needs you/Working/Idle, with a Reduced Motion-aware working wheel. These host-dependent features require Mac beta.4 or later; the public beta.5 download includes them. See the [1006 release record](docs/companion/release-1006.md). Beta.5's combined Mac status/unread badges need no new iPhone build.
+**Historical Owner TestFlight 1006 — Mono project sessions and status:** when a Mono starts work in a project, its conversation shows a linked session card. Tap it to follow the live session, send messages, answer approvals, or Stop. Back preserves your Mono draft and reading position. Home cards reflect child Needs you/Working/Idle, with a Reduced Motion-aware working wheel. See the [1006 release record](docs/companion/release-1006.md). Current availability is stated above; do not infer a new signed Mac release from this historical record.
 
 ## Approach and stack
 
@@ -167,7 +181,7 @@ The request path is **iPhone UI → native Iroh transport → embedded Mac host 
 
 On iPhone, use **TestFlight → MonoCode Companion → Update**. Keep the existing installation and pairing during ordinary updates. [TestFlight builds expire after 90 days](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/) and require replacement builds; this is a beta channel, not permanent production distribution.
 
-The Mac beta update feed is active. In **Settings → General**, use **Check for updates**, then **Download → Later or Restart to update** when a higher version is available and work is idle. Installed beta.5 currently reports up to date. The guarded updater completed a disposable beta.4-to-beta.5 upgrade, and the owner confirmed existing data and phone connectivity after installation. Restart checks block installation while sessions, approvals, questions, queued work, or terminals are active. Keep the signed DMG as a fallback and preserve existing data/pairing. See the [verified checks and limits](docs/companion/release-mac-beta5.md).
+The public Mac updater currently serves beta.8. In **Settings → General**, use **Check for updates**, then **Download → Later or Restart to update** when a higher version is available and work is idle. Internal beta.9 is not a public-update claim. Restart checks block installation while sessions, approvals, questions, queued work, or terminals are active. Keep the signed DMG as a fallback and preserve existing data/pairing. See the [historical beta.5 checks and limits](docs/companion/release-mac-beta5.md).
 
 | Problem | What to do |
 | --- | --- |
@@ -185,7 +199,7 @@ Pairing invitations are temporary enrollment credentials: do not share active QR
 
 Phone identity and pending commands use Keychain with synchronization disabled and `WhenUnlockedThisDeviceOnly` protection. Native code retains the identity; the host and bridge allowlist companion actions. Relay infrastructure carries encrypted traffic but can observe connection metadata and has its own availability/rate limits. There is no separate biometric app lock or independent security audit.
 
-Same-session messaging over cellular and after locking/reopening the phone has been verified on earlier physical builds; Allow/Deny and Stop were also tested on device. Builds through 1006 passed signed upload and Apple processing. Broader accessibility, keyboard/safe-area, long suspension, and network-handoff testing remains needed. Notifications, event replay, public external TestFlight access, automatic Mac feed delivery, and Android support are not included in the current release. The signed Mac installer is publicly downloadable.
+Same-session messaging over cellular and after locking/reopening the phone has been verified on earlier physical builds; Allow/Deny and Stop were also tested on device. Build 1009 is valid in Owner testing. Broader accessibility, keyboard/safe-area, long suspension, and network-handoff testing remains needed. Notifications, event replay, public external TestFlight access, automatic Mac feed delivery, and Android support are not included in the current release. Only an explicitly published signed Mac installer should be treated as downloadable.
 
 </details>
 
@@ -230,4 +244,4 @@ Report companion issues in [this repository](https://github.com/foleykyle01/mono
 
 ## Upstream and license
 
-Derived from [MonoCode](https://github.com/hardbeat920/monocode), retaining its [MIT license](LICENSE) and [third-party notices](NOTICE). The desktop base is 0.13.0. Upstream desktop downloads and general platform documentation apply to the upstream app; those binaries do not include this companion host. Research from Superset informed design exploration; no Superset source is included in this repository.
+Derived from [MonoCode](https://github.com/hardbeat920/monocode), retaining its [MIT license](LICENSE) and [third-party notices](NOTICE). The desktop base is 0.16.0. Upstream desktop downloads and general platform documentation apply to the upstream app; those binaries do not include this companion host. Research from Superset informed design exploration; no Superset source is included in this repository.

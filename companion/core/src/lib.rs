@@ -95,6 +95,8 @@ pub fn validate_command(request_id: &str, action: &str, input: &Value) -> Result
             "sessions.list"
                 | "sessions.read"
                 | "sessions.send"
+                | "sessions.attachment.upload"
+                | "sessions.queue.resume"
                 | "sessions.approve"
                 | "sessions.answer"
                 | "sessions.review.list"

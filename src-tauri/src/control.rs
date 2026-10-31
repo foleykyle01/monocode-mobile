@@ -222,6 +222,8 @@ fn companion_action(action: &str) -> bool {
         "sessions.list"
             | "sessions.read"
             | "sessions.send"
+            | "sessions.attachment.upload"
+            | "sessions.queue.resume"
             | "sessions.approve"
             | "sessions.answer"
             | "sessions.review.list"
@@ -242,6 +244,7 @@ fn companion_starts_or_resumes_work(action: &str) -> bool {
     matches!(
         action,
         "sessions.send"
+            | "sessions.queue.resume"
             | "sessions.approve"
             | "sessions.answer"
             | "sessions.question.keepOpen"
@@ -585,7 +588,9 @@ pub fn control_authorize_turn(
     app_access: bool,
 ) -> Result<(), String> {
     let _admission = crate::safe_updater::admit(&updater)?;
-    let cwd = std::fs::canonicalize(crate::fs::expand_home(&cwd)).map_err(|e| e.to_string())?;
+    let workdir = crate::fs::expand_home(&cwd);
+    let cwd = std::fs::canonicalize(&workdir)
+        .map_err(|e| format!("Working directory {}: {e}", workdir.display()))?;
     let cwd = comparison_path(&cwd);
     let mut inner = host
         .inner

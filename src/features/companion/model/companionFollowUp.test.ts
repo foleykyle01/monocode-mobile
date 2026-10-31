@@ -19,9 +19,10 @@ it("appends rapid sends without replacing earlier work or the paused queue", () 
 });
 
 it("uses the existing dispatch/steer gates and survives a persisted round trip", () => {
-  const busy = queueCompanionFollowUp({ ...newSession("codex", "/repo"), busy: true, blocks: [{ id: "prompt", role: "user", text: "Start" }] }, "Next", "companion:e:1");
+  const attachment = { id: "image", name: "Screen.png", mimeType: "image/png", kind: "image" as const, size: 5, data: "aGVsbG8=" };
+  const busy = queueCompanionFollowUp({ ...newSession("codex", "/repo"), busy: true, blocks: [{ id: "prompt", role: "user", text: "Start" }] }, "Next", "companion:e:1", [attachment]);
   const persisted = sanitizeSessionForPersist(busy);
-  expect(persisted.queuedMessages).toEqual([{ id: "companion_e_1", text: "Next", attachments: [] }]);
+  expect(persisted.queuedMessages).toEqual([{ id: "companion_e_1", text: "Next", attachments: [attachment] }]);
   const saved = { ...busy, queuedMessages: persisted.queuedMessages };
   expect(shouldSteerCompanionFollowUp(saved, "queue")).toBe(false);
   expect(shouldSteerCompanionFollowUp(saved, "steer")).toBe(true);

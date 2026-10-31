@@ -254,4 +254,77 @@ describe("companion client mutation recovery", () => {
     const pending = client.pendingMutations()[0];
     await expect(client.retry({ ...pending, input: { ...pending.input, text: "changed" } })).rejects.toMatchObject({ uncertain: false });
   });
+
+  it("stages image bytes privately, then retries the same metadata-only send", async () => {
+    const staged: unknown[] = [];
+    const sends: Record<string, unknown>[] = [];
+    let attempt = 0;
+    const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command === "companion_stage_attachment") {
+        staged.push(args?.image);
+        const { data: _data, ...reference } = args?.image as Record<string, unknown>;
+        return reference as T;
+      }
+      if (command === "companion_request") {
+        if (args?.action === "sessions.list") return { ok: true, result: { epoch: "epoch-1", sessions: [], truncated: false } } as T;
+        sends.push(args!);
+        return (attempt++ === 0
+          ? { ok: false, error: "Connection interrupted", outcomeUnknown: true }
+          : { ok: true, result: { accepted: true } }) as T;
+      }
+      throw new Error(`Unexpected ${command}`);
+    }, { native: true });
+
+    await client.sessionsList();
+    const image = { id: "screen", name: "Screen.png", mimeType: "image/png", size: 5, width: 2, height: 2, data: "aGVsbG8=", previewUrl: "blob:phone-preview" };
+    const { previewUrl: _previewUrl, ...nativeImage } = image;
+    const { data: _data, ...reference } = nativeImage;
+    await expect(client.send({ epoch: "epoch-1", sessionId: "session", turn: 1, text: "Read this" }, [image]))
+      .rejects.toMatchObject({ uncertain: true });
+    expect(staged).toEqual([nativeImage]);
+    expect(sends[0].input).toEqual({ epoch: "epoch-1", sessionId: "session", turn: 1, text: "Read this", attachments: [reference] });
+    expect(JSON.stringify(sends[0].input)).not.toContain("aGVsbG8=");
+    await client.retry(client.pendingMutations()[0]);
+    expect(staged).toHaveLength(1);
+    expect(sends[1].requestId).toBe(sends[0].requestId);
+    expect(sends[1].input).toEqual(sends[0].input);
+  });
+
+  it("uses the native staging schema and discards partial staging by references", async () => {
+    const discarded: unknown[] = [];
+    let staged = 0;
+    const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command === "companion_stage_attachment") {
+        if (staged++) throw new Error("disk full");
+        const { data: _data, ...reference } = args?.image as Record<string, unknown>;
+        return reference as T;
+      }
+      if (command === "companion_discard_staged_attachments") { discarded.push(args); return undefined as T; }
+      if (command === "companion_request" && args?.action === "sessions.list") return { ok: true, result: { epoch: "e", sessions: [] } } as T;
+      throw new Error(`Unexpected ${command}`);
+    }, { native: true });
+    await client.sessionsList();
+    const image = (id: string) => ({ id, name: "Screen.png", mimeType: "image/png", size: 5, width: 1, height: 1, data: "aGVsbG8=", previewUrl: "blob:private" });
+    await expect(client.send({ epoch: "e", sessionId: "s", turn: 1, text: "Images" }, [image("one"), image("two")])).rejects.toThrow("disk full");
+    expect(discarded).toEqual([{ references: [{ id: "one", name: "Screen.png", mimeType: "image/png", size: 5, width: 1, height: 1 }] }]);
+  });
+
+  it("clears staged bytes after a definite preflight rejection but retains uncertain retries", async () => {
+    const discarded: unknown[] = [];
+    const client = createCompanionClient(async <T,>(command: string, args?: Record<string, unknown>) => {
+      if (command === "companion_stage_attachment") {
+        const { data: _data, ...reference } = args?.image as Record<string, unknown>;
+        return reference as T;
+      }
+      if (command === "companion_discard_staged_attachments") { discarded.push(args); return undefined as T; }
+      if (command === "companion_request" && args?.action === "sessions.list") return { ok: true, result: { epoch: "e", sessions: [] } } as T;
+      if (command === "companion_request") return { ok: false, error: "The session turn changed; refresh before acting", outcomeUnknown: false } as T;
+      throw new Error(`Unexpected ${command}`);
+    }, { native: true });
+    await client.sessionsList();
+    const image = { id: "one", name: "Screen.png", mimeType: "image/png", size: 5, width: 1, height: 1, data: "aGVsbG8=" };
+    const { data: _data, ...reference } = image;
+    await expect(client.send({ epoch: "e", sessionId: "s", turn: 1, text: "Image" }, [image])).rejects.toMatchObject({ uncertain: false });
+    expect(discarded).toEqual([{ references: [reference] }]);
+  });
 });
